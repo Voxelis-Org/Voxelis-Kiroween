@@ -1,5 +1,5 @@
 # Every video, frame, splat and weight goes in data/, never in git.
-data/
+/data/
 
 # Secrets
 .env
