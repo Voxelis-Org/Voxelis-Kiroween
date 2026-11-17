@@ -1,0 +1,20 @@
+[project]
+name = "voxelis-kiroween"
+version = "0.1.0"
+description = "Phone video to 3D Gaussian splat pipeline."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+# No GPU packages here (torch, gsplat, the depth model).
+# They only go in the cloud machine image, never in the laptop install.
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.15",
+    "pytest>=9.2.0",
+]
