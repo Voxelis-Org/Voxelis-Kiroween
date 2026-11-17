@@ -1,0 +1,16 @@
+# Every video, frame, splat and weight goes in data/, never in git.
+data/
+
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.hypothesis/
+
+# Node (playcanvas splat-transform)
+node_modules/
+
+# Never ignore .kiro/. The judges need to see it.
