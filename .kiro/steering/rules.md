@@ -8,17 +8,31 @@ These apply to Kiro and to everyone on the team.
 
 ## Licences
 
-- Only MIT, BSD or Apache, in our code and in our dependencies. The named exceptions below are the only other licences allowed.
-- Nothing non-commercial. So no code from Inria's gaussian-splatting repo or anything copied from it, no nvdiffrast and no non-commercial model weights. Weights often have a different licence from their code, so check both.
-- ffmpeg and COLMAP are OK as command line tools we call on the server. Don't vendor them and don't link them into our code.
-- COLMAP bundles SiftGPU, which is non-commercial. So we build COLMAP without CUDA, OpenGL or the GUI, which keeps SiftGPU out, and SIFT runs on the CPU. The exact flags are in tech.md.
-- Anything else that isn't MIT, BSD or Apache: ask Samarth before adding it.
+- Our code and our Python and npm dependencies only use permissive licences:
+  - MIT, including MIT-0 and MIT-CMU
+  - BSD-2-Clause, BSD-3-Clause and 0BSD
+  - Apache-2.0, including Apache-2.0 with the LLVM exception
+  - ISC, PSF-2.0 and matplotlib's PSF-style licence, Zlib, BSL-1.0, the Unlicense and CC0
+
+  torch, numpy, Pillow, typing-extensions and splat-transform's npm packages use some of these.
+- Never in our code or our Python and npm dependencies: GPL, AGPL, LGPL or any other copyleft licence, anything non-commercial, or anything without a clear licence. The only exceptions are the named ones below.
+- So no code from Inria's gaussian-splatting repo or anything copied from it, no nvdiffrast and no non-commercial model weights. Weights often have a different licence from their code, so check both.
+- Any other licence: ask Samarth before adding it.
+- ffmpeg and COLMAP are only command line tools on our private machine image. Don't vendor them and don't link them into our code. Never make the image public or share it, because that would mean distributing their GPL parts.
+- Parts of COLMAP have licences we can't use: SiftGPU (non-commercial), CGAL (GPL) and LSD (AGPL). So we build COLMAP without them, and SIFT runs on the CPU. The exact flags are in tech.md.
+- Every dependency, tool, model weight and dataset gets a line in `docs/third-party-licences.md`, with its licence and how we use it. Whoever adds one adds its line in the same commit.
 
 ### Named exceptions
 
 - Hypothesis (MPL-2.0): only as a test dependency.
+- certifi (MPL-2.0) and tqdm (MPL-2.0 and MIT): used unmodified. certifi comes in through requests and tqdm through huggingface-hub.
 - `opencv-python-headless`: its wheels ship FFmpeg under LGPL-2.1. Never plain `opencv-python`, whose Linux wheels also ship Qt under LGPL-3. Never use cv2 to read or write video, frames always come from the ffmpeg command line.
-- torch's CUDA wheels: they come with NVIDIA's CUDA libraries under NVIDIA's own licence. Only on the cloud machine image.
+- torch's CUDA wheels: torch plus the `nvidia-*` and `cuda-*` packages it pulls in, which are under NVIDIA's own licence. Only on the cloud machine image.
+
+## Footage and other data
+
+- Only our own phone videos, or footage whose licence allows it: CC0, CC BY, CC BY-SA or the Pexels licence.
+- Anything made from CC BY-SA footage, like a splat or a clip, is shared under CC BY-SA 4.0, with the author's credit next to it.
 
 ## Our own code
 
