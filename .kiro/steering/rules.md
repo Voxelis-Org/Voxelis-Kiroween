@@ -15,12 +15,18 @@ These apply to Kiro and to everyone on the team.
   - ISC, PSF-2.0 and matplotlib's PSF-style licence, Zlib, BSL-1.0, the Unlicense and CC0
 
   torch, numpy, Pillow, typing-extensions and splat-transform's npm packages use some of these.
-- Never in our code or our Python and npm dependencies: GPL, AGPL, LGPL or any other copyleft licence, anything non-commercial, or anything without a clear licence. The only exceptions are the named ones below.
+- Never in our code or our Python and npm dependencies: GPL, AGPL, LGPL or any other copyleft licence, anything non-commercial, or anything without a clear licence. The only exceptions are the bundled libraries and named exceptions below.
 - So no code from Inria's gaussian-splatting repo or anything copied from it, no nvdiffrast and no non-commercial model weights. Weights often have a different licence from their code, so check both.
 - Any other licence: ask Samarth before adding it.
 - ffmpeg and COLMAP are only command line tools on our private machine image. Don't vendor them and don't link them into our code. Never make the image public or share it, because that would mean distributing their GPL parts.
 - Parts of COLMAP have licences we can't use: SiftGPU (non-commercial), CGAL (GPL) and LSD (AGPL). So we build COLMAP without them, and SIFT runs on the CPU. The exact flags are in tech.md.
 - Every dependency, tool, model weight and dataset gets a line in `docs/third-party-licences.md`, with its licence and how we use it. Whoever adds one adds its line in the same commit.
+
+### Bundled libraries
+
+- We judge a package by its own licence. Shared libraries it bundles inside its wheel are OK if they're under a runtime exception (like the GCC runtime library exception) or LGPL, as long as we use them unmodified.
+- That covers libgfortran and libquadmath in numpy and scipy, and FFmpeg inside `opencv-python-headless`. The other `opencv-python-headless` conditions below still apply.
+- Note a package's bundled libraries on its line in `docs/third-party-licences.md`.
 
 ### Named exceptions
 
@@ -32,7 +38,8 @@ These apply to Kiro and to everyone on the team.
 ## Footage and other data
 
 - Only our own phone videos, or footage whose licence allows it: CC0, CC BY, CC BY-SA or the Pexels licence.
-- Anything made from CC BY-SA footage, like a splat or a clip, is shared under CC BY-SA 4.0, with the author's credit next to it.
+- Anything made from CC BY or CC BY-SA footage, like a splat or a clip, has the author's credit next to it.
+- Anything made from CC BY-SA footage is also shared under CC BY-SA 4.0 (share-alike).
 
 ## Our own code
 
@@ -42,6 +49,8 @@ These apply to Kiro and to everyone on the team.
 ## Money
 
 - Anything that costs money (cloud machines, cloud runs, deploys) needs an OK for that exact run from whoever owns the AWS account it runs on.
+- The exception is jobs that people start through the app (the judges now, other users later). The account owner approves those in advance, as a daily job limit and a daily cost limit that the app enforces. The numbers come in the app spec.
+- Kiro and the team still need an OK for every run they start by hand.
 - It runs on AWS, on a friend's account for now, so be careful with every dollar.
 - Kiro never starts anything paid. It gives the command and the rough cost to the person in the chat, who runs it in their own terminal.
 - The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it.
