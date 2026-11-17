@@ -1,7 +1,7 @@
 ---
 name: reviewer
-description: Read-only reviewer. Checks a spec or a diff against the spec's requirements and our steering rules, and lists the problems worst first, each with the file, the line and why. Run it in a fresh session or as a sub-agent, on a different model from the one that wrote the code.
-# model: not set yet. Use a different model from the one that writes the code.
+description: Read-only reviewer. Checks a spec or a diff against the spec's requirements and our steering rules, and lists the problems worst first, each with the file, the line and why. Run it in a fresh session or as a sub-agent.
+# No model on purpose, so the reviewer uses whichever model the chat has selected.
 tools: ["read", "shell"]
 includeMcpJson: false
 includePowers: false
