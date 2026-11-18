@@ -25,14 +25,15 @@ These apply to Kiro and to everyone on the team.
 ### Bundled libraries
 
 - We judge a package by its own licence. Shared libraries it bundles inside its wheel are OK if they're under a runtime exception (like the GCC runtime library exception) or LGPL, as long as we use them unmodified.
-- That covers libgfortran and libquadmath in numpy and scipy, and FFmpeg inside `opencv-python-headless`. The other `opencv-python-headless` conditions below still apply.
+- The same goes for standard system runtimes that their maker lets programs ship, like Microsoft's Visual C++ runtime on Windows.
+- That covers libgfortran and libquadmath in numpy and scipy, the Visual C++ runtime in numpy's Windows wheels, and FFmpeg inside `opencv-python-headless`. The other `opencv-python-headless` conditions below still apply.
 - Note a package's bundled libraries on its line in `docs/third-party-licences.md`.
 
 ### Named exceptions
 
 - Hypothesis (MPL-2.0): only as a test dependency.
 - certifi (MPL-2.0) and tqdm (MPL-2.0 and MIT): used unmodified. certifi comes in through requests and tqdm through huggingface-hub.
-- `opencv-python-headless`: its wheels ship FFmpeg under LGPL-2.1. Never plain `opencv-python`, whose Linux wheels also ship Qt under LGPL-3. Never use cv2 to read or write video, frames always come from the ffmpeg command line.
+- `opencv-python-headless`: its wheels ship FFmpeg under LGPL-2.1. Never plain `opencv-python`. All the OpenCV packages install the same cv2 module, and OpenCV's own README says to install only one of them per environment. We use the headless one because a server needs no GUI parts, and MoGe asks for it too. Never use cv2 to read or write video, frames always come from the ffmpeg command line.
 - torch's CUDA wheels: torch plus the `nvidia-*` and `cuda-*` packages it pulls in, which are under NVIDIA's own licence. Only on the cloud machine image.
 
 ## Footage and other data
