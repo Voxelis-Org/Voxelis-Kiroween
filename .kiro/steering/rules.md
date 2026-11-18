@@ -60,8 +60,12 @@ These apply to Kiro and to everyone on the team.
 
 ## AWS access
 
-- Kiro only ever uses the read-only profile `kiroween-read`. Always name it (`--profile kiroween-read` or `AWS_PROFILE=kiroween-read`) so nothing falls back to the default profile.
+- Kiro only ever uses the read-only profile `kiroween-read`.
 - Kiro never uses the runner profile `kiroween-runner`, or any other AWS profile.
+- Never rely on `AWS_PROFILE`. AWS keys saved in environment variables beat it, so `AWS_PROFILE=kiroween-read` can run as another account. Only a profile named in the command or in the code beats them.
+- In commands, always pass `--profile kiroween-read`.
+- In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
+- Code running on the job machine uses its instance role.
 - The AWS setup spec makes both profiles. Until `kiroween-read` exists, Kiro doesn't touch AWS at all.
 - Never put AWS keys or the account ID in the repo, in chats or in logs.
 
