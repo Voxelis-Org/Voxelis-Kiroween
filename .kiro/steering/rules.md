@@ -52,9 +52,9 @@ These apply to Kiro and to everyone on the team.
 - Anything that costs money (cloud machines, cloud runs, deploys) needs an OK for that exact run from whoever owns the AWS account it runs on.
 - The exception is jobs that people start through the app (the judges now, other users later). The account owner approves those in advance, as a daily job limit and a daily cost limit that the app enforces. The numbers come in the app spec.
 - Kiro and the team still need an OK for every run they start by hand.
-- It runs on AWS, in Samarth's own account.
+- It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- When a paid run is needed, Kiro tells Samarth the machine, the expected time and the rough cost. Once Samarth says yes, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- When a paid run is needed, Kiro tells the person in the chat the machine, the expected time and the rough cost. Once they say yes, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
 - The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
@@ -68,7 +68,7 @@ These apply to Kiro and to everyone on the team.
 - In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
 - Code running on the job machine uses its instance role.
 - The AWS setup spec makes both profiles. Until `kiroween-read` exists, Kiro doesn't touch AWS at all.
-- The account also holds an older project's resources, in other regions and in IAM and S3. Leave them exactly as they are: never delete, change, reuse or depend on them.
+- Our team's account also holds an older project's resources, in other regions and in IAM and S3. Leave them exactly as they are: never delete, change, reuse or depend on them.
 - Never list, name or describe the older project's resources anywhere, not in code, docs, commits or chats. So don't run commands that would show them, like `aws s3 ls` or `aws iam list-roles`. Look up only our own resources, by their names or our tag.
 - Instead, the AWS setup spec makes our own resources, with new names and our tag (`project=voxelis-kiroween`).
 - Never put AWS keys or the account ID in the repo, in chats or in logs.
