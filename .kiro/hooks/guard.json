@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "guard",
+      "trigger": "PreToolUse",
+      "description": "Before every shell command: blocks raw aws commands that start paid things, force pushes, pushes to main, and git add -A or git add .",
+      "matcher": "shell",
+      "action": {
+        "type": "command",
+        "command": "uv run --no-project -q python scripts/hooks/guard.py"
+      },
+      "timeout": 10
+    }
+  ]
+}

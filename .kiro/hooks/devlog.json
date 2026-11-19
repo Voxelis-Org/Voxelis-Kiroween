@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "devlog",
+      "trigger": "PostTaskExec",
+      "description": "After a spec task: appends one line to docs/devlog.md (time, branch, task, changed files) and commits just that file.",
+      "action": {
+        "type": "command",
+        "command": "uv run --no-project -q python scripts/hooks/devlog.py"
+      },
+      "timeout": 30
+    }
+  ]
+}
