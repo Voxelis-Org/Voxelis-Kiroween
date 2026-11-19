@@ -49,12 +49,12 @@ These apply to Kiro and to everyone on the team.
 
 ## Money
 
-- Anything that costs money (cloud machines, cloud runs, deploys) needs an OK for that exact run from whoever owns the AWS account it runs on.
+- The owner of the AWS account that the jobs run on approves people in advance, by adding them to the project's AWS group. That is their OK to run jobs on that account. After that, whoever is in the chat says yes to each paid run (cloud machines, cloud runs, deploys), once Kiro has told them the machine, the expected time and the rough cost.
 - The exception is jobs that people start through the app (the judges now, other users later). The account owner approves those in advance, as a daily job limit and a daily cost limit that the app enforces. The numbers come in the app spec.
 - Kiro and the team still need an OK for every run they start by hand.
 - It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- When a paid run is needed, Kiro tells the person in the chat the machine, the expected time and the rough cost. Once they say yes, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- Once the person in the chat says yes to a paid run, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
 - The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
