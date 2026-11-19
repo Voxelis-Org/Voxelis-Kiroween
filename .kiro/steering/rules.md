@@ -54,18 +54,17 @@ These apply to Kiro and to everyone on the team.
 - Kiro and the team still need an OK for every run they start by hand.
 - It runs on AWS, in Samarth's own account.
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- Kiro never starts anything paid. It gives the command and the rough cost to the person in the chat, who runs it in their own terminal.
-- The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it.
+- When a paid run is needed, Kiro tells Samarth the machine, the expected time and the rough cost. Once Samarth says yes, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
 
 ## AWS access
 
 - Everything runs in us-east-1.
-- Kiro only ever uses the read-only profile `kiroween-read`.
-- Kiro never uses the runner profile `kiroween-runner`, or any other AWS profile.
+- Kiro uses the read-only profile `kiroween-read`. It uses the runner profile `kiroween-runner` only inside our start, smoke-test and stop-all commands, and never any other AWS profile.
 - Never rely on `AWS_PROFILE`. AWS keys saved in environment variables beat it, so `AWS_PROFILE=kiroween-read` can run as another account. Only a profile named in the command or in the code beats them.
-- In commands, always pass `--profile kiroween-read`.
+- In aws commands, always pass `--profile kiroween-read`.
 - In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
 - Code running on the job machine uses its instance role.
 - The AWS setup spec makes both profiles. Until `kiroween-read` exists, Kiro doesn't touch AWS at all.
@@ -93,3 +92,4 @@ These apply to Kiro and to everyone on the team.
 ## Specs
 
 - In every spec, the unit test and property test tasks are required. Never mark them optional.
+- Keep every spec to 10 tasks or fewer, each task writing its own tests.
