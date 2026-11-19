@@ -86,6 +86,10 @@ These apply to Kiro and to everyone on the team.
 - Small commits. Commit after every finished task.
 - Stage files by name. Never `git add -A` or `git add .`.
 
+## Hooks
+
+- If a hook blocks something it shouldn't, say so and fix the hook. Never work around a hook or turn one off without the user's OK.
+
 ## Specs
 
 - In every spec, the unit test and property test tasks are required. Never mark them optional.
