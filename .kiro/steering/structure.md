@@ -4,7 +4,7 @@ inclusion: always
 
 # Structure
 
-- `pipeline/`: the pipeline. Each step gets its own subfolder when its spec is built. Don't make step folders before that.
+- `splatpipe/`: the pipeline. Each step gets its own subfolder when its spec is built. Don't make step folders before that. It isn't called `pipeline/` because MoGe (the depth model) depends on a package that installs a top-level `pipeline` module, which would clash with ours on the cloud machine.
 - `cloud/`: only the AWS code.
 - `scripts/`: helper scripts.
 - `tests/`: all the tests.
