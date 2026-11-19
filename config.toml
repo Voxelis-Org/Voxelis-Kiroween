@@ -1,57 +1,7 @@
 # Every number and setting in the repo. Read with tomllib.
 
-[hooks]
-stdin_seconds = 5          # how long a hook waits for stdin to close (Requirement 1.4)
-idle_ms = 500              # an Event with nothing to check must finish within this (Requirement 1.11)
-read_ms = 500              # guard-secrets must judge a File_Read_Call within this (Requirement 20.7)
-git_seconds = 10           # budget for all git calls in one hook run
-
 [git]
-max_file_bytes = 1048576   # 1 MB
 main_branch = "main"
-feature_prefix = "feat/"
-video_extensions = ["mp4", "mov", "m4v", "avi", "mkv", "webm", "3gp", "hevc", "mts", "m2ts", "wmv", "flv", "mpg", "mpeg"]
-blocked_extensions = ["ply", "sog", "npz", "pt", "safetensors", "ckpt"]
-image_extensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "heic", "heif", "avif", "exr"]
-image_folder = "docs/"
-
-# Secrets. Each pattern is a Python regex. "context" patterns only count after one of their names.
-[[git.secrets]]
-kind = "AWS access key ID"
-pattern = '(?:AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[A-Z2-7]{16}'
-
-[[git.secrets]]
-kind = "AWS secret access key"
-pattern = '''(?i:aws_?secret_?access_?key|secret_?access_?key|aws_?secret)["']?\s*[:=]\s*["']?(?P<value>[A-Za-z0-9/+]{40})(?![A-Za-z0-9/+=])'''
-not_all_hex = true         # a 40-digit hex value is a git SHA, never a key
-
-[[git.secrets]]
-kind = "AWS session token"
-pattern = '''(?:IQoJb3JpZ2luX2Vj|FwoGZXIvYXdz)[A-Za-z0-9/+=]{50,}|(?i:aws_?session_?token|aws_?security_?token)["']?\s*[:=]\s*["']?[A-Za-z0-9/+=]{100,}'''
-
-[[git.secrets]]
-kind = "AWS account ID in an ARN"
-pattern = 'arn:aws(?:-cn|-us-gov)?:[A-Za-z0-9-]*:[A-Za-z0-9-]*:\d{12}:'
-
-[[git.secrets]]
-kind = "private key"
-pattern = '-----BEGIN[ A-Z0-9]*PRIVATE KEY[ A-Z]*-----'
-
-[[git.secrets]]
-kind = "GitHub token"
-pattern = '(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,}'
-
-[[git.secrets]]
-kind = "Hugging Face token"
-pattern = 'hf_[A-Za-z0-9]{30,}'
-
-[[git.secrets]]
-kind = "npm token"
-pattern = 'npm_[A-Za-z0-9]{36}'
-
-[[git.secrets]]
-kind = "PyPI token"
-pattern = 'pypi-AgE[A-Za-z0-9_-]{50,}'
 
 [aws]
 region = "us-east-1"
@@ -59,149 +9,14 @@ project_tag = "project=voxelis-kiroween"
 read_profile = "kiroween-read"
 runner_profile = "kiroween-runner"
 spend_variable = "APPROVED_SPEND"
-bucket_prefix = "voxelis-kiroween-"
-account_fields = ["OwnerId", "Account", "AccountId"]
-account_field_suffix = "Arn"            # any field whose name ends in this
-read_prefixes = ["describe-", "list-", "get-"]
-stop_calls = ["ec2 stop-instances", "ec2 terminate-instances"]
-s3_high_level = ["ls", "cp", "sync", "mv", "rm"]
-
-[secrets]
-aws_folder = ".aws"                      # every file inside a folder with this name is a Secret_File
-env_file = ".env"                        # this name, and every name that starts with it plus "."
-configure_get_words = ["key", "secret", "token", "account", "arn", "mfa"]
-# The Secret_AWS_Commands other than "configure get": aws service and operation.
-aws_commands = ["configure export-credentials", "s3 presign"]
-
-[cloud]
-modules = ["cloud.start", "cloud.smoke_test", "cloud.list", "cloud.stop_all"]
-free = ["cloud.list", "cloud.stop_all"]
 
 [paid]
-# aws service and operation.
+# Raw aws commands that start paid things, as "service operation".
 aws = [
-  "ec2 run-instances", "ec2 start-instances", "ec2 request-spot-instances",
-  "ec2 request-spot-fleet", "ec2 create-fleet", "ec2 create-image",
-  "cloudformation create-stack", "cloudformation update-stack",
-  "cloudformation deploy", "cloudformation execute-change-set",
+  "ec2 run-instances", "ec2 start-instances", "ec2 create-image",
+  "cloudformation create-stack", "cloudformation update-stack", "cloudformation deploy",
 ]
-# Every call to these services that isn't a Read_Call is paid.
-aws_services = ["batch", "ecs", "sagemaker"]
-# Other programs and the subcommand that makes them paid.
-other = ["cdk deploy", "cdk watch", "sam deploy", "sam sync", "terraform apply"]
-program_aliases = { "aws-cdk" = "cdk" }
-# The boto3 and call_boto3 names of the paid operations. Each also matches its CamelCase form.
-inline_operations = [
-  "run_instances", "start_instances", "request_spot_instances", "request_spot_fleet",
-  "create_fleet", "create_image", "create_stack", "update_stack",
-  "create_change_set", "execute_change_set",
-]
-
-[session_status]
-aws_seconds = 10           # time limit for the describe-instances call (Requirement 16.10)
-max_lines = 4
-spend_log = "data/spend.jsonl"
 
 [devlog]
 path = "docs/devlog.md"
-commit_message = "Devlog: {task}"    # {task} is the task, or "task finished" when the Event has none
-
-[licences]
-lookup_seconds = 20        # all registry lookups for one Shell_Call together
-pypi_url = "https://pypi.org/pypi/{name}/json"
-pypi_version_url = "https://pypi.org/pypi/{name}/{version}/json"
-npm_url = "https://registry.npmjs.org/{name}/{version}"   # {version} is "latest" when nothing is pinned
-allowlist = "scripts/hooks/licence_allowlist.txt"
-licence_table = "docs/third-party-licences.md"
-blocked_packages = ["opencv-python", "opencv-contrib-python", "opencv-contrib-python-headless"]
-dev_group = "dev"
-
-# Allowed_Licences. rules_name is the wording rules.md uses, which the tests look for there.
-[[licences.allowed]]
-id = "MIT"
-rules_name = "MIT"
-spellings = ["MIT License", "The MIT License", "Expat", "MIT/Expat"]
-classifiers = ["License :: OSI Approved :: MIT License"]
-
-[[licences.allowed]]
-id = "MIT-0"
-rules_name = "MIT-0"
-spellings = ["MIT No Attribution"]
-classifiers = ["License :: OSI Approved :: MIT No Attribution License (MIT-0)"]
-
-[[licences.allowed]]
-id = "MIT-CMU"
-rules_name = "MIT-CMU"
-spellings = ["CMU License"]
-classifiers = ["License :: OSI Approved :: CMU License (MIT-CMU)"]
-
-[[licences.allowed]]
-id = "BSD-2-Clause"
-rules_name = "BSD-2-Clause"
-spellings = ["BSD 2-Clause", "Simplified BSD", "FreeBSD", "BSD-2"]
-classifiers = ["License :: OSI Approved :: BSD License"]
-
-[[licences.allowed]]
-id = "BSD-3-Clause"
-rules_name = "BSD-3-Clause"
-spellings = ["BSD", "BSD License", "BSD 3-Clause", "3-Clause BSD License", "New BSD", "Modified BSD", "BSD-3"]
-classifiers = ["License :: OSI Approved :: BSD License"]
-
-[[licences.allowed]]
-id = "0BSD"
-rules_name = "0BSD"
-spellings = ["Zero-Clause BSD", "BSD Zero Clause License"]
-classifiers = ["License :: OSI Approved :: Zero-Clause BSD (0BSD)"]
-
-[[licences.allowed]]
-id = "Apache-2.0"
-rules_name = "Apache-2.0"
-spellings = ["Apache 2.0", "Apache 2", "Apache License 2.0", "Apache License, Version 2.0", "Apache License Version 2.0", "Apache Software License", "ASL 2.0"]
-classifiers = ["License :: OSI Approved :: Apache Software License"]
-
-[[licences.allowed]]
-id = "ISC"
-rules_name = "ISC"
-spellings = ["ISC License", "ISCL"]
-classifiers = ["License :: OSI Approved :: ISC License (ISCL)"]
-
-[[licences.allowed]]
-id = "PSF-2.0"
-rules_name = "PSF-2.0"
-spellings = ["PSF", "PSFL", "Python Software Foundation License"]
-classifiers = ["License :: OSI Approved :: Python Software Foundation License"]
-
-[[licences.allowed]]
-id = "LicenseRef-matplotlib"
-rules_name = "matplotlib's PSF-style licence"
-spellings = ["matplotlib", "Matplotlib License"]
-classifiers = []
-
-[[licences.allowed]]
-id = "Zlib"
-rules_name = "Zlib"
-spellings = ["zlib/libpng", "zlib License"]
-classifiers = ["License :: OSI Approved :: zlib/libpng License"]
-
-[[licences.allowed]]
-id = "BSL-1.0"
-rules_name = "BSL-1.0"
-spellings = ["Boost Software License 1.0", "Boost"]
-classifiers = ["License :: OSI Approved :: Boost Software License 1.0 (BSL-1.0)"]
-
-[[licences.allowed]]
-id = "Unlicense"
-rules_name = "the Unlicense"
-spellings = ["The Unlicense"]
-classifiers = ["License :: OSI Approved :: The Unlicense (Unlicense)"]
-
-[[licences.allowed]]
-id = "CC0-1.0"
-rules_name = "CC0"
-spellings = ["CC0", "CC0 1.0 Universal"]
-classifiers = ["License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication"]
-
-# SPDX exceptions allowed after WITH.
-[[licences.allowed_exceptions]]
-id = "LLVM-exception"
-rules_name = "LLVM exception"
+commit_message = "Devlog: {task}"
