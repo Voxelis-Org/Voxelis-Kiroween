@@ -14,7 +14,9 @@ spend_variable = "APPROVED_SPEND"
 # Raw aws commands that start paid things, as "service operation".
 aws = [
   "ec2 run-instances", "ec2 start-instances", "ec2 create-image",
+  "ec2 request-spot-instances", "ec2 request-spot-fleet", "ec2 create-fleet",
   "cloudformation create-stack", "cloudformation update-stack", "cloudformation deploy",
+  "cloudformation execute-change-set",
 ]
 
 [devlog]
