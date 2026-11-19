@@ -49,27 +49,26 @@ These apply to Kiro and to everyone on the team.
 
 ## Money
 
-- Anything that costs money (cloud machines, cloud runs, deploys) needs an OK for that exact run from whoever owns the AWS account it runs on.
+- The owner of the AWS account that the jobs run on approves people in advance, by adding them to the project's AWS group. That is their OK to run jobs on that account. After that, whoever is in the chat says yes to each paid run (cloud machines, cloud runs, deploys), once Kiro has told them the machine, the expected time and the rough cost.
 - The exception is jobs that people start through the app (the judges now, other users later). The account owner approves those in advance, as a daily job limit and a daily cost limit that the app enforces. The numbers come in the app spec.
 - Kiro and the team still need an OK for every run they start by hand.
-- It runs on AWS, in Samarth's own account.
+- It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- Kiro never starts anything paid. It gives the command and the rough cost to the person in the chat, who runs it in their own terminal.
-- The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it.
+- Once the person in the chat says yes to a paid run, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
 
 ## AWS access
 
 - Everything runs in us-east-1.
-- Kiro only ever uses the read-only profile `kiroween-read`.
-- Kiro never uses the runner profile `kiroween-runner`, or any other AWS profile.
+- Kiro uses the read-only profile `kiroween-read`. It uses the runner profile `kiroween-runner` only inside our start, smoke-test and stop-all commands, and never any other AWS profile.
 - Never rely on `AWS_PROFILE`. AWS keys saved in environment variables beat it, so `AWS_PROFILE=kiroween-read` can run as another account. Only a profile named in the command or in the code beats them.
-- In commands, always pass `--profile kiroween-read`.
+- In aws commands, always pass `--profile kiroween-read`.
 - In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
 - Code running on the job machine uses its instance role.
 - The AWS setup spec makes both profiles. Until `kiroween-read` exists, Kiro doesn't touch AWS at all.
-- The account also holds an older project's resources, in other regions and in IAM and S3. Leave them exactly as they are: never delete, change, reuse or depend on them.
+- Our team's account also holds an older project's resources, in other regions and in IAM and S3. Leave them exactly as they are: never delete, change, reuse or depend on them.
 - Never list, name or describe the older project's resources anywhere, not in code, docs, commits or chats. So don't run commands that would show them, like `aws s3 ls` or `aws iam list-roles`. Look up only our own resources, by their names or our tag.
 - Instead, the AWS setup spec makes our own resources, with new names and our tag (`project=voxelis-kiroween`).
 - Never put AWS keys or the account ID in the repo, in chats or in logs.
@@ -86,6 +85,11 @@ These apply to Kiro and to everyone on the team.
 - Small commits. Commit after every finished task.
 - Stage files by name. Never `git add -A` or `git add .`.
 
+## Hooks
+
+- If a hook blocks something it shouldn't, say so and fix the hook. Never work around a hook or turn one off without the user's OK.
+
 ## Specs
 
 - In every spec, the unit test and property test tasks are required. Never mark them optional.
+- Keep every spec to 10 tasks or fewer, each task writing its own tests.

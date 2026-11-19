@@ -22,3 +22,7 @@ Every dependency, tool, model weight and dataset we use, with its licence and ho
 | certifi | MPL-2.0 | Used unmodified. Comes in through requests. | Not yet |
 | tqdm | MPL-2.0 and MIT | Used unmodified. Comes in through huggingface-hub. | Not yet |
 | PlayCanvas splat-transform 3.8.0 (`@playcanvas/splat-transform`) | MIT. Its npm packages are MIT, BSD-3-Clause and ISC. | Makes the small copy of the splat for the web viewer. Node only. | Not yet |
+| git | GPL-2.0 | Separate command line tool that the hooks and people run. Never vendored, linked or shipped. | Yes, on the laptop |
+| npm | Artistic-2.0 | Separate command line tool that installs splat-transform's packages. Never vendored, linked or shipped. | Yes, on the laptop |
+| AWS CLI v2 | Apache-2.0 | Separate command line tool that Kiro and people run. Never vendored, linked or shipped. | Yes, on the laptop |
+| uv | MIT or Apache-2.0 | Separate command line tool that runs the hooks and manages the Python environment. Never vendored, linked or shipped. | Yes, on the laptop |
