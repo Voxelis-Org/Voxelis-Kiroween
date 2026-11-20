@@ -53,3 +53,4 @@ What the test found, and how the rules block it:
 - 2026-11-20 23:32+05:30 | feat/pipeline-core | pipeline-core 7.4 Write the property test for Property 7 in `tests/test_run.py`, with Hypothesis | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, splatpipe/run.py, tests/test_run.py
 - 2026-11-20 23:41+05:30 | feat/pipeline-core | pipeline-core 7.5 Write the restart tests in `tests/test_run.py` | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, splatpipe/run.py, tests/test_run.py
 - 2026-11-20 23:45+05:30 | feat/pipeline-core | pipeline-core 7.6 Run the tests and commit | splatpipe/run.py, tests/test_run.py, .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json
+- 2026-11-20 23:52+05:30 | feat/pipeline-core | pipeline-core 8.1 Write `cloud/spend.py` | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, cloud/spend.py
