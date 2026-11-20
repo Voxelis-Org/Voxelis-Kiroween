@@ -22,3 +22,35 @@ aws = [
 [devlog]
 path = "docs/devlog.md"
 commit_message = "Devlog: {task}"
+
+[jobs]
+# Folder that holds every job folder. A relative path is read from the repo root.
+jobs_folder = "data/jobs"
+# Preset a job gets when none is chosen: "fast", "default" or "quality".
+default_preset = "fast"
+# Largest video accepted, in bytes (4 GB).
+max_video_bytes = 4294967296
+# Longest video accepted, in seconds (10 minutes).
+max_video_seconds = 600
+# Shortest part of the video a job may use, in seconds.
+min_used_seconds = 3
+# Longest time ffprobe may take to read a video, in seconds.
+ffprobe_timeout_seconds = 30
+
+[fake]
+# The test step. Only tests change this: "none", "expected" or "unexpected".
+fail = "none"
+# Size of each small file the fake step writes, in bytes.
+file_bytes = 16
+
+[fake.fast]
+# Number of small files the fake step writes.
+files = 1
+
+[fake.default]
+# Number of small files the fake step writes.
+files = 2
+
+[fake.quality]
+# Number of small files the fake step writes.
+files = 3
