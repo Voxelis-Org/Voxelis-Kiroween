@@ -9,7 +9,7 @@ Every dependency, tool, model weight and dataset we use, with its licence and ho
 | pytest | MIT. Its dependencies are BSD-3-Clause (colorama), MIT (iniconfig, pluggy), Apache-2.0 or BSD-2-Clause (packaging) and BSD-2-Clause (Pygments). | Runs the tests. Dev group only. | Yes |
 | Hypothesis | MPL-2.0. Its dependency sortedcontainers is Apache-2.0. | Property tests. Dev group, tests only. | Yes |
 | boto3 | Apache-2.0 | Talks to AWS, only inside `cloud/`. | Not yet |
-| ffmpeg | LGPL or GPL, depending on the build | Command line tool on our private machine image. Extracts the frames from the video. | Not yet |
+| ffmpeg and ffprobe | LGPL or GPL, depending on the build | ffprobe reads the video's container, streams and length when a Job is made. ffmpeg extracts the frames. Both are separate command line tools, on our private machine image and on laptops for the tests, never vendored or linked. | Yes, on the laptop. Not yet on the machine image. |
 | COLMAP 4.2.1 | BSD-3-Clause | Command line tool on our private machine image. Finds the camera poses. Built without CUDA, OpenGL, the GUI, CGAL and LSD. | Not yet |
 | gsplat 1.5.3 | Apache-2.0 | Trains the splat. Cloud image only. | Not yet |
 | fused-ssim | MIT | SSIM loss during training. Cloud image only. | Not yet |
