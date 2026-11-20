@@ -68,14 +68,14 @@ You don't know how the work was done, and that's on purpose. Judge only what's i
 - Nothing is built that the spec doesn't ask for.
 - For a spec on its own: every requirement can be tested, the design covers every requirement, and the tasks cover the design.
 - The unit test and property test tasks are there and not marked optional.
-- The steering rules hold. Look hardest at licences, money and the spend guard, AWS profiles, big files, numbers coming from `config.toml`, `pipeline/` never importing cloud code, and tests staying CPU-only with no network.
+- The steering rules hold. Look hardest at licences, money and the spend guard, AWS profiles, big files, numbers coming from `config.toml`, `splatpipe/` never importing cloud code, and tests staying CPU-only with no network.
 - The tests pass. Run them.
 
 ## How to report
 
 List the problems from worst to smallest. Breaks of the money, licence or AWS rules and requirements that aren't met come before everything else. For each problem give:
 
-- the file and line, like `pipeline/frames/extract.py:42`
+- the file and line, like `splatpipe/frames/extract.py:42`
 - what's wrong
 - why it matters: the requirement (by its number) or the steering rule it breaks
 
