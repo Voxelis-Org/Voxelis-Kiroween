@@ -1,5 +1,6 @@
-"""Fixtures for every test: the temporary config, dir_link for the link tests, and fake_probe and
-new_job, which make Jobs without ffprobe.
+"""Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
+new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config, and
+work_calls, which records whose Fake_Step work runs.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
@@ -19,6 +20,7 @@ import pytest
 import splatpipe.config
 from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
+from splatpipe.step import StepContext
 
 # The names the tests run the Fake_Step under. Each gets a section like the real [fake].
 STEP_NAMES = ("fake", "fake_a", "fake_b", "fake_c")
@@ -35,10 +37,11 @@ min_used_seconds = 3
 ffprobe_timeout_seconds = 30
 """
 
-# One Fake_Step section with its three Preset tables, with the keys and values of the real [fake].
+# One Fake_Step section with its three Preset tables, with the keys and values of the real [fake],
+# except `fail`, which config_text fills in.
 STEP_TOML = """
 [{name}]
-fail = "none"
+fail = "{fail}"
 file_bytes = 16
 
 [{name}.fast]
@@ -52,11 +55,13 @@ files = 3
 """
 
 
-def config_text(jobs_folder: Path) -> str:
-    """The test config as TOML. The Jobs_Folder is written with forward slashes, so a Windows
+def config_text(jobs_folder: Path, **fail: str) -> str:
+    """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
+    section gets fail = "none". The Jobs_Folder is written with forward slashes, so a Windows
     backslash can't become a TOML escape."""
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
-    return jobs + "".join(STEP_TOML.format(name=name) for name in STEP_NAMES)
+    return jobs + "".join(STEP_TOML.format(name=name, fail=fail.get(name, "none"))
+                          for name in STEP_NAMES)
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +77,21 @@ def temp_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path.write_text(config_text(tmp_path / "jobs"), encoding="utf-8")
     monkeypatch.setattr(splatpipe.config, "CONFIG_PATH", path)
     return path
+
+
+@pytest.fixture
+def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_fail(**modes), which rewrites the test config with `fail` set to the given value
+    for each Step_Name it names, like set_fail(fake_b="expected").
+
+    Each call writes the whole file again, so every section it doesn't name is back to
+    fail = "none", and set_fail() sets them all back. load_config() reads the file each time it's
+    called, so the next run that loads the config sees the change.
+    """
+    def rewrite(**modes: str) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", **modes), encoding="utf-8")
+
+    return rewrite
 
 
 def make_dir_link(link: Path, target: Path) -> None:
@@ -142,3 +162,25 @@ def new_job(tmp_path: Path) -> Callable[..., str]:
         return make_job(video, probe=FakeProbe(), new_id=lambda: FIXED_ID, **options)
 
     return make
+
+
+@pytest.fixture
+def work_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Patch splatpipe.fake.work to record each call's Step_Name and then run the real work.
+    Gives the list of names, in the order of the calls.
+
+    run_step looks work up each time a Step runs, so the list sees every run in this process,
+    through the Job_Runner, splatpipe.fake.run or the Step's own CLI. splatpipe.fake is imported
+    here, so only the tests that use this fixture need the Fake_Step.
+    """
+    from splatpipe import fake
+
+    real_work = fake.work
+    names: list[str] = []
+
+    def recorded_work(step: StepContext) -> None:
+        names.append(step.name)
+        real_work(step)
+
+    monkeypatch.setattr(fake, "work", recorded_work)
+    return names
