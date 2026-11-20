@@ -1,0 +1,1003 @@
+{
+  "pbtResults": {
+    "1.5 Write the property test for Property 5 in `tests/test_jsonio.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795188808053
+    },
+    "3.4 Write the property test for Property 1 in `tests/test_jobs.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795188818511
+    },
+    "3.5 Write the property test for Property 2 in `tests/test_jobs.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795188830192
+    },
+    "5.4 Write the property test for Property 3 in `tests/test_make.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795191789313
+    },
+    "5.5 Write the property test for Property 4 in `tests/test_make.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795192098260
+    },
+    "7.4 Write the property test for Property 7 in `tests/test_run.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795198453577
+    },
+    "8.3 Write the property test for Property 6 in `tests/test_spend.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795199768828
+    }
+  },
+  "executionHistory": {
+    "1.1 Write `splatpipe/errors.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124026897
+      },
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124048806
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795179009029
+      }
+    ],
+    "1.2 Write `splatpipe/jsonio.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027008
+      },
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124048956
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795179831287
+      }
+    ],
+    "1.3 Write unit tests for `run_cli` in `tests/test_errors.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027094
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795179843256
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795180348984
+      }
+    ],
+    "1.4 Write unit tests for the JSON files in `tests/test_jsonio.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027170
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795179843405
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795180349075
+      }
+    ],
+    "1.5 Write the property test for Property 5 in `tests/test_jsonio.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027254
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795180355973
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795181694083
+      }
+    ],
+    "1.6 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027377
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795181701059
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795181859261
+      }
+    ],
+    "2.1 Write `splatpipe/config.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027453
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795181872787
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795182771654
+      }
+    ],
+    "2.2 Add the `[jobs]` and `[fake]` sections to `config.toml`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027539
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795181872922
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795182772800
+      }
+    ],
+    "2.3 Write unit tests for the Config_Loader in `tests/test_config.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027624
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795182783668
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795183592911
+      }
+    ],
+    "2.4 Write the comment check and the real-config tests in `tests/test_config.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027695
+      },
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795183600814
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795185902000
+      }
+    ],
+    "2.5 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027773
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795185908762
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186074820
+      }
+    ],
+    "3.1 Write `splatpipe/jobs.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027861
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186088634
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186650744
+      }
+    ],
+    "3.2 Write `tests/conftest.py` with the temporary config": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124027942
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186088729
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186651159
+      }
+    ],
+    "3.3 Write unit tests for job ids and job folders in `tests/test_jobs.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028025
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186677421
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187013253
+      }
+    ],
+    "3.4 Write the property test for Property 1 in `tests/test_jobs.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028104
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187021255
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187244762
+      }
+    ],
+    "3.5 Write the property test for Property 2 in `tests/test_jobs.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028187
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187252904
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187446772
+      }
+    ],
+    "3.6 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028285
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187453285
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187598758
+      }
+    ],
+    "4.1 Write `splatpipe/probe.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028407
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187610674
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187930743
+      }
+    ],
+    "4.2 Change the ffmpeg row of `docs/third-party-licences.md`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028484
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187610786
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187931427
+      }
+    ],
+    "4.3 Write unit tests for the Video_Probe in `tests/test_probe.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028571
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187942259
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188329332
+      }
+    ],
+    "4.4 Write the real ffprobe test in `tests/test_probe.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028656
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188341151
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188647892
+      }
+    ],
+    "4.5 Write the licence row test in `tests/test_docs.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028734
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188343537
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188648651
+      }
+    ],
+    "4.6 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028830
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188663355
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188915771
+      }
+    ],
+    "5.1 Write `splatpipe/make.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124028920
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188938909
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795189643148
+      }
+    ],
+    "5.2 Add `fake_probe` and `new_job` to `tests/conftest.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029011
+      },
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795189656418
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795191052148
+      }
+    ],
+    "5.3 Write unit tests for the checks in `tests/test_make.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029094
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795191058752
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795191558768
+      }
+    ],
+    "5.4 Write the property test for Property 3 in `tests/test_make.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029194
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795191569958
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795191840046
+      }
+    ],
+    "5.5 Write the property test for Property 4 in `tests/test_make.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029275
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795191846852
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192128578
+      }
+    ],
+    "5.6 Write unit tests for making the Job and for the CLI in `tests/test_make.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029398
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192136592
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192581631
+      }
+    ],
+    "5.7 Add the real `make_job` test to `tests/test_probe.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029510
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192137279
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192582313
+      }
+    ],
+    "5.8 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029596
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192589374
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192754981
+      }
+    ],
+    "6.1 Write `splatpipe/step.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029678
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192766372
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795193465847
+      }
+    ],
+    "6.2 Write the Fake_Step in `splatpipe/fake/`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029777
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795193473627
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795193843584
+      }
+    ],
+    "6.3 Add the `fail` helper and `work_calls` to `tests/conftest.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029859
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795193474141
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795193843700
+      }
+    ],
+    "6.4 Write unit tests for Step_Reports and the Fake_Step in `tests/test_step.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124029942
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795193852518
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795194196268
+      }
+    ],
+    "6.5 Write unit tests for folders, Presets and the CLI in `tests/test_step.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030038
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795194203218
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795194689645
+      }
+    ],
+    "6.6 Write unit tests for running a Step again in `tests/test_step.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030131
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795194699431
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795194942419
+      }
+    ],
+    "6.7 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030228
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795194949221
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795195158703
+      }
+    ],
+    "7.1 Write `splatpipe/run.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030318
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795195172195
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795195906834
+      }
+    ],
+    "7.2 Write end-to-end tests with Fake_Steps in `tests/test_run.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030414
+      },
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795195918468
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795196683048
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795196890033
+      }
+    ],
+    "7.3 Write unit tests for the Job_Runner's checks, imports, log and CLI in `tests/test_run.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030556
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795196898746
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795197447507
+      }
+    ],
+    "7.4 Write the property test for Property 7 in `tests/test_run.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030644
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795197455902
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795197759019
+      }
+    ],
+    "7.5 Write the restart tests in `tests/test_run.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030732
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795197769244
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198265094
+      }
+    ],
+    "7.6 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030823
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198281785
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198515129
+      }
+    ],
+    "8.1 Write `cloud/spend.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030911
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198525738
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198961562
+      }
+    ],
+    "8.2 Write unit tests for the Spend_Guard in `tests/test_spend.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124030995
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198983240
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199365120
+      }
+    ],
+    "8.3 Write the property test for Property 6 in `tests/test_spend.py`, with Hypothesis": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031092
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199381051
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199639176
+      }
+    ],
+    "8.4 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031178
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199648184
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199837002
+      }
+    ],
+    "9.1 Write `docs/pipeline.md`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031270
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199852204
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795200771500
+      }
+    ],
+    "9.2 Change `.kiro/steering/structure.md`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031360
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199852912
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795200772049
+      }
+    ],
+    "9.3 Add the doc tests to `tests/test_docs.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031447
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795200779931
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795201299997
+      }
+    ],
+    "9.4 Write the import checks in `tests/test_imports.py`": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031547
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795200780350
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795201300382
+      }
+    ],
+    "9.5 Run the tests and commit": [
+      {
+        "executionId": "aa0ab97f-31c4-4975-99e5-6f4fd0183a09",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795124031632
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795201307431
+      },
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795201480207
+      }
+    ],
+    "1. Errors and JSON files": [
+      {
+        "executionId": "66a89195-e3b8-4f73-be45-9a30038bf593",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795181859369
+      }
+    ],
+    "2. Config loader and presets": [
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795186074876
+      }
+    ],
+    "3. Job ids, job folders and the test config": [
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795187598854
+      }
+    ],
+    "4. Video probe, and ffprobe in the licence list": [
+      {
+        "executionId": "b56d6401-29dc-43a5-8ae1-edf189989edf",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795188915903
+      }
+    ],
+    "5. Job maker and trim": [
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795192755080
+      }
+    ],
+    "6. Step runner and fake step": [
+      {
+        "executionId": "3af0e8bf-aa9d-4b1d-a721-5ebfa86087d2",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795195158843
+      }
+    ],
+    "7. Job runner and the restart rule": [
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795198515225
+      }
+    ],
+    "8. Spend guard": [
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795199837120
+      }
+    ],
+    "9. Pipeline doc, structure steering and import checks": [
+      {
+        "executionId": "a5302d6c-143e-4004-a353-a9a2e3f25b16",
+        "chatSessionId": "sess_803b3cf7-6ff0-40f9-876a-725825f0742b",
+        "timestamp": 1795201480301
+      }
+    ]
+  }
+}
