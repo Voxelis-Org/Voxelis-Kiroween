@@ -55,3 +55,4 @@ What the test found, and how the rules block it:
 - 2026-11-20 23:45+05:30 | feat/pipeline-core | pipeline-core 7.6 Run the tests and commit | splatpipe/run.py, tests/test_run.py, .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json
 - 2026-11-20 23:52+05:30 | feat/pipeline-core | pipeline-core 8.1 Write `cloud/spend.py` | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, cloud/spend.py
 - 2026-11-20 23:59+05:30 | feat/pipeline-core | pipeline-core 8.2 Write unit tests for the Spend_Guard in `tests/test_spend.py` | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, cloud/spend.py, tests/test_spend.py
+- 2026-11-21 00:03+05:30 | feat/pipeline-core | pipeline-core 8.3 Write the property test for Property 6 in `tests/test_spend.py`, with Hypothesis | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, cloud/spend.py, tests/test_spend.py
