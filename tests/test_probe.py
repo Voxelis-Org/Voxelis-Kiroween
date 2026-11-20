@@ -1,19 +1,23 @@
 """Tests for the Video_Probe, splatpipe/probe.py.
 
 The unit tests replace subprocess.run through monkeypatch, so they never run the real ffprobe
-(Req 14.3).
+(Req 14.3). The real tests at the end run probe_video, and make_job with the real probe, on a
+clip made with ffmpeg. They're skipped when ffmpeg or ffprobe isn't installed (Req 14.4, 14.5).
 """
 
 import json
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from splatpipe.config import load_config
+from splatpipe.config import Config, load_config
 from splatpipe.errors import PipelineError
+from splatpipe.jobs import open_job
+from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult, parse_probe, probe_video
 
 # The format name ffprobe reports for MP4 and MOV files: the Container_Family.
@@ -157,7 +161,7 @@ def test_parse_probe_doesnt_count_cover_art_as_video() -> None:
     assert (result.has_video, result.video_seconds) == (True, 4.5)
 
 
-# The real ffprobe test (Req 14.4, 14.5)
+# The real ffprobe tests (Req 14.4, 14.5)
 
 # Skips a test that runs the real ffmpeg and ffprobe when either isn't installed.
 needs_ffmpeg = pytest.mark.skipif(
@@ -180,5 +184,21 @@ def make_clip(folder: Path) -> Path:
 @needs_ffmpeg
 def test_probe_video_reads_a_real_clip_made_with_ffmpeg(tmp_path: Path) -> None:
     result = probe_video(make_clip(tmp_path), load_config().jobs().ffprobe_timeout_seconds)
-    assert (result.format_name, result.has_video) == (FAMILY, True)
+    assert (result.format_name, result.has_video) == (CONTAINER_FAMILY, True)
     assert result.video_seconds == pytest.approx(4, abs=0.25)
+
+
+@needs_ffmpeg
+def test_make_job_makes_a_job_from_a_real_clip_with_the_real_probe(
+        tmp_path: Path, temp_config: Path) -> None:
+    clip = make_clip(tmp_path)
+    # The test config's size limit is tiny, so only that is raised, above the clip's size. The
+    # config is built from the test config, never the real config.toml, so the Jobs_Folder stays
+    # in tmp_path.
+    data = tomllib.loads(temp_config.read_text(encoding="utf-8"))
+    data["jobs"]["max_video_bytes"] = clip.stat().st_size + 1
+    config = Config(data)
+    job = open_job(make_job(clip, config=config), config)
+    assert job.folder.parent == (tmp_path / "jobs").resolve()
+    assert job.record.video_seconds == pytest.approx(4, abs=0.25)
+    assert job.video_path.read_bytes() == clip.read_bytes()
