@@ -35,11 +35,21 @@ def one_line(text: str) -> str:
     return " ".join(text.split())
 
 
+def spec_folder(name: str) -> str:
+    """The spec's folder name. Kiro sends the path of the spec's tasks.md, like
+    `.kiro/specs/pipeline-core/tasks.md`, which gives `pipeline-core`. A plain name stays as it is."""
+    parts = [part for part in name.replace("\\", "/").split("/") if part]
+    if parts and parts[-1].lower().endswith(".md"):
+        parts = parts[:-1]
+    return parts[-1] if parts else name
+
+
 def task_text(event: object) -> str:
-    """The spec and task from Kiro's hook input, for example `hooks 2. Add the guard`."""
+    """The spec and task from Kiro's hook input, for example `pipeline-core 2.3 Write the tests`."""
     if not isinstance(event, dict):
         return "task finished"
-    parts = [event.get(key) for key in ("spec_name", "task_name")]
+    spec, task = event.get("spec_name"), event.get("task_name")
+    parts = [spec_folder(spec) if isinstance(spec, str) else None, task]
     text = one_line(" ".join(part for part in parts if isinstance(part, str)))
     if event.get("task_success") is False:
         text += " (failed)"
