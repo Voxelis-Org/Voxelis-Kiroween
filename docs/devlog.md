@@ -58,3 +58,4 @@ What the test found, and how the rules block it:
 - 2026-11-21 00:03+05:30 | feat/pipeline-core | pipeline-core 8.3 Write the property test for Property 6 in `tests/test_spend.py`, with Hypothesis | .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json, cloud/spend.py, tests/test_spend.py
 - 2026-11-21 00:07+05:30 | feat/pipeline-core | pipeline-core 8.4 Run the tests and commit | cloud/spend.py, tests/test_spend.py, .kiro/specs/pipeline-core/tasks.md, .kiro/specs/pipeline-core/tasks.meta.json
 - 2026-11-21 00:22+05:30 | feat/pipeline-core | pipeline-core 9.1 Write `docs/pipeline.md` | .kiro/specs/pipeline-core/tasks.md, .kiro/steering/structure.md, .kiro/specs/pipeline-core/tasks.meta.json, docs/pipeline.md
+- 2026-11-21 00:22+05:30 | feat/pipeline-core | pipeline-core 9.2 Change `.kiro/steering/structure.md` | .kiro/specs/pipeline-core/tasks.md, .kiro/steering/structure.md, .kiro/specs/pipeline-core/tasks.meta.json, docs/pipeline.md
