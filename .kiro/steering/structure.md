@@ -8,7 +8,8 @@ inclusion: always
 - `cloud/`: only the AWS code.
 - `scripts/`: helper scripts.
 - `tests/`: all the tests.
-- `docs/`: `devlog.md` and `kiro-usage.md`. We fill them as we go, for the write-up.
+- `docs/`: `devlog.md` and `kiro-usage.md`, which we fill as we go for the write-up, and `pipeline.md`.
+- `docs/pipeline.md`: one section per step, with what it reads, what it writes, its config section and its report fields. Every step spec updates its own section as part of its tasks, so the steps the three of us build keep fitting together.
 - `docs/third-party-licences.md`: a line for every dependency, tool, model weight and dataset, with its licence and how we use it.
 - `data/` (at the root, gitignored): every video, frame, splat and weight goes here, never anywhere else in the repo.
 - `config.toml` (at the root): every number and setting, read with `tomllib`.
