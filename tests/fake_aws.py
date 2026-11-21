@@ -12,16 +12,24 @@ machine types, the 3 Presets, the smoke and image plans and the scalars. It seed
 table, because a Step's needs live in that Step's own section. Each top-level override replaces its
 key, so a test can swap the types, a Preset's fallback, a price or a scalar.
 
+`git_repo(tmp_path)` makes a tiny committed git repo in `tmp_path` for the Start_Command's git
+helpers, and skips the test, with a reason, when git isn't installed, the way pipeline-core skips a
+test that needs ffprobe.
+
 This module imports no boto3 (it reaches boto3 only indirectly, for the data classes); tests build a
 `FakeAws` and never an AWS client.
 """
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from cloud.aws import ImageInfo, InstanceInfo
 from cloud.config import CloudConfig
@@ -241,3 +249,42 @@ def _base_cloud_mapping() -> dict[str, Any]:
         "base_ami_parameter":
             "/aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-24.04/latest/ami-id",
     }
+
+
+def git_repo(tmp_path: Path) -> Path:
+    """A tiny committed git repo in `tmp_path`, for the Start_Command's git helpers.
+
+    Skips the test, with a reason, when git isn't installed, the way pipeline-core skips a test that
+    needs ffprobe. The repo holds a file under splatpipe/ and under cloud/, a config.toml, a uv.lock
+    and a package-lock.json, all committed, so a repo test can dirty one path, archive HEAD, read the
+    HEAD sha and hash the lockfiles. Returns the repo's path.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("git isn't installed, so this test can't run.")
+    root = Path(tmp_path)
+    (root / "splatpipe").mkdir()
+    (root / "splatpipe" / "run.py").write_text("x = 1\n", encoding="utf-8")
+    (root / "cloud").mkdir()
+    (root / "cloud" / "start.py").write_text("y = 2\n", encoding="utf-8")
+    (root / "config.toml").write_text("[jobs]\n", encoding="utf-8")
+    (root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (root / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
+    # The -c flags keep the commit off the host's git config: a fresh identity, no gpg signing and
+    # no line-ending rewrite, so the repo builds the same on every machine.
+    base = ["git", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false",
+            "-c", "user.name=Voxelis Test", "-c", "user.email=test@example.invalid",
+            "-c", "commit.gpgsign=false"]
+    _run_setup_git([*base, "init"], root)
+    _run_setup_git([*base, "add", "--", "splatpipe", "cloud", "config.toml", "uv.lock",
+                    "package-lock.json"], root)
+    _run_setup_git([*base, "commit", "-m", "Initial commit"], root)
+    return root
+
+
+def _run_setup_git(command: list[str], cwd: Path) -> None:
+    """Run one git command for `git_repo`, raising with git's output when it fails."""
+    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"couldn't build the test git repo: {detail}")
