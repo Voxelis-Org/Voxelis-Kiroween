@@ -210,6 +210,9 @@ Note for the design: check with `re.fullmatch` and explicit ASCII classes (`[0-9
 
 1. THE Step_List SHALL hold, for each Step in order, the Step_Name, the module that holds the Step, and whether the Step is a Required_Step or an Optional_Step.
 2. THE Step_List SHALL start empty in this spec, without a Fake_Step entry. Each step spec adds the entry for the spec's own Step.
+
+   Note: the frames spec added the first Step_List entry, `StepEntry("frames", "splatpipe.frames", True)`, so the Step_List in code is no longer empty.
+
 3. THE Job_Runner SHALL run the Step_List in code by default, and run a Step_List given by the caller instead when one is given.
 4. WHEN the Job_Runner runs a Job, THE Job_Runner SHALL run the Steps in the Step_List's order, with the Preset from the Job_Record.
 5. THE Job_Runner SHALL import each Step's module only when that Step is about to run.

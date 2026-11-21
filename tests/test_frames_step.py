@@ -2,11 +2,11 @@
 Step_Runner runs it and writes its real report.
 
 Each test makes its Job with new_job from tests/conftest.py, in the temporary Jobs_Folder. Every
-test but the real ffmpeg one at the end puts a FakeTools in place of ffprobe, ffmpeg's filter
-check and the ffmpeg decode with fake_tools, so only that one needs ffmpeg. new_job's video is
-10 s long, and the Job uses all of it unless the test gives a Trim. Its Preset is fast, whose
-base_picks is 2 in the test config, so Target_Picks is one Pick for every 2 s of Kept_Seconds,
-rounded up and at least 2, unless a test sets base_picks higher.
+test but the two real ffmpeg ones at the end puts a FakeTools in place of ffprobe, ffmpeg's
+filter check and the ffmpeg decode with fake_tools, so only those two need ffmpeg. new_job's
+video is 10 s long, and the Job uses all of it unless the test gives a Trim. Its Preset is fast,
+whose base_picks is 2 in the test config, so Target_Picks is one Pick for every 2 s of
+Kept_Seconds, rounded up and at least 2, unless a test sets base_picks higher.
 
 The stand-in video is 640 × 480, and set_frames sets score_width to 8 and long_edge to 16, so
 each Score_Frame is 8 × 6 pixels and each Pick 16 × 12. Every picture a test gives FakeTools has
@@ -68,15 +68,19 @@ let it go. After each frame, at most 8 may be alive: the frame before, the curre
 buffer's 6. When the Pick_Pass starts, none may be, because the helper that runs the Score_Pass
 and the choosing gives back no Score_Frame (Req 1.12, 13.7).
 
-The real ffmpeg test runs the step with the real TOOLS, so it's skipped, with the reason "ffmpeg
-and ffprobe aren't installed", when either tool is missing, like the real tests in
-tests/test_frames_ffmpeg.py (Req 13.5). It makes its clip in tmp_path with ffmpeg: lavfi's
-testsrc, 3 s long at 10 frames a second and 64 × 48, smaller than the test config's long_edge of
-1600. The run that makes the clip has a limit of 60 s, and the step's own ffprobe and ffmpeg runs
-take the test config's limits, also 60 s (Req 13.11). make_job would refuse the clip, which is
-bigger than the test config's max_video_bytes of 1024, so the test makes the Job with new_job and
-then copies the clip over its input/video.mp4. The step reads only that video and the
-Job_Record's Trim, which runs from 0 to 10 s, so ffmpeg reads the clip to its end.
+The two real ffmpeg tests run the step with the real TOOLS, so they're skipped, with the reason
+"ffmpeg and ffprobe aren't installed", when either tool is missing, like the real tests in
+tests/test_frames_ffmpeg.py (Req 13.5). Each makes its clip in tmp_path with ffmpeg, at 10 frames
+a second and 64 × 48, smaller than the test config's long_edge of 1600. The first clip is lavfi's
+testsrc, 3 s long. The second, the ramp, is 2 s long, and its frame k is flat grey at a
+brightness of 16 + 10k, from 16 to 206, so neighbouring frames are 10 apart. The ramp's test runs
+the Job through run_job with the real Step_List, whose only entry is the Frames_Step, so the Job
+is done once the step is (Req 11.4). The runs that make the clips have a limit of 60 s, and the
+step's own ffprobe and ffmpeg runs take the test config's limits, also 60 s (Req 13.11). make_job
+would refuse either clip, which is bigger than the test config's max_video_bytes of 1024, so each
+test makes the Job with new_job and then copies its clip over the Job's input/video.mp4. The step
+reads only that video and the Job_Record's Trim, which runs from 0 to 10 s, so ffmpeg reads the
+clip to its end, and Frame_Number k is the clip's frame k.
 """
 
 import errno
@@ -100,6 +104,7 @@ from splatpipe.frames.__main__ import main as frames_main
 from splatpipe.frames.ffmpeg import DecodePlan, ToneMap, VideoInfo, decode, decode_command
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json
+from splatpipe.run import run_job
 
 # A Frame_Time in seconds and its picture, as FakeTools takes them.
 Pair = tuple[float, np.ndarray]
@@ -802,7 +807,7 @@ def test_a_5000_frame_score_pass_leaves_at_most_8_frames_alive_and_none_at_the_p
     assert watch.alive_when_the_pick_pass_starts == [0]
 
 
-# The real ffmpeg (Req 8.1, 8.4, 8.5, 13.4, 13.5, 13.11)
+# The real ffmpeg (Req 8.1, 8.2, 8.4, 8.5, 11.4, 13.4, 13.5, 13.11)
 
 # Skips a test that runs the real ffmpeg and ffprobe when either isn't installed, the same way as
 # the real tests in tests/test_frames_ffmpeg.py (Req 13.5).
@@ -859,3 +864,60 @@ def test_with_the_real_ffmpeg_a_64_by_48_clip_gives_64_by_48_picks_in_the_design
     for entry in picks:
         assert read_image(work / "images" / entry["file"]).shape == (CLIP_HEIGHT, CLIP_WIDTH, 3)
         assert read_image(work / "grey" / entry["file"]).shape == (CLIP_HEIGHT, CLIP_WIDTH)
+
+
+# The ramp clip: 2 s at 10 frames a second, so 20 frames 0.1 s apart from 0 s. Frame k is flat
+# grey at a brightness of 16 + 10k, from 16 to 206.
+RAMP_SECONDS, RAMP_RATE = 2, 10
+RAMP_FIRST, RAMP_STEP = 16, 10
+# How close each Colour_Pick's mean grey must be to its frame's brightness. Neighbouring frames
+# are 10 apart, so a mean within 4 of one frame's brightness is at least 6 from every other
+# frame's, and the Colour_Pick can only have come from that frame.
+BRIGHTNESS_TOLERANCE = 4
+
+
+def ramp_brightness(k: int) -> int:
+    """The brightness of the ramp clip's frame k, from 0 to 255."""
+    return RAMP_FIRST + RAMP_STEP * k
+
+
+def make_ramp_clip(folder: Path) -> Path:
+    """Make folder / "ramp.mp4", the ramp clip at CLIP_WIDTH × CLIP_HEIGHT, with the real ffmpeg,
+    and give its path.
+
+    lavfi's color source gives the frames, and geq sets each one's grey from N, its number from
+    0. The codec is mpeg4 because every ffmpeg build has it.
+    """
+    path = folder / "ramp.mp4"
+    source = (f"color=c=black:size={CLIP_WIDTH}x{CLIP_HEIGHT}:rate={RAMP_RATE}"
+              f":duration={RAMP_SECONDS}")
+    grey = f"format=gray,geq=lum={RAMP_FIRST}+{RAMP_STEP}*N"
+    subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", source,
+                    "-vf", grey, "-c:v", "mpeg4", "-pix_fmt", "yuv420p",
+                    "file:" + str(path.resolve())],
+                   check=True, timeout=REAL_TIMEOUT)
+    return path
+
+
+@needs_ffmpeg
+def test_run_job_with_the_real_ffmpeg_is_done_and_each_colour_pick_shows_the_frame_its_entry_names(
+        new_job: Callable[..., str], tmp_path: Path) -> None:
+    job_id = real_job(new_job, make_ramp_clip(tmp_path))
+    # The Job_Runner with the real Step_List, whose only entry is the Frames_Step, and the real
+    # TOOLS, so ffprobe and ffmpeg read the ramp. The Job is done once the step is (Req 11.4).
+    summary = run_job(job_id)
+    assert summary["status"] == "done", summary["readable_error"]
+    record = record_of(job_id)
+    picks = record["picks"]
+    assert picks  # the step is done, so it made at least min_picks, 1
+    work = work_folder(job_id)
+    # images/ and grey/, each with the Picks' names from 000000.jpg, and frames.json, with
+    # mask.png only when the step uses the Mask (Req 8.4, 8.5).
+    assert entries(work) == layout(len(picks), mask=record["mask_used"])
+    for entry in picks:
+        # Each Colour_Pick comes from the frame its entry names, Frame_Number k being the ramp's
+        # frame k, so its mean grey is that frame's brightness (Req 8.2, 13.4).
+        colour = read_image(work / "images" / entry["file"])
+        mean_grey = float(cv2.cvtColor(colour, cv2.COLOR_BGR2GRAY).mean())
+        brightness = ramp_brightness(entry["frame_number"])
+        assert abs(mean_grey - brightness) <= BRIGHTNESS_TOLERANCE, (entry, mean_grey)

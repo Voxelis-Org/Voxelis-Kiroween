@@ -219,10 +219,11 @@ def test_a_step_entry_holds_the_name_the_module_and_whether_the_step_is_required
     assert (entry.name, entry.module, entry.required) == ("fake_a", "splatpipe.fake", False)
 
 
-def test_the_step_list_starts_empty_and_is_the_default_list(
+def test_the_step_list_holds_the_frames_step_and_is_the_default_list(
         new_job: Callable[..., str], work_calls: list[str],
         monkeypatch: pytest.MonkeyPatch) -> None:
-    assert STEP_LIST == ()  # Req 8.2
+    # The Frames_Step is the only entry so far (Req 8.2, and frames spec, Req 11.3).
+    assert STEP_LIST == (StepEntry("frames", "splatpipe.frames", REQUIRED),)
     job_id = new_job()
     monkeypatch.setattr("splatpipe.run.STEP_LIST", tuple(fake_steps(REQUIRED)))
     run_job(job_id)  # with no steps given, the Step_List in code runs (Req 8.3)
@@ -231,12 +232,14 @@ def test_the_step_list_starts_empty_and_is_the_default_list(
     assert work_calls == ["fake_a", "fake_b"]
 
 
-def test_an_empty_step_list_is_refused_before_out_changes(new_job: Callable[..., str]) -> None:
+def test_an_empty_step_list_is_refused_before_out_changes(
+        new_job: Callable[..., str], monkeypatch: pytest.MonkeyPatch) -> None:
     job_id = new_job()
     run_job(job_id, steps=fake_steps(REQUIRED))  # an earlier run fills out/
     out = folder_of(job_id) / "out"
     before = files_in(out)
-    for steps in (None, []):  # None runs STEP_LIST, which is empty (Req 8.2, 8.10)
+    monkeypatch.setattr("splatpipe.run.STEP_LIST", ())  # so None runs an empty Step_List
+    for steps in (None, []):  # Req 8.10, and frames spec, Req 11.5
         with pytest.raises(PipelineError, match="^No steps are set up yet"):
             run_job(job_id, steps=steps, fresh=True)  # with fresh, a run would replace job.log
     assert files_in(out) == before
@@ -306,8 +309,10 @@ def test_twenty_runs_in_one_process_leave_no_handler_and_no_open_file(
 
 
 def test_main_with_the_empty_default_list_gives_1_and_says_no_steps_are_set_up(
-        new_job: Callable[..., str], capsys: pytest.CaptureFixture[str]) -> None:
+        new_job: Callable[..., str], monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str]) -> None:
     job_id = new_job()
+    monkeypatch.setattr("splatpipe.run.STEP_LIST", ())  # main always runs STEP_LIST
     assert main(["--job", job_id]) == 1  # Req 8.10, 9.2
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -343,14 +348,13 @@ def test_main_gives_0_for_done_and_done_with_warnings_and_1_for_failed(
 
 @pytest.mark.parametrize(("module", "readable_error"), [
     ("splatpipe.fake", "That isn't a job id."),
-    ("splatpipe.run", "No steps are set up yet"),
+    ("splatpipe.run", "That isn't a job id."),
 ])
 def test_python_m_with_a_bad_job_id_exits_with_1_from_the_repo_root(
         module: str, readable_error: str) -> None:
     """In its own process, each CLI reads the real config.toml, whose Jobs_Folder is data/jobs.
-    Neither writes anything: splatpipe.fake reads the config but refuses the id before any path
-    is used, and splatpipe.run refuses the empty Step_List before it reads anything. The
-    Readable_Error shows where each one stopped."""
+    Neither writes anything: each reads the config but refuses the id before any path is used,
+    and the Readable_Error shows it stopped there."""
     result = subprocess.run([sys.executable, "-m", module, "--job", "../x"], cwd=REPO_ROOT,
                             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                             capture_output=True, encoding="utf-8", timeout=60)
