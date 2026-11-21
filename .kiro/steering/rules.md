@@ -12,9 +12,9 @@ These apply to Kiro and to everyone on the team.
   - MIT, including MIT-0 and MIT-CMU
   - BSD-2-Clause, BSD-3-Clause and 0BSD
   - Apache-2.0, including Apache-2.0 with the LLVM exception
-  - ISC, PSF-2.0 and matplotlib's PSF-style licence, Zlib, BSL-1.0, the Unlicense and CC0
+  - ISC, PSF-2.0 and matplotlib's PSF-style licence, CNRI-Python (the licence of Python's early code), Zlib, BSL-1.0, the Unlicense and CC0
 
-  torch, numpy, Pillow, typing-extensions and splat-transform's npm packages use some of these.
+  torch, numpy, Pillow, typing-extensions, regex and splat-transform's npm packages use some of these.
 - Never in our code or our Python and npm dependencies: GPL, AGPL, LGPL or any other copyleft licence, anything non-commercial, or anything without a clear licence. The only exceptions are the bundled libraries and named exceptions below.
 - So no code from Inria's gaussian-splatting repo or anything copied from it, no nvdiffrast and no non-commercial model weights. Weights often have a different licence from their code, so check both.
 - Any other licence: ask Samarth before adding it.

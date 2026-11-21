@@ -1,0 +1,121 @@
+# The CloudFormation template for the splat pipeline's AWS setup, in plain YAML. The account
+# owner deploys it once as the stack, from CloudShell in the AWS console, by following
+# docs/aws-setup.md.
+#
+# This file holds its own numbers and names: the 60 and 7 days of the bucket's lifecycle rules,
+# the ports 443 and 80, the allowed instance types, the project tag project=voxelis-kiroween and
+# the bucket's prefixes jobs/ and work/. They live here and not in config.toml, because
+# CloudFormation can't read config.toml. Changing one of them, an allowed instance type for
+# example, means editing this file and then updating the stack, as docs/aws-setup.md says.
+#
+# Keep this file within 51,200 bytes, the most that --template-body takes.
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS setup for the splat pipeline: a private job bucket, the job machines' role, instance profile and security group, the runner role, the read policy and the project group. One parameter: the id of this region's default VPC."
+
+Parameters:
+  DefaultVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID of this region's default VPC, where the job machines start.
+
+Resources:
+  JobBucket:
+    Type: AWS::S3::Bucket
+    # Deleting the stack, or an update that replaces the bucket, keeps the bucket and its files.
+    # A failed first create deletes the still-empty bucket. UpdateReplacePolicy has no
+    # RetainExceptOnCreate value.
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Metadata:
+      guard:
+        SuppressedRules:
+          - S3_BUCKET_LOGGING_ENABLED  # Access logs would need a second bucket, and nobody reads them for a private job bucket.
+          - S3_BUCKET_VERSIONING_ENABLED  # Versions would keep every replaced or expired job file, and its cost.
+          - S3_BUCKET_REPLICATION_ENABLED  # Job files can be made again from the video, so a copy in another region isn't worth its cost.
+          - S3_BUCKET_DEFAULT_LOCK_ENABLED  # Object lock needs versioning and would stop the 60-day rule from deleting work files.
+          - S3_BUCKET_NO_PUBLIC_RW_ACL  # ACLs are off and all four public access blocks are on. The rule wants AccessControl, which cfn-lint warns against (W3045).
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        # Only files under work/ are ever deleted. The abort rule stays a rule of its own with no
+        # filter, so it covers the whole bucket, jobs/ included, and only aborts unfinished uploads.
+        Rules:
+          - Id: delete-work-files-after-60-days
+            Status: Enabled
+            Prefix: work/
+            ExpirationInDays: 60
+          - Id: abort-unfinished-uploads-after-7-days
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  JobBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref JobBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyRequestsWithoutTls
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt JobBucket.Arn
+              - !Sub "${JobBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # Its VpcId is the DefaultVpcId parameter, so the group is in the default VPC of the stack's
+  # region. No ingress rules, so nothing comes in, and the two egress rules replace EC2's
+  # allow-all outbound rule.
+  JobSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+          - EC2_SECURITY_GROUP_EGRESS_OPEN_TO_WORLD_RULE  # Job machines reach AWS and package mirrors on public addresses, and only TCP 443 and 80 are open.
+    Properties:
+      # EC2 takes no apostrophes in these descriptions, and no & in the rule descriptions.
+      GroupDescription: "Job machines: nothing in, HTTPS and HTTP out"
+      VpcId: !Ref DefaultVpcId
+      SecurityGroupEgress:
+        - Description: HTTPS to AWS APIs, S3, Session Manager and package mirrors
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: HTTP to the Ubuntu apt mirrors
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+Outputs:
+  BucketName:
+    Description: Name of the job bucket, which holds one jobs/<job id>/ folder and one work/<job id>/ folder per job.
+    Value: !Ref JobBucket
+  SecurityGroupId:
+    Description: ID of the security group that every job machine starts with.
+    Value: !GetAtt JobSecurityGroup.GroupId  # gives the id with or without a VpcId, unlike !Ref
+  VpcId:
+    Description: ID of the default VPC that holds the security group. Job machines start in its default subnets.
+    Value: !GetAtt JobSecurityGroup.VpcId

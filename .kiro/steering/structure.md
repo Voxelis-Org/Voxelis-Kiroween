@@ -5,7 +5,7 @@ inclusion: always
 # Structure
 
 - `splatpipe/`: the pipeline. Each step gets its own subfolder when its spec is built. Don't make step folders before that. It isn't called `pipeline/` because MoGe (the depth model) depends on a package that installs a top-level `pipeline` module, which would clash with ours on the cloud machine.
-- `cloud/`: only the AWS code.
+- `cloud/`: only the AWS code, plus `aws-setup.yaml`, the one CloudFormation template that makes our AWS resources.
 - `scripts/`: helper scripts.
 - `tests/`: all the tests.
 - `docs/`: `devlog.md` and `kiro-usage.md`, which we fill as we go for the write-up, and `pipeline.md`.

@@ -8,6 +8,7 @@ Every dependency, tool, model weight and dataset we use, with its licence and ho
 |---|---|---|---|
 | pytest | MIT. Its dependencies are BSD-3-Clause (colorama), MIT (iniconfig, pluggy), Apache-2.0 or BSD-2-Clause (packaging) and BSD-2-Clause (Pygments). | Runs the tests. Dev group only. | Yes |
 | Hypothesis | MPL-2.0. Its dependency sortedcontainers is Apache-2.0. | Property tests. Dev group, tests only. | Yes |
+| cfn-lint | MIT-0. Its dependencies are MIT (PyYAML), BSD-3-Clause (jsonpatch, jsonpointer, networkx, sympy, mpmath), Apache-2.0 and CNRI-Python (regex) and PSF-2.0 (typing-extensions). | The template test in `tests/test_aws_setup.py` runs it on `cloud/aws-setup.yaml`. Dev group only. | Yes |
 | boto3 | Apache-2.0 | Talks to AWS, only inside `cloud/`. | Not yet |
 | ffmpeg and ffprobe | LGPL or GPL, depending on the build | ffprobe reads the video's container, streams and length when a Job is made. ffmpeg extracts the frames. Both are separate command line tools, on our private machine image and on laptops for the tests, never vendored or linked. | Yes, on the laptop. Not yet on the machine image. |
 | COLMAP 4.2.1 | BSD-3-Clause | Command line tool on our private machine image. Finds the camera poses. Built without CUDA, OpenGL, the GUI, CGAL and LSD. | Not yet |
@@ -25,4 +26,5 @@ Every dependency, tool, model weight and dataset we use, with its licence and ho
 | git | GPL-2.0 | Separate command line tool that the hooks and people run. Never vendored, linked or shipped. | Yes, on the laptop |
 | npm | Artistic-2.0 | Separate command line tool that installs splat-transform's packages. Never vendored, linked or shipped. | Yes, on the laptop |
 | AWS CLI v2 | Apache-2.0 | Separate command line tool that Kiro and people run. Never vendored, linked or shipped. | Yes, on the laptop |
+| awslabs.aws-iac-mcp-server | Apache-2.0 | Kiro runs its cfn-guard compliance check on `cloud/aws-setup.yaml` through the aws-infrastructure-as-code power. Our code doesn't import or ship it. | Yes, on the laptop, through the Kiro power |
 | uv | MIT or Apache-2.0 | Separate command line tool that runs the hooks and manages the Python environment. Never vendored, linked or shipped. | Yes, on the laptop |
