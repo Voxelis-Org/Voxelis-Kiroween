@@ -66,6 +66,8 @@ These apply to Kiro and to everyone on the team.
 - Never rely on `AWS_PROFILE`. AWS keys saved in environment variables beat it, so `AWS_PROFILE=kiroween-read` can run as another account. Only a profile named in the command or in the code beats them.
 - In aws commands, always pass `--profile kiroween-read`.
 - In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
+- aws commands also pass `--region us-east-1`. An `AWS_REGION` or `AWS_DEFAULT_REGION` environment variable beats the profile's region, even with `--profile`.
+- Python also passes `region_name` from `[aws].region` in `config.toml` to `boto3.Session`.
 - Code running on the job machine uses its instance role.
 - The AWS setup spec makes both profiles. Until `kiroween-read` exists, Kiro doesn't touch AWS at all.
 - Our team's account also holds an older project's resources, in other regions and in IAM and S3. Leave them exactly as they are: never delete, change, reuse or depend on them.
