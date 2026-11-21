@@ -27,4 +27,5 @@ Every dependency, tool, model weight and dataset we use, with its licence and ho
 | npm | Artistic-2.0 | Separate command line tool that installs splat-transform's packages. Never vendored, linked or shipped. | Yes, on the laptop |
 | AWS CLI v2 | Apache-2.0 | Separate command line tool that Kiro and people run. Never vendored, linked or shipped. | Yes, on the laptop |
 | awslabs.aws-iac-mcp-server | Apache-2.0 | Kiro runs its cfn-guard compliance check on `cloud/aws-setup.yaml` through the aws-infrastructure-as-code power. Our code doesn't import or ship it. | Yes, on the laptop, through the Kiro power |
+| AWS Session Manager plugin | Apache-2.0 | Separate command line tool that people run with the AWS CLI to open a shell on a job machine. Never vendored, linked or shipped. | Not yet |
 | uv | MIT or Apache-2.0 | Separate command line tool that runs the hooks and manages the Python environment. Never vendored, linked or shipped. | Yes, on the laptop |

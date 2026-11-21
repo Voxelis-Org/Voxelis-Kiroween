@@ -24,3 +24,7 @@ The laptop install leaves out the GPU packages (torch, gsplat and the depth mode
 ```
 uv run pytest
 ```
+
+## AWS setup
+
+To run jobs in your own AWS account, follow [docs/aws-setup.md](docs/aws-setup.md). The account owner deploys one CloudFormation stack from `cloud/aws-setup.yaml`, and each person who runs jobs sets up two AWS CLI profiles.
