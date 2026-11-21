@@ -87,3 +87,4 @@ What the test found, and how the rules block it:
 - 2026-11-21 22:11+05:30 | feat/frame-picking | frames 4.6 Run the tests and commit | splatpipe/frames/choose.py, tests/test_frames_choose.py, .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json
 - 2026-11-21 22:22+05:30 | feat/frame-picking | frames 5.1 Write `splatpipe/frames/mask.py` | .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json, splatpipe/frames/files.py, splatpipe/frames/mask.py
 - 2026-11-21 22:22+05:30 | feat/frame-picking | frames 5.2 Write `splatpipe/frames/files.py` | .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json, splatpipe/frames/files.py, splatpipe/frames/mask.py
+- 2026-11-21 22:31+05:30 | feat/frame-picking | frames 5.7 Write unit tests for the files in `tests/test_frames_files.py` | .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json, splatpipe/frames/files.py, splatpipe/frames/mask.py, tests/test_frames_files.py, tests/test_frames_mask.py
