@@ -76,3 +76,4 @@ What the test found, and how the rules block it:
 - 2026-11-21 14:02+05:30 | feat/aws-setup | aws-setup 2.5 Add the project group and the last output | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 14:11+05:30 | feat/aws-setup | aws-setup 2.6 Run the Compliance_Check on the whole template, make the Template_Test pass, and check the template's size | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 14:16+05:30 | feat/aws-setup | aws-setup 2.7 Run the tests and commit | cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.md, .kiro/specs/aws-setup/tasks.meta.json
+- 2026-11-21 14:20+05:30 | feat/aws-setup | aws-setup 3.3 Change the quota line in `.kiro/steering/tech.md` | .kiro/specs/aws-setup/tasks.md, .kiro/steering/tech.md, config.toml, .kiro/specs/aws-setup/tasks.meta.json
