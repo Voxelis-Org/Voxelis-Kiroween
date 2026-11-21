@@ -73,3 +73,4 @@ What the test found, and how the rules block it:
 - 2026-11-21 13:46+05:30 | feat/aws-setup | aws-setup 2.2 Add the read policy | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 13:52+05:30 | feat/aws-setup | aws-setup 2.3 Add the runner's launch policy | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 13:58+05:30 | feat/aws-setup | aws-setup 2.4 Add the runner's manage policy and the runner role | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
+- 2026-11-21 14:02+05:30 | feat/aws-setup | aws-setup 2.5 Add the project group and the last output | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
