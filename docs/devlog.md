@@ -71,3 +71,4 @@ What the test found, and how the rules block it:
 - 2026-11-21 13:36+05:30 | feat/aws-setup | aws-setup 1.7 Run the tests and commit | .kiro/steering/rules.md, .kiro/steering/structure.md, cloud/aws-setup.yaml, docs/third-party-licences.md, pyproject.toml, tests/test_aws_setup.py, uv.lock, .kiro/specs/aws-setup/tasks.md, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 13:42+05:30 | feat/aws-setup | aws-setup 2.1 Add the job role, its instance profile and its policy | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 13:46+05:30 | feat/aws-setup | aws-setup 2.2 Add the read policy | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
+- 2026-11-21 13:52+05:30 | feat/aws-setup | aws-setup 2.3 Add the runner's launch policy | .kiro/specs/aws-setup/tasks.md, cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.meta.json
