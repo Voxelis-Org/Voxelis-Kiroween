@@ -1,4 +1,5 @@
-"""Tests for splatpipe/frames/choose.py: the Windows, the Still_Trim and the Jolt_Filter.
+"""Tests for splatpipe/frames/choose.py: the Windows, the Still_Trim, the Jolt_Filter,
+Target_Picks, the Motion_Parts and the Picker.
 
 The unit tests' clips are a few numpy arrays built here, with frames 0.1 s apart, so no test needs
 a video. The Still_Trim and Jolt_Filter tests use Windows of 0.5 s, which hold a frame and the two
@@ -7,6 +8,12 @@ frame sits on a Window's edge, where rounding in the times could move it in or o
 puts frames exactly on the edges instead, with times that are binary fractions, so its sums are
 exact. Each expected Kept_Range is worked out from the definitions: the Still_Frames come from the
 mean Motion over each frame's Window, not from the frame's own Motion.
+
+The Target_Picks tests use the fast Preset's base_picks, seconds_per_pick and max_picks, as the
+real config has them. The Motion_Parts and Picker tests count frames from 0 at the Kept_Range's
+first frame, as the step does for motion_parts and pick, and the tests of pick give it each
+frame's Motion_Part by hand. The test of a total Motion of 0 uses times that are binary fractions,
+so each frame's share of the Kept_Range's time is exact.
 
 Property 5 draws its clips with Hypothesis: 1 to 60 frames whose times are running sums of gaps
 from 0.001 s to 2 s, and Motions in steps of 1/256. Some gaps and settings are 0.25 s, 0.5 s, 1 s
@@ -21,17 +28,46 @@ with a plain loop and the same comparisons, and sorts the Window to find its med
 those Sharpness values add up exactly, so a median that's the mean of the two middle values is
 numpy's to the last bit, and the oracle's jolt_ratio times the median is the same float jolt_keep
 compares with.
+
+Property 7 draws Kept_Ranges of 1 to 60 frames with the same gaps, an end one more gap after the
+last frame, and an n from 1 to 400. The first frame's Motion, which the total doesn't count, is
+any Motion from 0 to 255. About half the time every Motion after the first is 0, so the total is
+0 and the parts split the Kept_Range's time. Otherwise each is 0, a Motion in steps of 1/256 or
+any float from 0 to 255.
+Its oracle works out each frame's Motion_Position, or its time since the first frame, exactly
+with fractions.Fraction. So the only rounding is motion_parts' own, far less than the
+1e-9 × total the property allows.
+
+Property 8 draws 1 to 60 frames with a Motion_Part each. The first frame's part, and each step
+from one frame's part to the next frame's, are often 0 and otherwise 1 or 2. So the parts never
+go down, a part often holds several frames, and some part numbers hold no frame. Each frame is a
+Candidate or not, so some parts hold no Candidate, and pick gets the Candidates in a drawn order.
+Each Sharpness is one of 1 to 4 values drawn for the case, so ties are common. Its oracle goes
+through the parts with plain loops and takes, from each part's Candidates, the earliest one with
+their highest Sharpness.
+
+Property 9 draws a Used_Part of 1 to 60 Score_Frames with the same gaps, its end one more gap
+after the last frame, and a Kept_Range inside it. Each frame's Motion is drawn as in Property 7,
+and about half the time every Motion after the Kept_Range's first frame is 0 up to its last, so
+the parts split the Kept_Range's time. Each Sharpness is drawn as in Property 6, often 0, 25, 50
+or 100, so ties are common. Each Kept_Range frame is a Candidate or not, and pick gets the
+Candidates in a drawn order. n is from 1 to 400 and often 10 or less, so the Candidates often
+outnumber it. The test gives motion_parts and pick the Kept_Range's frames, counted from 0 at
+its first frame as the step does, and adds the first frame's Frame_Number back to each Pick. Its
+checks read only the drawn case and call nothing else from choose.py.
 """
 
 from dataclasses import asdict, dataclass
-from itertools import accumulate
+from fractions import Fraction
+from itertools import accumulate, pairwise
 
 import numpy as np
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from splatpipe.frames.choose import Kept, jolt_keep, still_trim, window_bounds
+from splatpipe.frames.choose import (Kept, jolt_keep, motion_parts, pick, still_trim, target_picks,
+                                     window_bounds)
 
 # still_motion, min_still_seconds, blip_seconds and jolt_ratio, as the real config has them.
 STILL_MOTION = 1.0
@@ -192,6 +228,67 @@ def test_the_jolt_filter_takes_its_medians_only_from_the_kept_range_frames_it_is
     # Given the whole Used_Part, its Window would also hold the cut frames 8 and 9, and the median
     # would be 50, so it would be kept.
     assert jolt(times, sharpness)[10]
+
+
+# Target_Picks (Req 6.1, 6.2, A3)
+#
+# With the fast Preset, Target_Picks is one Pick for every 2 s of Kept_Seconds, so 240 s gives 120
+# and 420 s gives 210. 30 s asks for 15 Picks, fewer than base_picks, and 1000 s asks for 500,
+# more than max_picks.
+
+# base_picks of the fast Preset, seconds_per_pick and max_picks, as the real config has them.
+FAST_BASE_PICKS = 120
+SECONDS_PER_PICK = 2.0
+MAX_PICKS = 400
+
+
+@pytest.mark.parametrize(("kept_seconds", "expected"), [
+    pytest.param(240.0, 120, id="240 s gives 120"),
+    pytest.param(420.0, 210, id="420 s gives 210"),
+    pytest.param(30.0, FAST_BASE_PICKS, id="a short clip gives base_picks"),
+    pytest.param(1000.0, MAX_PICKS, id="a long clip stops at max_picks"),
+])
+def test_target_picks_gives_a_pick_per_seconds_per_pick_from_base_picks_to_max_picks(
+        kept_seconds: float, expected: int) -> None:
+    assert target_picks(kept_seconds, base_picks=FAST_BASE_PICKS,
+                        seconds_per_pick=SECONDS_PER_PICK, max_picks=MAX_PICKS) == expected
+
+
+# The Motion_Parts and the Picker (Req 6.4–6.7, A5)
+
+def test_with_a_total_motion_of_0_the_parts_split_the_kept_range_by_time() -> None:
+    # A Kept_Range from 10 s to its end at 14 s, in 2 parts of 2 s, with four frames 0.5 s apart
+    # in its first 2 s and one at 13 s. Its first frame's Motion, 9, is the change from the frame
+    # before the Kept_Range, which the total doesn't count, so the total is 0. A split by frame
+    # count, or one that ended at the last frame's 13 s, would put frame 3 in part 1.
+    times = np.array([10.0, 10.5, 11.0, 11.5, 13.0])
+    motion = np.array([9.0, 0.0, 0.0, 0.0, 0.0])
+    assert motion_parts(times, motion, 14.0, 2).tolist() == [0, 0, 0, 0, 1]
+
+
+def test_a_part_with_no_candidate_gives_no_pick_so_there_are_fewer_picks_than_parts() -> None:
+    # Three parts of two frames each. The Jolt_Filter dropped both frames of part 1, so it holds
+    # no Candidate, and the three parts give two Picks: the sharpest Candidates of parts 0 and 2.
+    parts = np.array([0, 0, 1, 1, 2, 2])
+    sharpness = np.array([40.0, 60.0, 5.0, 8.0, 70.0, 30.0])
+    assert pick(parts, np.array([0, 1, 4, 5]), sharpness).tolist() == [1, 4]
+
+
+def test_two_equally_sharp_candidates_in_one_part_give_the_earlier_one() -> None:
+    # Frames 1 and 2 share part 0's highest Sharpness, 50. The Candidates are given latest first,
+    # so the earlier frame wins whatever order they come in.
+    parts = np.array([0, 0, 0, 1, 1])
+    sharpness = np.array([10.0, 50.0, 50.0, 30.0, 20.0])
+    assert pick(parts, np.array([4, 3, 2, 1, 0]), sharpness).tolist() == [1, 3]
+
+
+def test_the_picks_come_in_frame_time_order() -> None:
+    # Four parts whose sharpest Candidates sit at different places in them, with the Candidates
+    # given in a shuffled order. Frame_Numbers count in Frame_Time order, so the Picks come in
+    # Frame_Time order when their Frame_Numbers increase. By Sharpness they'd come 2, 1, 6, 5.
+    parts = np.array([0, 0, 1, 1, 1, 2, 3, 3])
+    sharpness = np.array([20.0, 80.0, 90.0, 10.0, 30.0, 40.0, 70.0, 60.0])
+    assert pick(parts, np.array([5, 2, 7, 0, 3, 6, 1, 4]), sharpness).tolist() == [1, 2, 5, 6]
 
 
 # Property tests
@@ -373,3 +470,222 @@ def test_the_jolt_filter_keeps_exactly_the_frames_that_meet_its_rule(case: JoltC
     assert keep.dtype == np.bool_
     # Each kept frame meets the rule and each dropped frame breaks it.
     assert keep.tolist() == oracle_jolt_keep(case)
+
+
+# A Kept_Range frame's Motion. It's often exactly 0, which leaves the Motion_Position where it
+# was. Otherwise it's ANY_MOTION, whose sums are exact, so a Motion_Position can land exactly on
+# a part's edge, or any float from 0 to 255.
+MOTIONS = st.just(0.0) | ANY_MOTION | st.floats(0, 255)
+
+
+@dataclass(frozen=True)
+class PartCase:
+    """A drawn Kept_Range, as its Frame_Times, Motions and end, with the Target_Picks n."""
+
+    times: tuple[float, ...]
+    motion: tuple[float, ...]
+    end: float
+    n: int
+
+
+@st.composite
+def part_cases(draw: st.DrawFn) -> PartCase:
+    """A Kept_Range of 1 to 60 frames whose times are running sums of GAPS, with its end one more
+    gap after the last, and an n from 1 to 400.
+
+    The first frame's Motion is any of MOTIONS. The total doesn't count it, so it can be large
+    while the total is 0. About half the time every Motion after the first is 0, so the total is
+    0 and the parts split the time. Otherwise each is any of MOTIONS.
+    """
+    stamps = tuple(accumulate(draw(st.lists(GAPS, min_size=2, max_size=61))))
+    after_first = len(stamps) - 2  # how many of the Kept_Range's frames come after its first
+    still = st.just((0.0,) * after_first)
+    moving = st.lists(MOTIONS, min_size=after_first, max_size=after_first).map(tuple)
+    motion = (draw(MOTIONS), *draw(still | moving))
+    return PartCase(times=stamps[:-1], motion=motion, end=stamps[-1],
+                    n=draw(st.integers(1, 400)))
+
+
+def oracle_motion_positions(motion: tuple[float, ...]) -> list[Fraction]:
+    """Each Kept_Range frame's Motion_Position, worked out exactly with Fraction.
+
+    It's the sum of the Motions after the Kept_Range's first frame, up to and including the
+    frame's own, so the first frame's own Motion isn't counted, the first frame's Motion_Position
+    is 0 and the last frame's is the total.
+    """
+    return list(accumulate(map(Fraction, motion[1:]), initial=Fraction(0)))
+
+
+@given(part_cases())
+def test_motion_parts_are_in_range_and_in_order(case: PartCase) -> None:
+    """Feature: frames, Property 7: Motion_Parts are in range and in order
+
+    **Validates: Requirements 6.3, 6.4**
+    """
+    parts = motion_parts(np.array(case.times), np.array(case.motion), case.end, case.n)
+    assert parts.shape == (len(case.times),)
+    assert np.issubdtype(parts.dtype, np.integer)
+    got = parts.tolist()
+    assert all(0 <= part <= case.n - 1 for part in got)
+    assert all(before <= after for before, after in pairwise(got))
+    assert got[0] == 0
+    positions = oracle_motion_positions(case.motion)
+    total = positions[-1]
+    if total > 0:
+        assert got[-1] == case.n - 1
+        places, whole = positions, total
+    else:
+        # The parts split the time from the first frame to the Kept_Range's end.
+        first = Fraction(case.times[0])
+        places = [Fraction(time) - first for time in case.times]
+        whole = Fraction(case.end) - first
+    # Part p runs from p × whole / n to (p + 1) × whole / n, and each frame's place is in its
+    # part's range, give or take 1e-9 × whole for motion_parts' rounding.
+    spare = whole / 10**9
+    for part, place in zip(got, places, strict=True):
+        assert part * whole / case.n - spare <= place <= (part + 1) * whole / case.n + spare
+
+
+# The first frame's Motion_Part, and the step from one frame's part to the next frame's. It's
+# often 0, so a part often holds several frames, and otherwise 1 or 2, so some part numbers hold
+# no frame, as when one frame's Motion is large.
+PART_STEPS = st.just(0) | st.integers(0, 2)
+
+
+@dataclass(frozen=True)
+class PickCase:
+    """A drawn Kept_Range, as each frame's Motion_Part and Sharpness, with its Candidates."""
+
+    parts: tuple[int, ...]
+    candidates: tuple[int, ...]
+    sharpness: tuple[float, ...]
+
+
+@st.composite
+def pick_cases(draw: st.DrawFn) -> PickCase:
+    """A Kept_Range of 1 to 60 frames whose parts are running sums of PART_STEPS, so they never
+    go down, with any set of Candidates among its frames and each Sharpness from a small set.
+
+    Each frame is a Candidate or not, so some parts hold no Candidate, and the Candidates come in
+    a drawn order. The small set is 1 to 4 values of ANY_SHARPNESS drawn for the case, so two
+    Candidates in a part often share the part's highest Sharpness.
+    """
+    parts = tuple(accumulate(draw(st.lists(PART_STEPS, min_size=1, max_size=60))))
+    chosen = draw(st.lists(st.booleans(), min_size=len(parts), max_size=len(parts)))
+    candidates = draw(st.permutations([frame for frame, is_candidate in enumerate(chosen)
+                                       if is_candidate]))
+    levels = draw(st.lists(ANY_SHARPNESS, min_size=1, max_size=4, unique=True))
+    sharpness = draw(st.lists(st.sampled_from(levels), min_size=len(parts),
+                              max_size=len(parts)))
+    return PickCase(parts=parts, candidates=tuple(candidates), sharpness=tuple(sharpness))
+
+
+def oracle_picks(case: PickCase) -> list[int]:
+    """The Picks of `case`, found from the definitions with plain loops.
+
+    For each part that holds a Candidate, in part order, it takes the part's highest Sharpness
+    among its Candidates, then the earliest Candidate with that Sharpness. A part with no
+    Candidate gives nothing. The parts never go down, so part order is Frame_Number order, the
+    order pick gives its Picks in.
+    """
+    candidates = set(case.candidates)
+    picks: list[int] = []
+    for part in sorted(set(case.parts)):
+        held = [frame for frame, frame_part in enumerate(case.parts)
+                if frame_part == part and frame in candidates]
+        if held:
+            sharpest = max(case.sharpness[frame] for frame in held)
+            picks.append(min(frame for frame in held if case.sharpness[frame] == sharpest))
+    return picks
+
+
+@given(pick_cases())
+def test_each_motion_part_gives_its_sharpest_earliest_candidate(case: PickCase) -> None:
+    """Feature: frames, Property 8: Each Motion_Part gives its sharpest, earliest Candidate
+
+    **Validates: Requirements 6.5, 6.6**
+    """
+    # int64 even with no Candidates, as the step's Frame_Numbers are.
+    candidates = np.array(case.candidates, dtype=np.int64)
+    picks = pick(np.array(case.parts), candidates, np.array(case.sharpness))
+    assert picks.tolist() == oracle_picks(case)
+
+
+@dataclass(frozen=True)
+class UsedPartCase:
+    """A drawn Used_Part, as its Score_Frames' Frame_Times, Motions and Sharpness values and its
+    end, with a Kept_Range, the Candidates and the Target_Picks n.
+
+    The Used_Part runs from 0 s, one gap before its first Score_Frame, to `end`, one gap after
+    its last. `first`, `last` and `candidates` are Frame_Numbers of the Used_Part, counted from 0
+    at its first Score_Frame.
+    """
+
+    times: tuple[float, ...]
+    motion: tuple[float, ...]
+    sharpness: tuple[float, ...]
+    end: float
+    first: int  # the Kept_Range's first Frame_Number
+    last: int  # its last, inclusive
+    candidates: tuple[int, ...]
+    n: int
+
+
+@st.composite
+def used_part_cases(draw: st.DrawFn) -> UsedPartCase:
+    """A Used_Part of 1 to 60 Score_Frames whose times are running sums of GAPS, with its end one
+    more gap after the last, a Kept_Range from `first` to `last` inside it, any set of Candidates
+    among the Kept_Range's frames, in a drawn order, and an n from 1 to 400.
+
+    Each Score_Frame's Motion is any of MOTIONS and its Sharpness any of SHARPNESS, so ties are
+    common. About half the time every Motion after the Kept_Range's first frame is 0 up to its
+    last, so the Kept_Range's total is 0 and its parts split its time.
+    """
+    stamps = tuple(accumulate(draw(st.lists(GAPS, min_size=2, max_size=61))))
+    count = len(stamps) - 1  # how many Score_Frames the Used_Part holds
+    first = draw(st.integers(0, count - 1))
+    last = draw(st.integers(first, count - 1))
+    motion = draw(st.lists(MOTIONS, min_size=count, max_size=count))
+    if draw(st.booleans()):
+        # The total doesn't count the Kept_Range's first frame's own Motion, so it's 0.
+        motion[first + 1:last + 1] = [0.0] * (last - first)
+    sharpness = draw(st.lists(SHARPNESS, min_size=count, max_size=count))
+    kept = range(first, last + 1)
+    chosen = draw(st.lists(st.booleans(), min_size=len(kept), max_size=len(kept)))
+    candidates = draw(st.permutations([frame for frame, is_candidate
+                                       in zip(kept, chosen, strict=True) if is_candidate]))
+    # Often 10 or less, so the Candidates of a long Kept_Range outnumber it and the bound of n
+    # Picks bites.
+    n = draw(st.integers(1, 400) | st.integers(1, 10))
+    return UsedPartCase(times=stamps[:-1], motion=tuple(motion), sharpness=tuple(sharpness),
+                        end=stamps[-1], first=first, last=last, candidates=tuple(candidates),
+                        n=n)
+
+
+@given(used_part_cases())
+def test_picks_are_few_different_inside_the_kept_range_and_in_order(case: UsedPartCase) -> None:
+    """Feature: frames, Property 9: Picks are few, different, inside the Kept_Range and in order
+
+    **Validates: Requirements 6.7, 6.8**
+    """
+    kept = slice(case.first, case.last + 1)
+    # The Kept_Range ends at the time of the next frame after it, or at the Used_Part's end when
+    # it holds the last frame.
+    kept_end = case.times[case.last + 1] if case.last + 1 < len(case.times) else case.end
+    parts = motion_parts(np.array(case.times)[kept], np.array(case.motion)[kept], kept_end,
+                         case.n)
+    # As in the step, pick counts frames from 0 at the Kept_Range's first frame, so adding
+    # `first` turns its Picks back into Frame_Numbers of the Used_Part.
+    candidates = np.array(case.candidates, dtype=np.int64) - case.first
+    picks = pick(parts, candidates, np.array(case.sharpness)[kept])
+    frames = [case.first + index for index in picks.tolist()]
+    assert len(frames) <= case.n
+    # Different Candidates, inside the Kept_Range.
+    assert len(set(frames)) == len(frames)
+    assert set(frames) <= set(case.candidates)
+    assert all(case.first <= frame <= case.last for frame in frames)
+    # Inside the Used_Part: each is one of its Score_Frames, with a Frame_Time from its start,
+    # 0 s, to before its end.
+    assert all(0 <= frame < len(case.times) for frame in frames)
+    assert all(0 <= case.times[frame] < case.end for frame in frames)
+    assert all(case.times[before] < case.times[after] for before, after in pairwise(frames))
