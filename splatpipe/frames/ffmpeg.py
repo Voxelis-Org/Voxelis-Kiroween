@@ -1,4 +1,5 @@
-"""ffprobe and the ffmpeg decode, the Frames_Step's two tools, each with its pure parts.
+"""ffprobe and ffmpeg, the Frames_Step's two tools: the probe, the filter check and the decode,
+each with its pure parts.
 
 Every frame the step uses comes from the ffmpeg command line (Req 1.2). Each tool runs as an
 argument list with no shell and with stdin closed, and gets the video as file: plus its absolute
@@ -10,6 +11,11 @@ transfer. The Displayed_Shape is the stored size with the sample aspect ratio ap
 width, rounded half up, and with the edges swapped when the rotation turns the picture on its
 side, as ffmpeg's own autorotation does.
 
+has_filters tells whether this ffmpeg has the filters it's given, like zscale and tonemap, which
+the Tone_Map needs. It runs ffmpeg -filters, and parse_filters reads the names from the listing.
+A timeout or a non-zero exit counts as no, so an HDR_Clip is decoded without the Tone_Map, with
+a warning (Req 2.4).
+
 decode runs one Decode_Pass, with the command decode_command gives:
 
 - -ss and -to are input options from seek_text: the start rounded down and the end rounded up to
@@ -18,6 +24,11 @@ decode runs one Decode_Pass, with the command decode_command gives:
   the last time it kept, so the Frame_Times strictly increase (Req 1.4, 1.6).
 - scale=W:H,setsar=1 gives every frame the plan's exact size, so each frame on the pipe has a
   known byte count. format=gray gives the Score_Frames and format=bgr24 the Picks' colours.
+- A plan with a ToneMap gets tone_map_filter's text after setsar=1 and before the format. So the
+  float tone map runs at the plan's size, not the video's, and an HDR_Clip's frames are SDR
+  BT.709 before they're made grey or saved, in both passes alike (Req 1.7, 2.2). TONE_MAP's
+  filters, with the hable curve and the BT.709 names, are Fixed_Constants. Only their npl and
+  desat numbers come from tonemap_npl and tonemap_desat in [frames] (A13).
 - showinfo=checksum=0, the last filter, logs each frame's pts_time on stderr, and
   -fps_mode passthrough stops ffmpeg from repeating or dropping frames (Req 1.5). The command
   needs ffmpeg 5.1 or newer (D5).
@@ -46,7 +57,7 @@ import queue
 import re
 import subprocess
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -120,6 +131,38 @@ def probe_stream(path: Path, timeout_seconds: float) -> VideoInfo:
     return parse_stream(data)
 
 
+def parse_filters(text: str) -> frozenset[str]:
+    """The filter names in `text`, the listing that ffmpeg -filters prints: the second word of
+    each filter line.
+
+    A filter line's words are its flags, its name, its inputs and outputs, like V->V, and its
+    description, whatever number of flags the ffmpeg version prints. The legend and the other
+    lines above the list have no -> in their third word, so they're skipped.
+    """
+    lines = (line.split() for line in text.splitlines())
+    return frozenset(words[1] for words in lines if len(words) >= 3 and "->" in words[2])
+
+
+def has_filters(names: Collection[str], timeout_seconds: float) -> bool:
+    """Whether this ffmpeg has every filter in `names`, from ffmpeg -filters run for at most
+    `timeout_seconds`, with probe_stream's options.
+
+    A timeout or a non-zero exit gives False, so the step decodes without the Tone_Map and warns
+    (Req 2.4). A missing ffmpeg is refused with the Req 1.8 failure.
+    """
+    command = ["ffmpeg", "-hide_banner", "-nostdin", "-filters"]
+    try:
+        result = subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL,
+                                timeout=timeout_seconds)
+    except FileNotFoundError as error:
+        raise _missing("ffmpeg") from error
+    except subprocess.TimeoutExpired:  # subprocess.run has already killed ffmpeg
+        return False
+    if result.returncode != 0:
+        return False
+    return parse_filters(result.stdout.decode("utf-8", errors="replace")).issuperset(names)
+
+
 def seek_text(seconds: float, *, up: bool = False) -> str:
     """`seconds`, 0 or more, as text for ffmpeg with exactly six decimals and never an exponent.
 
@@ -131,9 +174,35 @@ def seek_text(seconds: float, *, up: bool = False) -> str:
     return f"{whole // _MICROS}.{whole % _MICROS:06d}"
 
 
+# The Tone_Map's filters, a Fixed_Constant with the hable curve and the BT.709 names. zscale makes
+# the light linear, with npl nits as the nominal peak, and moves it to the BT.709 primaries in
+# float RGB. tonemap brings it into SDR with the hable curve, desaturating bright highlights by
+# desat. zscale then gives BT.709 video in TV range. Config gives npl and desat (A13).
+TONE_MAP = ("zscale=t=linear:npl={npl},format=gbrpf32le,zscale=p=bt709,"
+            "tonemap=tonemap=hable:desat={desat},zscale=t=bt709:m=bt709:r=tv,format=yuv420p")
+
+
+@dataclass(frozen=True)
+class ToneMap:
+    """The Tone_Map's two numbers, from [frames] in config.toml (A13)."""
+
+    npl: float  # tonemap_npl: the nominal peak brightness, in nits, that zscale maps from
+    desat: float  # tonemap_desat: how much tonemap desaturates bright highlights, 0 for none
+
+
+def tone_map_filter(tone_map: ToneMap) -> str:
+    """TONE_MAP with the npl and desat of `tone_map` filled in, and the rest of its text as it is.
+
+    Each number is written as repr(float(value)), like 100.0, 0.25 or 1e-05. ffmpeg reads that as
+    a plain number, and it never holds the : or , that would end a filter option.
+    """
+    return TONE_MAP.format(npl=repr(float(tone_map.npl)), desat=repr(float(tone_map.desat)))
+
+
 @dataclass(frozen=True)
 class DecodePlan:
-    """One Decode_Pass: the video and its stream, the Used_Part, and the frames' size and format."""
+    """One Decode_Pass: the video and its stream, the Used_Part, the frames' size and format, and
+    the Tone_Map when it runs."""
 
     video: Path
     stream_index: int
@@ -142,17 +211,23 @@ class DecodePlan:
     width: int  # the frame size on the pipe
     height: int
     colour: bool  # bgr24 when True, gray when False
+    tone_map: ToneMap | None = None  # None: decode without the Tone_Map
 
 
 def decode_command(plan: DecodePlan) -> list[str]:
-    """The ffmpeg command of the Decode_Pass `plan`, as an argument list for no shell."""
+    """The ffmpeg command of the Decode_Pass `plan`, as an argument list for no shell.
+
+    A plan with a ToneMap gets its filters after the scaling and before the format.
+    """
     pixels = "bgr24" if plan.colour else "gray"
-    filters = f"scale={plan.width}:{plan.height},setsar=1,format={pixels},showinfo=checksum=0"
+    tone_map = [] if plan.tone_map is None else [tone_map_filter(plan.tone_map)]
+    filters = [f"scale={plan.width}:{plan.height}", "setsar=1", *tone_map, f"format={pixels}",
+               "showinfo=checksum=0"]
     return ["ffmpeg", "-nostdin", "-hide_banner", "-nostats", "-loglevel", "info",
             "-ss", seek_text(plan.start), "-to", seek_text(plan.end, up=True),
             "-i", _input(plan.video),
             "-map", f"0:{plan.stream_index}", "-an", "-sn", "-dn",
-            "-vf", filters,
+            "-vf", ",".join(filters),
             "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"]
 
 

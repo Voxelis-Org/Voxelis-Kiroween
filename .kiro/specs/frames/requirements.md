@@ -54,9 +54,10 @@ The user didn't decide these before the draft. Each one is marked in the require
 - **A15 (Requirements 1 and 7), changed at review:** The Mask_Samples come from the Sample_Buffer, which the Score_Pass fills in memory, with no temporary file. The Sample_Buffer keeps every k-th Score_Frame by Frame_Number, from the first with k = 1. Whenever it holds more than twice `mask_samples` (480) frames, it drops every other frame it holds and doubles k. So at the end it holds every Score_Frame when the Used_Part has at most 480, and otherwise 241 to 480 frames spread evenly by Frame_Number over the Used_Part. After the Still_Trim, the Mask_Samples are the Sample_Buffer's frames that lie inside the Kept_Range. When more than `mask_samples` (240) lie there, the step takes 240 of them, spread evenly among them with the first and last included. So the samples are spread evenly over the Used_Part and then limited to the Kept_Range: there are about 240 rather than exactly 240, fewer when the Still_Trim cut a large share of the Used_Part, and they aren't exactly even over the Kept_Range. At worst the Sample_Buffer holds 480 Score_Frames of 320 × 569 for a portrait 16:9 video, about 90 MB. With fewer than 2 Mask_Samples, the step uses no Mask.
 - **A16 (Requirement 3):** The step works out the Contrast of every frame and records each Pick's Contrast in the Frames_Record. No rule in this step uses the Contrast.
 
-### Open question
+### Open question, now resolved
 
 - **O1 (Requirement 12, criterion 7):** ffmpeg's `zscale` filter comes from the zimg library (libzimg), which is under the WTFPL, version 2 ([zimg's own COPYING file](https://github.com/sekrit-twc/zimg/blob/master/COPYING)). The WTFPL isn't on the permissive list in `.kiro/steering/rules.md`. zimg is part of the ffmpeg command line tool on our machines, not our code or a Python or npm dependency, but the rules say to ask Samarth about any other licence. The review left this open: Samarth decides whether the Tone_Map can rely on zimg, and the task that builds the Tone_Map stops for his answer.
+  - **Resolved in task 8.6:** Samarth OKed zimg, so the Tone_Map may rely on it. His answer was relayed in the chat during task 8, with his reasons: the WTFPL is permissive, and zimg comes only inside the ffmpeg command line tool on our private machine image, like ffmpeg's other libraries, so it isn't our code or a Python or npm dependency. The allowed list in `.kiro/steering/rules.md` stays as it is. Task 8.6 added zimg's row to the Licence_List, with "Not yet" for Installed, and its test in `tests/test_docs.py`.
 
 Note on the clean-export spec: its A4 says the first spec with a Step worth running adds the first Step_List entry and changes the pipeline-core tests once, for everyone. This is that spec. If clean-export is built after this one, its Requirement 8, criterion 3 and the reasons it gives in Requirement 6, criterion 12 and Requirement 9, criterion 2 read as "adds no `clean_export` entry" rather than "leaves `STEP_LIST` empty".
 
@@ -320,7 +321,7 @@ Note for the design: ffmpeg can give two frames the same timestamp. The design s
 
 **User Story:** As one of the three people building the steps, I want this step written up next to the others, so that the camera solve and the cloud wrapper fit with it.
 
-**Decided:** D1 (criterion 5), D3 (criterion 3), D4 (criterion 4) and D5 (criterion 8). **Open question:** O1 (criterion 7).
+**Decided:** D1 (criterion 5), D3 (criterion 3), D4 (criterion 4) and D5 (criterion 8). **Open question, now resolved (Samarth OKed zimg):** O1 (criterion 7).
 
 #### Acceptance Criteria
 

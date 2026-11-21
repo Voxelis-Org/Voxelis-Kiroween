@@ -11,8 +11,9 @@ Preset tables, so a test that runs the Frames_Step without a Config of its own g
 (frames spec, Req 9.11).
 
 FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
-one on demand, and records what the step asked for. So the step's tests run it through
-splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 13.6, 13.7).
+one on demand, and records what the step asked for. It can also report that ffmpeg has no
+filters, or fail the first pass with the Tone_Map, for the HDR tests. So the step's tests run it
+through splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 2.4, 2.5, 13.6, 13.7).
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
@@ -285,8 +286,9 @@ Pair = tuple[float, np.ndarray]
 
 
 class FakeTools:
-    """A stand-in for the Frames_Step's tools, ffprobe and the ffmpeg decode, so the step's tests
-    need no ffmpeg (frames spec, Req 13.6). The fake_tools fixture installs one in their place.
+    """A stand-in for the Frames_Step's tools, ffprobe, ffmpeg's filter check and the ffmpeg
+    decode, so the step's tests need no ffmpeg (frames spec, Req 13.6). The fake_tools fixture
+    installs one in their place.
 
     FakeTools(info, pairs) is built from the VideoInfo that probe gives back and a list of
     synthetic (time, picture) Pairs. FakeTools.stream(info, count, make) is built from a count
@@ -294,27 +296,37 @@ class FakeTools:
     a test can feed a long stream without holding it (Req 13.7). Each decode call goes through
     the pairs afresh.
 
-    probe and decode take the same arguments as ffmpeg.probe_stream and ffmpeg.decode, in the
-    order the step gives them. decode gives on_frame only the pairs whose times a new FrameGate
-    for the plan's Used_Part accepts, in order, as the real decode does. Each frame it gives is
-    a new uint8 array at the plan's size, made from its pair's picture: grey for a grey plan,
-    and a BGR frame with that grey in all three channels for a colour plan. So each Pick shows
-    the picture of the pair its Score_Frame came from, and a test can tell which pair became
-    which Pick.
+    probe, has_filters and decode take the same arguments as ffmpeg.probe_stream,
+    ffmpeg.has_filters and ffmpeg.decode, in the order the step gives them. has_filters says
+    this ffmpeg has every filter it's asked about, or, with `no_filters` set, that it hasn't.
+    decode gives on_frame only the pairs whose times a new FrameGate for the plan's Used_Part
+    accepts, in order, as the real decode does. Each frame it gives is a new uint8 array at the
+    plan's size, made from its pair's picture: grey for a grey plan, and a BGR frame with that
+    grey in all three channels for a colour plan. So each Pick shows the picture of the pair its
+    Score_Frame came from, and a test can tell which pair became which Pick.
 
-    It records each probe call as (video, timeout_seconds) in `probes`, and each decode call's
-    plan in `plans`. Two settings change what decode does: with `pick_pass_frames` set, the
-    Pick_Pass, the colour plan, gives only its first pick_pass_frames frames, and with `error`
-    set, decode raises it once the plan is recorded, before any frame.
+    It records each probe call as (video, timeout_seconds) in `probes`, each has_filters call as
+    (names, timeout_seconds) in `filter_checks`, with the names as a tuple, and each decode
+    call's plan in `plans`. Three settings change what decode does. With `pick_pass_frames`
+    set, the Pick_Pass, the colour plan, gives only its first pick_pass_frames frames. With
+    `tone_map_failure` set to (frames, last_line), the first plan with a ToneMap gives its first
+    `frames` frames and then raises DecodeFailed(last_line), as the real decode does when ffmpeg
+    exits with a non-zero code, and every later plan runs as usual. With `error` set, decode
+    raises it once the plan is recorded, before any frame.
     """
 
     def __init__(self, info: VideoInfo, pairs: Iterable[Pair], *,
-                 pick_pass_frames: int | None = None, error: Exception | None = None) -> None:
+                 pick_pass_frames: int | None = None, no_filters: bool = False,
+                 tone_map_failure: tuple[int, str] | None = None,
+                 error: Exception | None = None) -> None:
         self.info = info
         self.pairs = pairs
         self.pick_pass_frames = pick_pass_frames
+        self.no_filters = no_filters
+        self.tone_map_failure = tone_map_failure
         self.error = error
         self.probes: list[tuple[Path, float]] = []
+        self.filter_checks: list[tuple[tuple[str, ...], float]] = []
         self.plans: list[DecodePlan] = []
 
     @classmethod
@@ -329,21 +341,40 @@ class FakeTools:
         self.probes.append((video, timeout_seconds))
         return self.info
 
+    def has_filters(self, names: Collection[str], timeout_seconds: float) -> bool:
+        """Record the call, then say this ffmpeg has every filter in `names`, or, with no_filters
+        set, that it hasn't."""
+        self.filter_checks.append((tuple(names), timeout_seconds))
+        return not self.no_filters
+
     def decode(self, plan: DecodePlan, timeout_seconds: float,
                on_frame: Callable[[float, np.ndarray], None]) -> None:
         """Record `plan`, then call on_frame(Frame_Time, frame) for each pair inside its
-        Used_Part, in order, keeping none of the frames it gives."""
-        from splatpipe.frames.ffmpeg import FrameGate
+        Used_Part, in order, keeping none of the frames it gives. With tone_map_failure set, the
+        first plan with a ToneMap fails after its first few frames, as the class says."""
+        from splatpipe.frames.ffmpeg import DecodeFailed, FrameGate
 
+        failure = self._failure(plan)  # before `plan` is recorded, so plans holds only earlier ones
         self.plans.append(plan)
         if self.error is not None:
             raise self.error
         gate = FrameGate(plan.start, plan.end)
         inside = ((time, picture) for time, picture in self.pairs if gate.accept(time))
+        if failure is not None:
+            frames, last_line = failure
+            for time, picture in islice(inside, frames):
+                on_frame(time, _frame(picture, plan))
+            raise DecodeFailed(last_line)  # a new error each time, so this FakeTools holds none
         # islice with None gives every pair, so only the Pick_Pass stops early, and only when
         # pick_pass_frames is set.
         for time, picture in islice(inside, self.pick_pass_frames if plan.colour else None):
             on_frame(time, _frame(picture, plan))
+
+    def _failure(self, plan: DecodePlan) -> tuple[int, str] | None:
+        """tone_map_failure when `plan` is the first plan with a ToneMap, else None. Call it
+        before `plan` is recorded."""
+        first = plan.tone_map is not None and all(p.tone_map is None for p in self.plans)
+        return self.tone_map_failure if first else None
 
 
 @dataclass(frozen=True)
@@ -376,10 +407,10 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch) -> type[FakeTools]:
     for this test. Building another one installs that one instead.
 
     Installing is monkeypatch.setattr("splatpipe.frames.TOOLS", ...) with a Tools of the
-    FakeTools' probe and decode. The step reads TOOLS each time it runs, so a run through
-    splatpipe.frames.run, run_step or the step's CLI in this process uses the stand-in, and the
-    test reads what it recorded afterwards. splatpipe.frames is imported here, so only the tests
-    that use this fixture need it.
+    FakeTools' probe, has_filters and decode. The step reads TOOLS each time it runs, so a run
+    through splatpipe.frames.run, run_step or the step's CLI in this process uses the stand-in,
+    and the test reads what it recorded afterwards. splatpipe.frames is imported here, so only
+    the tests that use this fixture need it.
     """
     from splatpipe.frames import Tools
 
@@ -389,6 +420,7 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch) -> type[FakeTools]:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             monkeypatch.setattr("splatpipe.frames.TOOLS",
-                                Tools(probe=self.probe, decode=self.decode))
+                                Tools(probe=self.probe, has_filters=self.has_filters,
+                                      decode=self.decode))
 
     return Installed

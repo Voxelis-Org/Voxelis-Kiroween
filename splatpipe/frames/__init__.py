@@ -16,21 +16,31 @@ is the CLI, `uv run python -m splatpipe.frames --job <id> [--preset <name>]`.
 
 1. The settings, every one checked before any tool runs (Req 9.5–9.7).
 2. The probe: ffprobe gives the video's stream, Displayed_Shape and colour transfer, and the
-   step works out the Score_Frame's size and the Pick_Size from them (Req 3.1, 8.1).
+   step works out the Score_Frame's size and the Pick_Size from them (Req 3.1, 8.1). For an
+   HDR_Clip, whose colour transfer is one of HDR_TRANSFERS, the step then asks ffmpeg whether it
+   has the zscale and tonemap filters. With both, the Score_Pass starts with the Tone_Map, with
+   tonemap_npl and tonemap_desat from [frames] (Req 2.2). Without both, it runs without the
+   Tone_Map and the report gets a warning (Req 2.4). Every other video, one with no colour
+   transfer included, gets no filter check and no Tone_Map (Req 2.3).
 3. The Score_Pass: ffmpeg decodes the Job_Record's Used_Part in grey, and each Score_Frame goes
    to a new Scorer and then to a new SampleBuffer. Nothing else keeps a frame, so the step holds
-   at most the frame before, the current frame and the buffer's frames (Req 1.12).
+   at most the frame before, the current frame and the buffer's frames (Req 1.12). When ffmpeg
+   fails with the Tone_Map, the report gets a warning with ffmpeg's last line, and the pass runs
+   again without the Tone_Map, with a new Scorer and a new SampleBuffer, so nothing from the
+   failed pass is kept (Req 2.5). Any other ffmpeg failure fails the step (Req 1.10).
 4. Choosing: the Still_Trim, Target_Picks, the Jolt_Filter, which is skipped with a warning when
    it keeps fewer frames than Target_Picks (Req 5.2–5.4), the Picker and the Mask. With fewer
    Picks than min_picks, the step fails here, before the Pick_Pass (Req 6.9, 6.10). The
    Score_Pass and the choosing run in one helper that gives back no Score_Frame, so the
    SampleBuffer's frames are freed before the Pick_Pass.
-5. The Pick_Pass: ffmpeg decodes the Used_Part again, in colour at the Pick_Size, with the same
-   video, stream and filters but for the size and the format (Req 1.7). Each frame whose
+5. The Pick_Pass: ffmpeg decodes the Used_Part again, in colour at the Pick_Size. It has the
+   same video, stream and filters as the Score_Pass's last run but for the size and the format,
+   so it takes the Score_Pass's choice about the Tone_Map (Req 1.7, 2.6). Each frame whose
    Frame_Time is a Pick's is saved once, as its Colour_Pick in images/ and its Grey_Copy in grey/
    (Req 8.2–8.4). A Pick that ffmpeg doesn't give back fails the step (Req 8.9).
 6. mask.png when the step uses the Mask, then frames.json, last of all, so a Work_Folder without
-   frames.json is unfinished (Req 8.5, 8.7).
+   frames.json is unfinished (Req 8.5, 8.7). frames.json holds the colour transfer and whether
+   the Tone_Map ran (Req 2.7).
 
 The step writes nothing before the Pick_Pass and nothing to out/, where only the Step_Runner
 writes the report (Req 8.8). It adds each count as an int as soon as it's known, and each of the
@@ -45,8 +55,8 @@ Every file in this package imports only the standard library, numpy, cv2 and spl
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Collection
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -54,7 +64,8 @@ import numpy as np
 
 from splatpipe.errors import ExpectedFailure
 from splatpipe.frames.choose import Kept, jolt_keep, motion_parts, pick, still_trim, target_picks
-from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo, decode, probe_stream
+from splatpipe.frames.ffmpeg import (DecodeFailed, DecodePlan, ToneMap, VideoInfo, decode,
+                                     has_filters, probe_stream)
 from splatpipe.frames.files import (GREY, IMAGES, MASK, RECORD, frames_record, grey_copy,
                                     pick_name, write_jpeg, write_png, write_record)
 from splatpipe.frames.mask import MaskChoice, SampleBuffer, decide_mask, mask_image
@@ -63,9 +74,21 @@ from splatpipe.frames.settings import FramesSettings, read_settings
 # Config comes through splatpipe.step, as for the Fake_Step.
 from splatpipe.step import Config, StepContext, run_step
 
+# Fixed_Constants: the colour transfers of an HDR_Clip, HLG and PQ, as ffprobe names them (A7).
+HDR_TRANSFERS = ("arib-std-b67", "smpte2084")
+
 # The Req 1.11 failure: the Score_Pass gave no Score_Frame inside the Used_Part.
 _NO_FRAMES = ("No frames could be read from the chosen part of the video. Check that the video "
               "plays, then run the step again.")
+# The Req 2.4 and 2.5 warnings, for an HDR_Clip that's decoded without the Tone_Map.
+_NO_TONE_MAP_FILTERS = ("The video is HDR (colour transfer {transfer}), but this ffmpeg has no "
+                        "zscale or tonemap filter, so the frames were read without tone mapping "
+                        "and the picks' colours may look flat. An ffmpeg built with zscale fixes "
+                        "the colours.")
+_TONE_MAP_FAILED = ("The video is HDR (colour transfer {transfer}), but ffmpeg failed to tone map "
+                    "it ({last_line}), so the frames were read without tone mapping and the "
+                    "picks' colours may look flat. An ffmpeg built with a working zscale fixes "
+                    "the colours.")
 
 
 @dataclass(frozen=True)
@@ -74,13 +97,16 @@ class Tools:
 
     # probe(video, timeout_seconds), like ffmpeg.probe_stream.
     probe: Callable[[Path, float], VideoInfo]
+    # has_filters(names, timeout_seconds), like ffmpeg.has_filters: whether this ffmpeg has every
+    # filter in names.
+    has_filters: Callable[[Collection[str], float], bool]
     # decode(plan, timeout_seconds, on_frame), like ffmpeg.decode, which calls
     # on_frame(Frame_Time, frame) for each frame of the plan's Used_Part, in order.
     decode: Callable[[DecodePlan, float, Callable[[float, np.ndarray], None]], None]
 
 
 # The real tools. work reads TOOLS each time it's called, so a test can monkeypatch it.
-TOOLS = Tools(probe=probe_stream, decode=decode)
+TOOLS = Tools(probe=probe_stream, has_filters=has_filters, decode=decode)
 
 
 @dataclass(frozen=True)
@@ -91,6 +117,7 @@ class _Chosen:
     """
 
     scores: Scores  # every Score_Frame's Frame_Time and scores
+    tone_map: ToneMap | None  # the Tone_Map the Score_Pass ran with in the end, None for none
     kept: Kept  # the Kept_Range
     target_picks: int
     jolt_filter_skipped: bool
@@ -111,57 +138,108 @@ def work(step: StepContext) -> None:
     """The frames step's own code. The Step_Runner turns what it raises into a failed report."""
     tools = TOOLS  # read now, so a test's monkeypatch is seen
     cfg = read_settings(step.settings, step.name, step.preset)
-    info, score_size, size = _probe(step, tools, cfg)
-    chosen = _score_and_choose(step, tools, cfg, _plan(step, info, score_size, colour=False))
-    _pick_pass(step, tools, cfg, _plan(step, info, size, colour=True), chosen)
+    info, score_size, size, tone_map = _probe(step, tools, cfg)
+    score_plan = _plan(step, info, score_size, colour=False, tone_map=tone_map)
+    chosen = _score_and_choose(step, tools, cfg, info.colour_transfer, score_plan)
+    # The Pick_Pass takes the Tone_Map the Score_Pass ran with in the end (Req 2.6).
+    pick_plan = _plan(step, info, size, colour=True, tone_map=chosen.tone_map)
+    _pick_pass(step, tools, cfg, pick_plan, chosen)
     _write_mask_and_record(step, info, size, chosen)
 
 
-def _probe(step: StepContext, tools: Tools,
-           cfg: FramesSettings) -> tuple[VideoInfo, tuple[int, int], tuple[int, int]]:
-    """Probe the video, then work out the Score_Frame's size and the Pick_Size, timed as probe."""
+def _probe(step: StepContext, tools: Tools, cfg: FramesSettings
+           ) -> tuple[VideoInfo, tuple[int, int], tuple[int, int], ToneMap | None]:
+    """Probe the video, work out the Score_Frame's size and the Pick_Size, and choose the
+    Tone_Map the Score_Pass starts with, all timed as probe."""
     with step.timed("probe"):
         info = tools.probe(step.job.video_path, cfg.ffprobe_timeout_seconds)
         score_size = score_shape(info.width, info.height, cfg.score_width)
         size = pick_size(info.width, info.height, cfg.long_edge)
         step.add_count("pick_width", int(size[0]))
         step.add_count("pick_height", int(size[1]))
-    return info, score_size, size
+        tone_map = _tone_map(step, tools, cfg, info.colour_transfer)
+    return info, score_size, size, tone_map
 
 
-def _plan(step: StepContext, info: VideoInfo, size: tuple[int, int], *,
-          colour: bool) -> DecodePlan:
+def _tone_map(step: StepContext, tools: Tools, cfg: FramesSettings,
+              transfer: str | None) -> ToneMap | None:
+    """The Tone_Map the Score_Pass starts with, from the video's colour transfer, or None.
+
+    An HDR_Clip gets the Tone_Map with tonemap_npl and tonemap_desat when this ffmpeg has both
+    the zscale and the tonemap filter (Req 2.2). Without both, it gets None and the Req 2.4
+    warning. Every other video, one with no colour transfer included, gets None with no filter
+    check (Req 2.3).
+    """
+    if transfer not in HDR_TRANSFERS:
+        return None
+    if not tools.has_filters(("zscale", "tonemap"), cfg.ffprobe_timeout_seconds):
+        step.add_warning(_NO_TONE_MAP_FILTERS.format(transfer=transfer))
+        return None
+    return ToneMap(npl=cfg.tonemap_npl, desat=cfg.tonemap_desat)
+
+
+def _plan(step: StepContext, info: VideoInfo, size: tuple[int, int], *, colour: bool,
+          tone_map: ToneMap | None) -> DecodePlan:
     """A Decode_Pass of the Job's video and stream over the Job_Record's Used_Part (Req 1.1),
-    with frames of `size` in colour or in grey. Both passes are made here, so they differ only
-    in the size and the format (Req 1.7)."""
+    with frames of `size` in colour or in grey, and with the Tone_Map `tone_map`, or without one
+    when it's None. Both passes are made here, so with the same `tone_map` they differ only in
+    the size and the format (Req 1.7)."""
     record = step.job.record
     width, height = size
     return DecodePlan(video=step.job.video_path, stream_index=info.stream_index,
                       start=record.start_seconds, end=record.end_seconds, width=width,
-                      height=height, colour=colour)
+                      height=height, colour=colour, tone_map=tone_map)
 
 
 def _score_and_choose(step: StepContext, tools: Tools, cfg: FramesSettings,
-                      plan: DecodePlan) -> _Chosen:
-    """Run the Score_Pass `plan`, then choose the Picks and decide the Mask.
+                      transfer: str | None, plan: DecodePlan) -> _Chosen:
+    """Run the Score_Pass `plan`, then choose the Picks and decide the Mask. `transfer` is the
+    video's colour transfer, which the warning names when the Tone_Map fails.
 
     The Scorer and the SampleBuffer don't outlive this call, so the Score_Frames they hold are
     freed when it returns, before the Pick_Pass (Req 1.12).
     """
-    scores, buffer = _score_pass(step, tools, cfg, plan)
-    return _choose(step, cfg, scores, buffer)
+    scores, buffer, tone_map = _score_pass(step, tools, cfg, transfer, plan)
+    return _choose(step, cfg, scores, buffer, tone_map)
 
 
-def _score_pass(step: StepContext, tools: Tools, cfg: FramesSettings,
-                plan: DecodePlan) -> tuple[Scores, SampleBuffer]:
-    """The Score_Pass, timed as score_pass, with decoded_frames added. With no Score_Frame in the
-    Used_Part, the step fails (Req 1.11)."""
+def _score_pass(step: StepContext, tools: Tools, cfg: FramesSettings, transfer: str | None,
+                plan: DecodePlan) -> tuple[Scores, SampleBuffer, ToneMap | None]:
+    """The Score_Pass, timed as score_pass, with decoded_frames added. Gives back the Scores, the
+    SampleBuffer and the Tone_Map the pass ran with in the end, for the Pick_Pass (Req 2.6).
+
+    When ffmpeg fails with the Tone_Map, the step adds the Req 2.5 warning with ffmpeg's last
+    line and runs the pass again without the Tone_Map, with a new Scorer and a new SampleBuffer,
+    so nothing from the failed pass is kept. Any other ffmpeg failure fails the step
+    (Req 1.10). With no Score_Frame in the Used_Part, the step fails (Req 1.11).
+    """
     with step.timed("score_pass"):
-        scores, buffer = _scored(tools, cfg, plan)
+        scored = _scored_or_tone_map_failure(tools, cfg, plan)
+        if isinstance(scored, str):  # ffmpeg's last line from the failed pass with the Tone_Map
+            step.add_warning(_TONE_MAP_FAILED.format(transfer=transfer, last_line=scored))
+            plan = replace(plan, tone_map=None)
+            scored = _scored(tools, cfg, plan)
+        scores, buffer = scored
         if scores.times.size == 0:
             raise ExpectedFailure(_NO_FRAMES)
         step.add_count("decoded_frames", int(scores.times.size))
-    return scores, buffer
+    return scores, buffer, plan.tone_map
+
+
+def _scored_or_tone_map_failure(tools: Tools, cfg: FramesSettings,
+                                plan: DecodePlan) -> tuple[Scores, SampleBuffer] | str:
+    """What _scored gives for `plan`, or ffmpeg's last line of error output when `plan` has the
+    Tone_Map and ffmpeg fails with it (Req 2.5). Any other DecodeFailed goes up (Req 1.10).
+
+    The error's traceback holds the failed pass's Scorer and SampleBuffer. Python drops the
+    error when this returns, so the pass that runs again starts with none of their frames.
+    """
+    try:
+        return _scored(tools, cfg, plan)
+    except DecodeFailed as error:
+        if plan.tone_map is None:
+            raise
+        return error.last_line
 
 
 def _scored(tools: Tools, cfg: FramesSettings, plan: DecodePlan) -> tuple[Scores, SampleBuffer]:
@@ -177,9 +255,11 @@ def _scored(tools: Tools, cfg: FramesSettings, plan: DecodePlan) -> tuple[Scores
     return scorer.result(), buffer
 
 
-def _choose(step: StepContext, cfg: FramesSettings, scores: Scores,
-            buffer: SampleBuffer) -> _Chosen:
-    """The Still_Trim, Target_Picks, the Jolt_Filter, the Picker and the Mask, timed as choose."""
+def _choose(step: StepContext, cfg: FramesSettings, scores: Scores, buffer: SampleBuffer,
+            tone_map: ToneMap | None) -> _Chosen:
+    """The Still_Trim, Target_Picks, the Jolt_Filter, the Picker and the Mask, timed as choose.
+    `tone_map` is the Tone_Map the Score_Pass ran with in the end, which goes into the _Chosen
+    for the Pick_Pass."""
     with step.timed("choose"):
         kept = _still_trim(step, cfg, scores)
         target = target_picks(kept.end_seconds - kept.start_seconds, base_picks=cfg.base_picks,
@@ -188,7 +268,7 @@ def _choose(step: StepContext, cfg: FramesSettings, scores: Scores,
         candidates, skipped = _candidates(step, cfg, scores, kept, target)
         picks = _picks(step, cfg, scores, kept, target, candidates)
         mask = _mask(step, cfg, buffer, kept)
-    return _Chosen(scores=scores, kept=kept, target_picks=int(target),
+    return _Chosen(scores=scores, tone_map=tone_map, kept=kept, target_picks=int(target),
                    jolt_filter_skipped=skipped, picks=picks, mask=mask)
 
 
@@ -298,9 +378,10 @@ def _write_mask_and_record(step: StepContext, info: VideoInfo, size: tuple[int, 
     if chosen.mask.used:
         stuck = cast(np.ndarray, chosen.mask.stuck)  # a used Mask always has its Stuck_Pixels
         write_png(step.work_folder / MASK, mask_image(stuck, width, height))
+    # Both passes ran with the Score_Pass's final choice about the Tone_Map (Req 2.7).
     record = frames_record(colour_transfer=info.colour_transfer,
-                           tone_mapped=False,  # both passes decode without the Tone_Map
-                           kept=chosen.kept, target_picks=chosen.target_picks,
+                           tone_mapped=chosen.tone_map is not None, kept=chosen.kept,
+                           target_picks=chosen.target_picks,
                            jolt_filter_skipped=chosen.jolt_filter_skipped, pick_width=width,
                            pick_height=height, mask=chosen.mask, scores=chosen.scores,
                            picks=chosen.picks)

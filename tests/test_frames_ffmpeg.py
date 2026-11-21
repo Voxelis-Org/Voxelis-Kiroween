@@ -1,4 +1,5 @@
-"""Tests for splatpipe/frames/ffmpeg.py: ffprobe and the ffmpeg decode.
+"""Tests for splatpipe/frames/ffmpeg.py: ffprobe, the filter check, the Tone_Map and the ffmpeg
+decode.
 
 The unit tests of the pure parts run no tool, so they pass on a machine without ffmpeg (Req 13.6).
 
@@ -8,13 +9,24 @@ The unit tests of the pure parts run no tool, so they pass on a machine without 
   The lines marked 9.0.2 are copied from the output of ffmpeg 9.0.2, the version on our laptops.
   The others follow the format strings in libavfilter/vf_showinfo.c of the release they're
   marked with. 6.1 is Ubuntu 24.04's packaged ffmpeg.
-- decode_command gets DecodePlans, and the tests check the argument list it gives.
+- decode_command gets DecodePlans, with and without a ToneMap, and the tests check the argument
+  list it gives.
+- tone_map_filter gets ToneMaps, and the tests check its text against the design's, which they
+  write out in full.
+- parse_filters gets the start of what ffmpeg -filters prints, in both of its layouts: 6.1's,
+  with three flag columns, and 9.0.2's, with two. Every 9.0.2 line but zscale's is copied from
+  the output of the laptops' ffmpeg 9.0.2, which has no zscale. zscale's line is the one 9.0.2
+  prints when it's built with libzimg. That line and the 6.1 lines follow the format string of
+  show_filters in fftools/opt_common.c and each filter's flags in libavfilter, in the release
+  they're marked with.
 
 The unit tests with fake processes run no tool either. They replace subprocess.run and
 subprocess.Popen as splatpipe.frames.ffmpeg sees them, with monkeypatch.
 
 - probe_stream gets what a stand-in subprocess.run gives back or raises: a CompletedProcess with
   ffprobe's output, FileNotFoundError or TimeoutExpired.
+- has_filters gets the same kinds of stand-in, with the CompletedProcess holding one of the
+  -filters listings above.
 - decode gets a FakeFfmpeg, whose stdout gives raw frames and whose stderr gives showinfo's lines
   in the format of ffmpeg 9.0.2, or a HungFfmpeg, whose stdout is the read end of an os.pipe()
   that its kill() closes. Every wait in these tests has a short bound, so a broken decode fails
@@ -37,9 +49,16 @@ which holds both exactly, so its comparisons add no rounding.
 The real ffmpeg tests run the real ffmpeg and ffprobe, so they're skipped, with the reason
 "ffmpeg and ffprobe aren't installed", when either tool is missing (Req 13.5). Each test makes
 its clip in tmp_path with ffmpeg, from lavfi's testsrc at 10 frames a second and 32 × 24 pixels.
-Every tool they run gets a limit of 60 s, the runs that make the clips included (Req 13.11).
-They check each Frame_Time to within 1 ms, because ffmpeg 5.1 and 6.1 write pts_time with six
-significant digits.
+Every tool they run gets a limit of 60 s, the runs that make the clips included, except the
+filter check of the real Tone_Map test (Req 13.11). They check each Frame_Time to within 1 ms,
+because ffmpeg 5.1 and 6.1 write pts_time with six significant digits.
+
+The real Tone_Map test is also skipped, with the reason "this ffmpeg has no zscale or tonemap
+filter", when has_filters finds that this ffmpeg lacks either one, as the laptops' 9.0.2 lacks
+zscale (Req 13.5). The test runs that check itself, so collecting the tests never runs ffmpeg,
+with a limit of 30 s, the ffprobe_timeout_seconds in config.toml that the step gives it. Its
+clip's frames are tagged as a phone's HDR clip is: HLG, arib-std-b67, with BT.2020 primaries and
+matrix.
 """
 
 import io
@@ -49,7 +68,7 @@ import shutil
 import subprocess
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 from typing import IO, Any, NoReturn
@@ -60,9 +79,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from splatpipe.errors import ExpectedFailure
-from splatpipe.frames.ffmpeg import (NOT_A_FRAME, DecodeFailed, DecodePlan, FrameGate, VideoInfo,
-                                     decode, decode_command, parse_frame_time, parse_stream,
-                                     probe_stream, seek_text)
+from splatpipe.frames.ffmpeg import (NOT_A_FRAME, DecodeFailed, DecodePlan, FrameGate, ToneMap,
+                                     VideoInfo, decode, decode_command, has_filters,
+                                     parse_filters, parse_frame_time, parse_stream, probe_stream,
+                                     seek_text, tone_map_filter)
 
 
 # parse_stream: the video stream, its Displayed_Shape and its colour transfer (Req 2.1)
@@ -214,11 +234,13 @@ def test_parse_frame_time_gives_not_a_frame_for_the_lines_that_arent_a_frames(li
 
 # decode_command: the ffmpeg command of a Decode_Pass (Req 1.3, 1.5, 1.7)
 
-def decode_plan(video: Path, *, colour: bool, width: int, height: int) -> DecodePlan:
+def decode_plan(video: Path, *, colour: bool, width: int, height: int,
+                tone_map: ToneMap | None = None) -> DecodePlan:
     """The Decode_Pass of the video's stream 2 for the Used_Part from 1.25 s to 7.5 s, giving
-    frames of width × height in colour or in grey."""
+    frames of width × height in colour or in grey, with the Tone_Map `tone_map` or, by default,
+    without one."""
     return DecodePlan(video=video, stream_index=2, start=1.25, end=7.5, width=width,
-                      height=height, colour=colour)
+                      height=height, colour=colour, tone_map=tone_map)
 
 
 def after(command: list[str], option: str) -> str:
@@ -253,6 +275,113 @@ def test_a_grey_plan_and_a_colour_plan_differ_only_in_the_size_and_the_format(
     assert changed == [(grey.index("-vf") + 1,
                         "scale=320:180,setsar=1,format=gray,showinfo=checksum=0",
                         "scale=1600:900,setsar=1,format=bgr24,showinfo=checksum=0")]
+
+
+# tone_map_filter and decode_command with the Tone_Map (Req 2.2, 2.3)
+
+# The Tone_Map's filters with the numbers in config.toml, tonemap_npl = 100 and
+# tonemap_desat = 0.0, exactly as the design gives them.
+CONFIG_TONE_MAP = ("zscale=t=linear:npl=100.0,format=gbrpf32le,zscale=p=bt709,"
+                   "tonemap=tonemap=hable:desat=0.0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p")
+
+
+def test_the_tone_map_filter_with_the_config_numbers_is_exactly_the_designs_text() -> None:
+    assert tone_map_filter(ToneMap(100.0, 0.0)) == CONFIG_TONE_MAP
+
+
+def test_other_tone_map_numbers_change_only_npl_and_desat_not_hable_or_bt709() -> None:
+    # The design's text with its two numbers changed and every other character as it is.
+    expected = (CONFIG_TONE_MAP.replace("npl=100.0", "npl=203.5")
+                .replace("desat=0.0", "desat=0.25"))
+    assert tone_map_filter(ToneMap(203.5, 0.25)) == expected
+
+
+# The Score_Pass and the Pick_Pass of a 1920 × 1080 video with the Tone_Map, with a score_width
+# of 320 and a long_edge of 1600, and the filters each one gives ffmpeg.
+@pytest.mark.parametrize(("colour", "width", "height", "filters"), [
+    pytest.param(False, 320, 180,
+                 f"scale=320:180,setsar=1,{CONFIG_TONE_MAP},format=gray,showinfo=checksum=0",
+                 id="grey"),
+    pytest.param(True, 1600, 900,
+                 f"scale=1600:900,setsar=1,{CONFIG_TONE_MAP},format=bgr24,showinfo=checksum=0",
+                 id="colour"),
+])
+def test_a_plans_tone_map_comes_between_setsar_and_the_format_in_a_grey_and_a_colour_plan(
+        tmp_path: Path, colour: bool, width: int, height: int, filters: str) -> None:
+    plan = decode_plan(tmp_path / "-clip.mp4", colour=colour, width=width, height=height,
+                       tone_map=ToneMap(100.0, 0.0))
+    assert after(decode_command(plan), "-vf") == filters
+
+
+@pytest.mark.parametrize("colour", [pytest.param(False, id="grey"),
+                                    pytest.param(True, id="colour")])
+def test_a_plan_without_a_tone_map_has_no_zscale_or_tonemap_in_its_command(colour: bool) -> None:
+    # The video's path is fixed rather than in tmp_path, whose folder pytest names after the
+    # test, so no folder's name can hold either word.
+    plan = decode_plan(Path("/clips/-clip.mp4"), colour=colour, width=320, height=180)
+    assert [argument for argument in decode_command(plan)
+            if "zscale" in argument or "tonemap" in argument] == []
+
+
+# parse_filters: the filters this ffmpeg has (Req 2.2, 2.4)
+
+# The start of what ffmpeg -filters prints: a header with the legend of its flags and pad types,
+# then a line for each filter, which gives the filter's flags, name, pads and description. Each
+# listing holds 5 of the hundreds of filters, tonemap and zscale among them.
+#
+# 6.1, Ubuntu 24.04's packaged ffmpeg, prints three flag columns: timeline support, slice
+# threading and command support.
+FILTERS_6_1 = """\
+Filters:
+  T.. = Timeline support
+  .S. = Slice threading
+  ..C = Command support
+  A = Audio input/output
+  V = Video input/output
+  N = Dynamic number and/or type of input/output
+  | = Source or sink filter
+ ... setsar            V->V       Set the pixel sample aspect ratio.
+ ... showinfo          V->V       Show textual information for each video frame.
+ .S. tonemap           V->V       Conversion to/from different dynamic ranges.
+ .SC zscale            V->V       Apply resizing, colorspace and bit depth conversion.
+ ... testsrc           |->V       Generate test pattern.
+"""
+
+# 9.0.2, on our laptops, prints two flag columns, though its legend still shows three, and ends
+# its header with a line of dashes. The laptops' build has no libzimg, so it lists no zscale.
+# The zscale line here is the one 9.0.2 prints when it's built with libzimg.
+FILTERS_9_0_2 = """\
+Filters:
+  T.. = Timeline support
+  .S. = Slice threading
+  A = Audio input/output
+  V = Video input/output
+  N = Dynamic number and/or type of input/output
+  | = Source or sink filter
+  ------
+ .. setsar            V->V       Set the pixel sample aspect ratio.
+ .. showinfo          V->V       Show textual information for each video frame.
+ .S tonemap           V->V       Conversion to/from different dynamic ranges.
+ .S zscale            V->V       Apply resizing, colorspace and bit depth conversion.
+ .. testsrc           |->V       Generate test pattern.
+"""
+
+# The filters each listing holds.
+LISTED = frozenset({"setsar", "showinfo", "tonemap", "zscale", "testsrc"})
+
+
+def without(listing: str, name: str) -> str:
+    """`listing` with the line of the filter `name` taken out."""
+    return "".join(line for line in listing.splitlines(keepends=True)
+                   if f" {name} " not in line)
+
+
+@pytest.mark.parametrize("listing", [pytest.param(FILTERS_6_1, id="6.1"),
+                                     pytest.param(FILTERS_9_0_2, id="9.0.2")])
+def test_parse_filters_finds_zscale_and_tonemap_and_skips_the_header_lines(listing: str) -> None:
+    # Exactly the filters' names, so no word of the header, like "Filters:", "=" or "------",
+    # is taken for a filter.
+    assert parse_filters(listing) == LISTED
 
 
 # probe_stream and decode with fake processes (Req 1.8, 1.9, 1.10, 1.12, 1.14, 13.6, 13.9)
@@ -376,10 +505,11 @@ def replace_subprocess(monkeypatch: pytest.MonkeyPatch, function: str,
     return calls
 
 
-def finished(returncode: int = 0, stdout: bytes = b"",
-             stderr: bytes = b"") -> subprocess.CompletedProcess[bytes]:
-    """What subprocess.run gives back when ffprobe ran, with its output captured as bytes."""
-    return subprocess.CompletedProcess(["ffprobe"], returncode, stdout=stdout, stderr=stderr)
+def finished(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"",
+             tool: str = "ffprobe") -> subprocess.CompletedProcess[bytes]:
+    """What subprocess.run gives back when `tool` ran, with its output captured as bytes. The
+    tool is ffprobe unless another is named."""
+    return subprocess.CompletedProcess([tool], returncode, stdout=stdout, stderr=stderr)
 
 
 def frame_lines(plan: DecodePlan, n: int, pts_time: str) -> bytes:
@@ -591,6 +721,52 @@ def test_an_exception_from_on_frame_goes_up_after_ffmpeg_is_killed_and_its_pipes
     assert process.stdout.closed and process.stderr.closed
 
 
+# has_filters with fake processes (Req 1.8, 2.4, 13.6)
+
+# The command has_filters runs: ffmpeg's filter listing, with no banner and no reading of stdin.
+FILTERS_COMMAND = ["ffmpeg", "-hide_banner", "-nostdin", "-filters"]
+# The filters the Tone_Map needs, as the step asks for them.
+TONE_MAP_FILTERS = ("zscale", "tonemap")
+
+
+def listed(listing: str, returncode: int = 0) -> subprocess.CompletedProcess[bytes]:
+    """What subprocess.run gives back when ffmpeg -filters ran and printed `listing`."""
+    return finished(returncode, listing.encode(), tool="ffmpeg")
+
+
+@pytest.mark.parametrize(("outcome", "found"), [
+    pytest.param(listed(FILTERS_6_1), True, id="6.1 lists both"),
+    pytest.param(listed(FILTERS_9_0_2), True, id="9.0.2 lists both"),
+    # The laptops' ffmpeg 9.0.2, built without libzimg, lists tonemap but no zscale.
+    pytest.param(listed(without(FILTERS_9_0_2, "zscale")), False, id="no zscale"),
+    pytest.param(listed(without(FILTERS_6_1, "tonemap")), False, id="no tonemap"),
+    # subprocess.run kills ffmpeg at its timeout, then raises TimeoutExpired.
+    pytest.param(subprocess.TimeoutExpired(FILTERS_COMMAND, TIMEOUT), False, id="timeout"),
+    # Both filters are listed, so only the exit code makes it a no.
+    pytest.param(listed(FILTERS_9_0_2, returncode=1), False, id="exit of 1"),
+])
+def test_has_filters_is_true_only_when_ffmpeg_lists_both_filters_and_ends_well(
+        monkeypatch: pytest.MonkeyPatch, outcome: object, found: bool) -> None:
+    calls = replace_subprocess(monkeypatch, "run", outcome)
+    assert has_filters(TONE_MAP_FILTERS, TIMEOUT) is found
+    # It ran the listing with stdin closed (Req 1.3) and with the limit it was given.
+    [(command, kwargs)] = calls
+    assert command == FILTERS_COMMAND
+    assert kwargs["stdin"] == subprocess.DEVNULL
+    assert kwargs["timeout"] == TIMEOUT
+
+
+def test_has_filters_without_ffmpeg_gives_the_failure_for_a_missing_tool(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    replace_subprocess(monkeypatch, "run",
+                       FileNotFoundError(2, "No such file or directory", "ffmpeg"))
+    with pytest.raises(ExpectedFailure) as caught:
+        has_filters(TONE_MAP_FILTERS, TIMEOUT)
+    message = readable(caught.value)
+    assert "ffmpeg isn't installed" in message
+    assert "Install ffmpeg, which includes ffprobe" in message
+
+
 # Property tests
 
 # A Used_Part lies inside a video of at most 10 minutes, as max_video_seconds in [jobs] has it,
@@ -764,3 +940,31 @@ def test_a_variable_frame_rate_gets_its_real_times_with_no_frame_repeated_or_dro
 def test_probe_stream_gives_the_width_and_height_of_a_real_clip(tmp_path: Path) -> None:
     info = probe_stream(make_clip(tmp_path, 1), REAL_TIMEOUT)
     assert (info.width, info.height) == (CLIP_WIDTH, CLIP_HEIGHT)
+
+
+# The real Tone_Map test (Req 2.2, 13.5, 13.11)
+
+# The limit of the real filter check: ffprobe_timeout_seconds in config.toml, which the step
+# gives has_filters.
+FILTER_CHECK_TIMEOUT = 30
+# A filter that tags the clip's frames as a phone's HDR clip is tagged: the HLG transfer,
+# arib-std-b67, with BT.2020 primaries and matrix, which the Tone_Map's zscale reads. It tags the
+# frames themselves, because the laptops' ffmpeg 9.0.2 loses the -color_trc and -color_primaries
+# output options.
+HLG_TAGS = "setparams=color_primaries=bt2020:color_trc=arib-std-b67:colorspace=bt2020nc"
+
+
+@needs_ffmpeg
+def test_the_real_tone_map_gives_an_hlg_clips_frames_at_the_plans_size(tmp_path: Path) -> None:
+    # The check runs here, as the test runs, so collecting the tests never runs ffmpeg.
+    if not has_filters(TONE_MAP_FILTERS, FILTER_CHECK_TIMEOUT):
+        pytest.skip("this ffmpeg has no zscale or tonemap filter")
+    clip = make_clip(tmp_path, 1, "-vf", HLG_TAGS)
+    # ffprobe finds the clip HLG, so the step would give it the Tone_Map.
+    assert probe_stream(clip, REAL_TIMEOUT).colour_transfer == "arib-std-b67"
+    # A grey Decode_Pass of the whole clip, with the Tone_Map's numbers in config.toml.
+    plan = replace(real_plan(clip, 0.0, 1.0), tone_map=ToneMap(100.0, 0.0))
+    shapes: list[tuple[int, ...]] = []
+    decode(plan, REAL_TIMEOUT, lambda time, frame: shapes.append(frame.shape))
+    # Each of the 1 s clip's 10 frames comes through the Tone_Map, at the plan's size.
+    assert shapes == [(plan.height, plan.width)] * 10

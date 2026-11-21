@@ -49,6 +49,13 @@ def test_the_ffmpeg_row_names_decoding_the_used_part_zscale_and_tonemap() -> Non
         assert words in how, f"The ffmpeg and ffprobe row should say {words!r}"
 
 
+def test_the_zimg_row_names_the_wtfpl_and_zscale() -> None:
+    """Frames spec, Req 12.7. Samarth OKed zimg (O1)."""
+    row = licence_row("zimg (libzimg)")
+    assert "WTFPL" in row["Licence"], "The zimg (libzimg) row should give the WTFPL"
+    assert "zscale" in row["How we use it"], "The zimg (libzimg) row should say zscale uses it"
+
+
 # The Skeleton's ## headings in docs/pipeline.md. They all come before the first ## Step: section.
 SKELETON_HEADINGS = (
     "The job folder", "The job record", "Step reports", "Presets and config.toml", "The step list",

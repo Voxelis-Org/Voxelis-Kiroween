@@ -2,11 +2,11 @@
 Step_Runner runs it and writes its real report.
 
 Each test makes its Job with new_job from tests/conftest.py, in the temporary Jobs_Folder. Every
-test but the real ffmpeg one at the end puts a FakeTools in place of ffprobe and the ffmpeg decode
-with fake_tools, so only that one needs ffmpeg. new_job's video is 10 s long, and the Job uses all
-of it unless the test gives a Trim. Its Preset is fast, whose base_picks is 2 in the test config,
-so Target_Picks is one Pick for every 2 s of Kept_Seconds, rounded up and at least 2, unless a
-test sets base_picks higher.
+test but the real ffmpeg one at the end puts a FakeTools in place of ffprobe, ffmpeg's filter
+check and the ffmpeg decode with fake_tools, so only that one needs ffmpeg. new_job's video is
+10 s long, and the Job uses all of it unless the test gives a Trim. Its Preset is fast, whose
+base_picks is 2 in the test config, so Target_Picks is one Pick for every 2 s of Kept_Seconds,
+rounded up and at least 2, unless a test sets base_picks higher.
 
 The stand-in video is 640 × 480, and set_frames sets score_width to 8 and long_edge to 16, so
 each Score_Frame is 8 × 6 pixels and each Pick 16 × 12. Every picture a test gives FakeTools has
@@ -39,6 +39,15 @@ amplitude's change, so the Motion is d.
   blurred frame's Window has a sharp median, and the Jolt_Filter keeps the 36 sharp frames. The
   tests set Target_Picks with base_picks. With the same Motion at every frame, 40 Motion_Parts
   hold one frame each, and 20 hold two each, frames 2j and 2j + 1.
+
+The HDR tests run the walk with a colour transfer on the stand-in video. For an HDR_Clip,
+arib-std-b67 (HLG) or smpte2084 (PQ), the step asks FakeTools' has_filters for zscale and
+tonemap, which it says this ffmpeg has unless it's built with no_filters. So both passes get a
+ToneMap of the test config's tonemap_npl and tonemap_desat, 100.0 and 0.0, unless set_frames
+changes them. Built with tone_map_failure, FakeTools' first pass with a ToneMap gives the walk's
+first 3 frames and then fails with a line of ffmpeg's, as the real decode does when ffmpeg exits
+with a non-zero code, so the Score_Pass runs again and gets all 20. A bt709 video and one with no
+colour transfer get no filter check and no ToneMap.
 
 The failed runs each make one failure: the jolts with a min_picks above the Picks they give, a
 Trim with no frame in it, a Pick_Pass that FakeTools stops early, a Path.write_bytes that fails
@@ -88,7 +97,7 @@ from splatpipe import frames
 from splatpipe.config import load_config
 from splatpipe.errors import ExpectedFailure
 from splatpipe.frames.__main__ import main as frames_main
-from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo, decode
+from splatpipe.frames.ffmpeg import DecodePlan, ToneMap, VideoInfo, decode, decode_command
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json
 
@@ -353,6 +362,133 @@ def test_both_passes_decode_the_jobs_video_over_the_job_records_trim(
     assert report["counts"]["decoded_frames"] == 10
     record = record_of(job_id)
     assert (record["kept_start_seconds"], record["kept_end_seconds"]) == (2.5, 7.25)
+
+
+# HDR video and the Tone_Map (Req 2.2–2.7, 9.4, 10.5)
+
+# The colour transfers of an HDR_Clip, HLG and PQ, as ffprobe names them (A7).
+HLG, PQ = "arib-std-b67", "smpte2084"
+# The ToneMap of the test config's tonemap_npl = 100 and tonemap_desat = 0.0.
+CONFIG_TONE_MAP = ToneMap(100.0, 0.0)
+# The call the step makes to FakeTools' has_filters for an HDR_Clip: zscale and tonemap, with the
+# test config's ffprobe_timeout_seconds of 60 as the limit.
+FILTER_CHECK = (("zscale", "tonemap"), 60.0)
+# The Tone_Map's filters with a tonemap_npl of 203.5 and a tonemap_desat of 0.25: the design's
+# text written out, with only those two numbers changed from 100.0 and 0.0, and the hable curve
+# and the BT.709 names as they are (A13).
+TONE_MAP_203_5 = ("zscale=t=linear:npl=203.5,format=gbrpf32le,zscale=p=bt709,"
+                  "tonemap=tonemap=hable:desat=0.25,zscale=t=bt709:m=bt709:r=tv,format=yuv420p")
+# The last line of error output of FakeTools' failed pass with the Tone_Map, as ffmpeg prints it
+# when zimg fails while it filters a frame.
+TONE_MAP_ERROR = "Error while filtering: Generic error in an external library"
+
+
+def with_transfer(transfer: str | None) -> VideoInfo:
+    """The stand-in video, INFO, with the colour transfer `transfer`, or with none for None."""
+    return replace(INFO, colour_transfer=transfer)
+
+
+def tone_maps(plans: list[DecodePlan]) -> list[tuple[bool, ToneMap | None]]:
+    """Each plan's colour and ToneMap, in the order FakeTools recorded them: colour False for a
+    Score_Pass, in grey, and True for the Pick_Pass."""
+    return [(plan.colour, plan.tone_map) for plan in plans]
+
+
+@pytest.mark.parametrize("transfer", [pytest.param(HLG, id="HLG"), pytest.param(PQ, id="PQ")])
+def test_an_hdr_clip_with_both_filters_runs_both_passes_with_the_tone_map(
+        new_job: Callable[..., str], fake_tools: Callable[..., Any],
+        set_frames: Callable[..., None], transfer: str) -> None:
+    job_id = new_job()
+    tools = fake_tools(with_transfer(transfer), walk())
+    set_frames(**TINY)
+    report = run_done(job_id)
+    # One filter check, then both passes with the ToneMap of the test config's numbers, and no
+    # warning (Req 2.2, 2.6, 9.4).
+    assert tools.filter_checks == [FILTER_CHECK]
+    assert tone_maps(tools.plans) == [(False, CONFIG_TONE_MAP), (True, CONFIG_TONE_MAP)]
+    assert report["warnings"] == []
+    # frames.json records the transfer and that the Tone_Map ran (Req 2.7).
+    record = record_of(job_id)
+    assert record["colour_transfer"] == transfer
+    assert record["tone_mapped"] is True
+
+
+def test_both_passes_tone_map_with_tonemap_npl_and_tonemap_desat_from_the_config(
+        new_job: Callable[..., str], fake_tools: Callable[..., Any],
+        set_frames: Callable[..., None]) -> None:
+    job_id = new_job()
+    tools = fake_tools(with_transfer(HLG), walk())
+    set_frames(**TINY, tonemap_npl=203.5, tonemap_desat=0.25)
+    run_done(job_id)
+    # Both plans hold the two numbers set_frames gave (Req 2.2, 9.4).
+    tone_map = ToneMap(203.5, 0.25)
+    assert tone_maps(tools.plans) == [(False, tone_map), (True, tone_map)]
+    # Each plan's ffmpeg command has the Tone_Map's filters with those numbers among its other
+    # filters, and the hable curve and the BT.709 names unchanged.
+    for plan in tools.plans:
+        command = decode_command(plan)
+        assert f",{TONE_MAP_203_5}," in command[command.index("-vf") + 1]
+
+
+def test_an_hdr_clip_without_the_filters_runs_both_passes_without_the_tone_map_and_warns(
+        new_job: Callable[..., str], fake_tools: Callable[..., Any],
+        set_frames: Callable[..., None]) -> None:
+    job_id = new_job()
+    tools = fake_tools(with_transfer(PQ), walk(), no_filters=True)
+    set_frames(**TINY)
+    report = run_done(job_id)  # the step is done all the same
+    assert tools.filter_checks == [FILTER_CHECK]
+    assert tone_maps(tools.plans) == [(False, None), (True, None)]
+    # The warning names the transfer, says the picks' colours may look flat, and says an ffmpeg
+    # with zscale fixes them (Req 2.4, 10.5).
+    assert report["warnings"] == [
+        "The video is HDR (colour transfer smpte2084), but this ffmpeg has no zscale or tonemap "
+        "filter, so the frames were read without tone mapping and the picks' colours may look "
+        "flat. An ffmpeg built with zscale fixes the colours."]
+    record = record_of(job_id)
+    assert record["colour_transfer"] == PQ
+    assert record["tone_mapped"] is False  # Req 2.7
+
+
+def test_a_failed_pass_with_the_tone_map_runs_again_without_it_and_the_pick_pass_follows(
+        new_job: Callable[..., str], fake_tools: Callable[..., Any],
+        set_frames: Callable[..., None]) -> None:
+    # The first pass, with the Tone_Map, gives the walk's first 3 frames and then fails.
+    job_id = new_job()
+    tools = fake_tools(with_transfer(HLG), walk(), tone_map_failure=(3, TONE_MAP_ERROR))
+    set_frames(**TINY)
+    report = run_done(job_id)
+    # The Score_Pass runs again as it was, but without the Tone_Map, and the Pick_Pass takes that
+    # choice (Req 2.5, 2.6).
+    assert tone_maps(tools.plans) == [(False, CONFIG_TONE_MAP), (False, None), (True, None)]
+    assert tools.plans[1] == replace(tools.plans[0], tone_map=None)
+    # The warning holds ffmpeg's last line (Req 2.5, 10.5).
+    assert report["warnings"] == [
+        f"The video is HDR (colour transfer arib-std-b67), but ffmpeg failed to tone map it "
+        f"({TONE_MAP_ERROR}), so the frames were read without tone mapping and the picks' "
+        "colours may look flat. An ffmpeg built with a working zscale fixes the colours."]
+    # The pass that ran again started a new Scorer and a new SampleBuffer, so the counts hold
+    # only its 20 frames and none of the 3 the failed pass gave (Req 2.5).
+    counts = report["counts"]
+    assert (counts["decoded_frames"], counts["mask_samples"]) == (20, 20)
+    assert record_of(job_id)["tone_mapped"] is False  # Req 2.7
+
+
+@pytest.mark.parametrize("transfer", [pytest.param("bt709", id="bt709"),
+                                      pytest.param(None, id="no transfer")])
+def test_a_clip_that_isnt_hdr_gets_no_filter_check_and_no_tone_map(
+        new_job: Callable[..., str], fake_tools: Callable[..., Any],
+        set_frames: Callable[..., None], transfer: str | None) -> None:
+    job_id = new_job()
+    tools = fake_tools(with_transfer(transfer), walk())
+    set_frames(**TINY)
+    run_done(job_id)
+    assert tools.filter_checks == []
+    assert tone_maps(tools.plans) == [(False, None), (True, None)]  # Req 2.3
+    # frames.json records the transfer ffprobe reported, or null when it reported none (Req 2.7).
+    record = record_of(job_id)
+    assert record["colour_transfer"] == transfer
+    assert record["tone_mapped"] is False
 
 
 # The Jolt_Filter (Req 5.2–5.4)

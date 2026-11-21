@@ -682,4 +682,6 @@ All tests run with `uv run pytest` on the CPU, with no network. The maths tests 
 
 **O1 (Req 12.7):** zimg, which ffmpeg's `zscale` needs, is under the WTFPL, which isn't on our permissive list. This design doesn't settle it. The Tone_Map path works either way: with no `zscale`, HDR_Clips get no Tone_Map and a warning, and the step is done. Task 8 stops for Samarth's answer before it adds a zimg row to the Licence_List. If the answer is no, the machine image's ffmpeg is built without libzimg, and any other tone map is a change of its own.
 
+**Resolved:** Samarth OKed zimg, so task 8 added the zimg row to the Licence_List. His answer is under O1 in `requirements.md`.
+
 Two facts for whoever builds the machine image. The step needs ffmpeg 5.1 or newer for `-fps_mode` (D5), so Ubuntu 22.04's packaged ffmpeg (4.4) is too old. Ubuntu 24.04's packaged ffmpeg (6.1) is new enough, as the Pipeline_Doc says (Req 12.8), but its `libavfilter9` depends on `libzimg2`, so it brings zimg with it. A "no" on O1 therefore means an ffmpeg built from source or a build without libzimg.
