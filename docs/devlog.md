@@ -106,3 +106,4 @@ What the test found, and how the rules block it:
 - 2026-11-22 02:48+05:30 | feat/cloud-runner | cloud-jobs 3.3 Write the property test for Property 3 in `tests/test_cloud_select.py`, with Hypothesis | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/select.py, tests/test_cloud_select.py
 - 2026-11-22 02:50+05:30 | feat/cloud-runner | cloud-jobs 3.4 Run the tests and commit | cloud/select.py, tests/test_cloud_select.py, .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json
 - 2026-11-22 03:00+05:30 | feat/cloud-runner | cloud-jobs 4.1 Write `cloud/launch.py` | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/launch.py, cloud/userdata.py
+- 2026-11-22 03:00+05:30 | feat/cloud-runner | cloud-jobs 4.2 Write `cloud/userdata.py` | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/launch.py, cloud/userdata.py
