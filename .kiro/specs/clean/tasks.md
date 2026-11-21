@@ -36,7 +36,7 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `splatpipe/clean/__init__.py`, `splatpipe/clean/settings.py`, `tests/splats.py`, `tests/test_clean_limits.py` and `tests/test_clean_repo.py` (new), `config.toml` and `tests/conftest.py` (changed).
   - _Requirements: 1.12, 4.7, 5.15, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.14, 6.15, 6.16, 6.17, 6.18, 8.5, 8.8, 10.1, 10.2, 10.4_
 
-  - [ ] 1.1 Write `splatpipe/clean/settings.py`
+  - [x] 1.1 Write `splatpipe/clean/settings.py`
     - `CleanSettings`, `check_settings()` and `check_plain_name()`, as in the design's "settings.py" section. Make `splatpipe/clean/__init__.py` too, holding only the package's docstring for now. Task 8 adds `run()` and `work()`.
     - `check_settings` reads every key with `settings[key]`, so a missing key is the Step_Runner's own refusal through `StepSettings.__missing__`, with no new code (Req 6.6).
     - Then it checks in the design's order and raises `ExpectedFailure` at the first problem: the whole numbers, where only `type(value) is int` counts, so `True` and `4.0` are refused; the numbers, an `int` or a `float` but never a `bool`, where an `int` too big for a float is out of range; the three names; and the clashes. Each message names the setting, `[clean]` or `[clean.<preset>]`, the value and what it must be. Floats come back as `float(value)`.
@@ -45,19 +45,19 @@ Some files grow over several tasks, so each piece comes with the first task that
     - From `splatpipe`, import only `splatpipe.step` and `splatpipe.errors`.
     - _Requirements: 1.12, 4.7, 5.15, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 8.8_
 
-  - [ ] 1.2 Add `[clean]` and its three Preset tables to `config.toml`
+  - [x] 1.2 Add `[clean]` and its three Preset tables to `config.toml`
     - Append `[clean]`, `[clean.fast]`, `[clean.default]` and `[clean.quality]` after `[fake]`, exactly as the design's "Sections added to config.toml" gives them: the sixteen Shared_Settings in `[clean]`, and `sog_sh_bands` and `sh_iterations` in each Preset table, with the values of Req 6.4 and a comment on the line directly above every key.
     - Leave every other section exactly as it is.
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.17, 6.18_
 
-  - [ ] 1.3 Add the `[clean]` test config to `tests/conftest.py`, and `clean_settings` to `tests/splats.py`
+  - [x] 1.3 Add the `[clean]` test config to `tests/conftest.py`, and `clean_settings` to `tests/splats.py`
     - `CLEAN_SHARED` and `CLEAN_PRESETS` hold the real keys with the real values, except `min_kept_splats = 1`, `max_workers = 1`, `splat_transform_timeout_seconds = 60`, `sh_iterations = 1` in every Preset, and `sog_sh_bands` of 0, 1 and 3 in `fast`, `default` and `quality`, as the design's "The test config's [clean]" section gives them.
     - `config_text` writes `[clean]` and its three Preset tables into every test config, after the Fake_Step sections. `set_fail` keeps working as it does now.
     - `set_clean(**values)` rewrites the test config with chosen `[clean]` values for one test, the way `set_fail` does for `fail`. A Preset table's key is given as `fast__sog_sh_bands=1`, and a value of `None` leaves the key out, so a test can check a missing setting.
     - `clean_settings(**values)`, in the new `tests/splats.py`, builds a `CleanSettings` from those dicts with chosen changes, for the tests of pure functions.
     - _Requirements: 6.16_
 
-  - [ ] 1.4 Write unit tests for the settings checks in `tests/test_clean_limits.py`
+  - [x] 1.4 Write unit tests for the settings checks in `tests/test_clean_limits.py`
     - `check_settings` on the test config's `step_settings("clean", preset)` gives the eighteen values for each Preset, and `extent_trim_percent = 1` comes back as `1.0`.
     - A setting left out of `[clean]` with `set_clean(neighbours=None)`, and `sh_iterations` left out of all three Preset tables, each give the Step_Runner's `PipelineError`, naming `[clean]`, `[clean.<preset>]` and the key (Req 6.6).
     - Every whole-number setting of Req 6.7 is refused for `True`, a `float` such as `4.0`, a `str`, and a value just outside its range, like `neighbours = 0`, `sog_sh_bands = 4` and `max_workers = 9`. The ends of each range pass: `max_workers` and `sog_sh_bands` at 0, `sog_sh_bands` at 3 and `max_workers` at 8.
@@ -76,7 +76,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - For three names that pass, `check_settings` refuses them exactly when two are equal after `str.casefold`, naming both settings.
     - _Requirements: 1.12, 4.7, 5.15, 6.9, 6.10_
 
-  - [ ] 1.6 Write the real-config and import checks in `tests/test_clean_repo.py`
+  - [x] 1.6 Write the real-config and import checks in `tests/test_clean_repo.py`
     - Read `REPO_ROOT / "config.toml"` by path. `[clean]` loads with `step_settings("clean", preset)` for each of the three Presets, its keys are exactly the sixteen of Req 6.2 and the two of Req 6.3, its values are those of Req 6.4, and `check_settings` accepts it (Req 6.1 to 6.4, 6.14).
     - `max_source_splats` is at most `2 * 10**9 // 248`, a quarter of 8 GB at 62 float32 properties a Gaussian (Req 6.17).
     - Read `config.toml` as text: every key in `[clean]`, `[clean.fast]`, `[clean.default]` and `[clean.quality]` has a `#` comment with text on the line directly above it. A comment at the end of the key's line, or two lines above it, doesn't count here, though `tests/test_config.py` accepts the first. Test the helper on a short sample of each case too (Req 6.18).
