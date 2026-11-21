@@ -1,6 +1,6 @@
 ---
 name: aws-jobs
-description: How our job machines run on EC2, with our money rules first. One On-Demand GPU machine per job, launched from our own machine image with the launch settings the runner role requires, the job bucket's jobs/ and work/ layout, user data, IMDSv2, terminating itself when the job ends, and Session Manager shells for debugging. Use when writing or reviewing the start, smoke-test or stop-all commands, a run_instances or create_image call, a job machine's user data script or the machine image build, when working out what a run costs, or when debugging a job machine.
+description: How our job machines run on EC2, with our money rules first. One On-Demand GPU machine per job, launched from our own machine image with the launch settings the runner role requires, the job bucket's jobs/ and work/ layout, user data, IMDSv2, terminating itself when the job ends, and Session Manager shells for debugging. Use when writing or reviewing the start, image-build, smoke-test or stop-all commands, a run_instances or create_image call or a job machine's user data script, when working out what a run costs, or when debugging a job machine.
 metadata:
   sources: AWS docs for EC2, VPC, S3, Systems Manager and the Deep Learning AMIs, the boto3 reference, and the cloud-init and systemd docs, read November 2026
 ---
@@ -18,7 +18,7 @@ Copied from `.kiro/steering/rules.md`, section `## Money`. If the two ever diffe
 - Kiro and the team still need an OK for every run they start by hand.
 - It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- Once the person in the chat says yes to a paid run, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- Once the person in the chat says yes to a paid run, Kiro runs our start, image-build or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
 - The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
@@ -26,7 +26,7 @@ Copied from `.kiro/steering/rules.md`, section `## Money`. If the two ever diffe
 What they mean for job machines:
 
 - Every launch is a paid run: a job, the smoke test and an image build alike. Apart from the jobs people start through the app, each launch needs its own yes, after Kiro has told the person the machine, the expected time and the rough cost.
-- Every paid entry point, the start and smoke-test commands included, calls `check_spend()` from `cloud/spend.py` with that machine, time and cost, before it uploads or launches anything (cloud.md).
+- Every paid entry point, the start, image-build and smoke-test commands included, calls `check_spend()` from `cloud/spend.py` with that machine, time and cost, before it uploads or launches anything (cloud.md).
 - When Kiro runs a raw `aws ec2 run-instances`, `aws ec2 create-image` or another command in `[paid].aws` in `config.toml`, the guard hook blocks it. So Kiro only starts paid things through our commands.
 - A failed launch ends the command. Trying again, in another zone or on a fallback type, is a new run with a new yes.
 - Nothing in our AWS setup stops a machine for us. The budget alert from Step 6 of the setup guide only sends an email. What stops the spend is the machine's own shutdown, its time cap and, as the last resort, the stop-all command.
@@ -49,7 +49,7 @@ The hourly price of each allowed type goes in `config.toml`, next to the time ca
 
 A job runs on one GPU machine, started from our own machine image. The machine gets its orders from its user data, reaches AWS through IMDSv2 and its instance role, writes its results to the job bucket and terminates itself when the job ends. While it runs, a person can open a shell on it with Session Manager.
 
-None of this is built yet: the start, smoke-test and stop-all commands, the user data script and the machine image come with later specs. The AWS resources they use come from `cloud/aws-setup.yaml`, which `docs/aws-setup.md` explains. AWS's pages are paraphrased here, each with a link.
+None of this is built yet: the start, image-build, smoke-test and stop-all commands, the user data script and the machine image come with later specs. The AWS resources they use come from `cloud/aws-setup.yaml`, which `docs/aws-setup.md` explains. AWS's pages are paraphrased here, each with a link.
 
 The plan, from the rules and the setup guide:
 
@@ -267,14 +267,13 @@ aws ec2 get-console-output --instance-id <instance-id> --latest --query Output -
 ## Our rules that touch this
 
 - cloud.md: every paid entry point calls the spend guard first. Machine types, prices and time caps come from `config.toml`. Every instance gets the project tag and `InstanceInitiatedShutdownBehavior=terminate`.
-- rules.md, AWS access: everything runs in us-east-1. The runner profile is only for the start, smoke-test and stop-all commands, and the read profile is for everything else. Every aws command passes `--profile` and `--region us-east-1`, and Python on a laptop names both in `boto3.Session(profile_name=..., region_name=...)`. Code on the job machine uses its instance role. No AWS keys or account id go in the repo, chats or logs, and ARNs hold the account id. Look up only our own things, by name or by our tag.
+- rules.md, AWS access: everything runs in us-east-1. The runner profile is only for the start, image-build, smoke-test and stop-all commands, and the read profile is for everything else. Every aws command passes `--profile` and `--region us-east-1`, and Python on a laptop names both in `boto3.Session(profile_name=..., region_name=...)`. Code on the job machine uses its instance role. No AWS keys or account id go in the repo, chats or logs, and ARNs hold the account id. Look up only our own things, by name or by our tag.
 - tech.md: one job machine at a time, boto3 only inside `cloud/`, and the GPU packages only on the machine image.
 - `docs/third-party-licences.md`: the Session Manager plugin has its row. The base AMI gets its row in the commit that first uses it.
 
 ## Open questions
 
 - Whether CreateImage's reboot of a running machine triggers the terminate behaviour. AWS's pages don't say. The stop-first order in "Making the image" avoids it.
-- Who runs the image build. rules.md lets Kiro use the runner profile only inside the start, smoke-test and stop-all commands, so an image-build command needs a place in the rules first, or a person runs the build.
 - How the pipeline code gets onto the machine: in the image, or fetched by the job script.
 - Where in the bucket the machine's own logs go, like `cloud-init-output.log`, and how they keep out the account id that AWS error messages can hold (rules.md). The spec that writes the user data script decides.
 
