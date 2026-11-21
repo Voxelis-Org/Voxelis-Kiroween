@@ -1,0 +1,864 @@
+{
+  "pbtResults": {
+    "2.3 Write the property test for Property 1 in `tests/test_frames_scores.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795273997550
+    },
+    "2.4 Write the property test for Property 2 in `tests/test_frames_scores.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795273989864
+    },
+    "3.3 Write the property test for Property 5 in `tests/test_frames_choose.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795276610956
+    },
+    "3.4 Write the property test for Property 6 in `tests/test_frames_choose.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795276618329
+    },
+    "4.3 Write the property test for Property 7 in `tests/test_frames_choose.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795279272123
+    },
+    "4.4 Write the property test for Property 8 in `tests/test_frames_choose.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795279272898
+    },
+    "4.5 Write the property test for Property 9 in `tests/test_frames_choose.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795279273907
+    },
+    "5.4 Write the property test for Property 10 in `tests/test_frames_mask.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795280811029
+    },
+    "5.5 Write the property test for Property 11 in `tests/test_frames_mask.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795281331165
+    },
+    "5.6 Write the property test for Property 12 in `tests/test_frames_mask.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795281701614
+    }
+  },
+  "executionHistory": {
+    "1.1 Add numpy and `opencv-python-headless`, with their licence lines": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271241834
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271271712
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271822999
+      }
+    ],
+    "1.2 Add `[frames]` and its Preset tables to `config.toml`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271241909
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271272025
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271823090
+      }
+    ],
+    "1.3 Write `splatpipe/frames/settings.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271241951
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271272184
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271823159
+      }
+    ],
+    "1.4 Add `[frames]` and `set_frames` to `tests/conftest.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271241988
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271272252
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271823860
+      }
+    ],
+    "1.5 Write unit tests for the settings in `tests/test_frames_settings.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242020
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271831138
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272486773
+      }
+    ],
+    "1.6 Write the frames import check, the dependency check and the licence row tests": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242055
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271831724
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272487130
+      }
+    ],
+    "1.7 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242090
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272493571
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272579865
+      }
+    ],
+    "2.1 Write `splatpipe/frames/scores.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242128
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272588428
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272962074
+      }
+    ],
+    "2.2 Write unit tests for the scores and the sizes in `tests/test_frames_scores.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242161
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272971932
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795273293787
+      }
+    ],
+    "2.3 Write the property test for Property 1 in `tests/test_frames_scores.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242217
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795273300062
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795273613028
+      }
+    ],
+    "2.4 Write the property test for Property 2 in `tests/test_frames_scores.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242265
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795273619429
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795273899777
+      }
+    ],
+    "2.5 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242314
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795273906060
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795274014144
+      }
+    ],
+    "3.1 Write the first half of `splatpipe/frames/choose.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242355
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795274032651
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795274399597
+      }
+    ],
+    "3.2 Write unit tests for the Still_Trim and the Jolt_Filter in `tests/test_frames_choose.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242406
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795274406206
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795275184045
+      }
+    ],
+    "3.3 Write the property test for Property 5 in `tests/test_frames_choose.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242476
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795275191217
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276103382
+      }
+    ],
+    "3.4 Write the property test for Property 6 in `tests/test_frames_choose.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242515
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276108420
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276482288
+      }
+    ],
+    "3.5 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271242558
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276487919
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276634156
+      }
+    ],
+    "4.1 Write the second half of `splatpipe/frames/choose.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243134
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276641130
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795277058817
+      }
+    ],
+    "4.2 Write unit tests for Target_Picks and the Picker in `tests/test_frames_choose.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243305
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795277066769
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795277583697
+      }
+    ],
+    "4.3 Write the property test for Property 7 in `tests/test_frames_choose.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243392
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795277590581
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795278391917
+      }
+    ],
+    "4.4 Write the property test for Property 8 in `tests/test_frames_choose.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243444
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795278396956
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795278742037
+      }
+    ],
+    "4.5 Write the property test for Property 9 in `tests/test_frames_choose.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243485
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795278748579
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279168341
+      }
+    ],
+    "4.6 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243527
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279175643
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279294898
+      }
+    ],
+    "5.1 Write `splatpipe/frames/mask.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243575
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279303226
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279932558
+      }
+    ],
+    "5.2 Write `splatpipe/frames/files.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243616
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279303871
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279932822
+      }
+    ],
+    "5.3 Write unit tests for the Sample_Buffer and the Mask in `tests/test_frames_mask.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243654
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279941290
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795280478456
+      }
+    ],
+    "5.4 Write the property test for Property 10 in `tests/test_frames_mask.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243693
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795280485650
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795280825053
+      }
+    ],
+    "5.5 Write the property test for Property 11 in `tests/test_frames_mask.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243760
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795280832623
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795281427703
+      }
+    ],
+    "5.6 Write the property test for Property 12 in `tests/test_frames_mask.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243820
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795281435255
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795281723998
+      }
+    ],
+    "5.7 Write unit tests for the files in `tests/test_frames_files.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243858
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279942196
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795280477711
+      }
+    ],
+    "5.8 Write the memory test in `tests/test_frames_mask.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243894
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795281731810
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795282134985
+      }
+    ],
+    "5.9 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243935
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795282142184
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795282300179
+      }
+    ],
+    "6.1 Write `splatpipe/frames/ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271243971
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795282312231
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795284864691
+      }
+    ],
+    "6.2 Write unit tests for the pure parts in `tests/test_frames_ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244005
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795284873221
+      }
+    ],
+    "6.3 Write unit tests with fake processes in `tests/test_frames_ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244098
+      }
+    ],
+    "6.4 Write the property test for Property 3 in `tests/test_frames_ffmpeg.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244136
+      }
+    ],
+    "6.5 Write the property test for Property 4 in `tests/test_frames_ffmpeg.py`, with Hypothesis": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244182
+      }
+    ],
+    "6.6 Write the real ffmpeg tests in `tests/test_frames_ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244218
+      }
+    ],
+    "6.7 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244253
+      }
+    ],
+    "7.1 Write the step in `splatpipe/frames/__init__.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244292
+      }
+    ],
+    "7.2 Write `splatpipe/frames/__main__.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244327
+      }
+    ],
+    "7.3 Add `FakeTools` to `tests/conftest.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244369
+      }
+    ],
+    "7.4 Write unit tests for a done run in `tests/test_frames_step.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244417
+      }
+    ],
+    "7.5 Write unit tests for failed runs and the CLI in `tests/test_frames_step.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244468
+      }
+    ],
+    "7.6 Write the real ffmpeg step test in `tests/test_frames_step.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244503
+      }
+    ],
+    "7.7 Write the step's memory test in `tests/test_frames_step.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244536
+      }
+    ],
+    "7.8 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244574
+      }
+    ],
+    "8.1 Add the Tone_Map to `splatpipe/frames/ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244616
+      }
+    ],
+    "8.2 Add the HDR choice to the step": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244653
+      }
+    ],
+    "8.3 Write unit tests for the Tone_Map text, the command and the filter check in `tests/test_frames_ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244692
+      }
+    ],
+    "8.4 Write the HDR step tests in `tests/test_frames_step.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244733
+      }
+    ],
+    "8.5 Write the real Tone_Map test in `tests/test_frames_ffmpeg.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244776
+      }
+    ],
+    "8.6 Stop for Samarth's OK on zimg (O1)": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244814
+      }
+    ],
+    "8.7 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244850
+      }
+    ],
+    "9.1 Write `## Step: frames` in `docs/pipeline.md`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244891
+      }
+    ],
+    "9.2 Write the doc tests for the frames section in `tests/test_docs.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244932
+      }
+    ],
+    "9.3 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271244966
+      }
+    ],
+    "10.1 Change the Step_List in `splatpipe/run.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245003
+      }
+    ],
+    "10.2 Update `tests/test_run.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245038
+      }
+    ],
+    "10.3 Update `tests/test_imports.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245075
+      }
+    ],
+    "10.4 Rewrite \"The step list\" in `docs/pipeline.md`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245116
+      }
+    ],
+    "10.5 Add the note to pipeline-core's requirements": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245154
+      }
+    ],
+    "10.6 Write the end-to-end test with real ffmpeg in `tests/test_frames_step.py`": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245201
+      }
+    ],
+    "10.7 Run the tests and commit": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795271245236
+      }
+    ],
+    "1. Dependencies, settings and the test config": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795272579926
+      }
+    ],
+    "2. Frame scores and frame sizes": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795274014209
+      }
+    ],
+    "3. Still trim and jolt filter": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795276634241
+      }
+    ],
+    "4. Target picks and the picker": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795279294999
+      }
+    ],
+    "5. Sample buffer, mask and the Work_Folder's files": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795282300368
+      }
+    ]
+  }
+}
