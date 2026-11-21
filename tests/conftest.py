@@ -1,7 +1,7 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_frames, which changes its [frames] settings, and work_calls, which records whose Fake_Step
-work runs.
+set_frames, which changes its [frames] settings, work_calls, which records whose Fake_Step work
+runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
@@ -9,22 +9,33 @@ its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No
 a Job in the real data/ folder (Req 14.2). The test config also has [frames] with its three
 Preset tables, so a test that runs the Frames_Step without a Config of its own gets settings
 (frames spec, Req 9.11).
+
+FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
+one on demand, and records what the step asked for. So the step's tests run it through
+splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 13.6, 13.7).
 """
+
+from __future__ import annotations
 
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from itertools import islice
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pytest
 
 import splatpipe.config
 from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
+
+if TYPE_CHECKING:  # named in FakeTools' type hints only, so only its tests import splatpipe.frames
+    from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo
 
 # The names the tests run the Fake_Step under. Each gets a section like the real [fake].
 STEP_NAMES = ("fake", "fake_a", "fake_b", "fake_c")
@@ -266,3 +277,118 @@ def work_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(fake, "work", recorded_work)
     return names
+
+
+# A synthetic frame for FakeTools: its Frame_Time in seconds, and its picture, a 2-D uint8 array
+# of grey levels of any size.
+Pair = tuple[float, np.ndarray]
+
+
+class FakeTools:
+    """A stand-in for the Frames_Step's tools, ffprobe and the ffmpeg decode, so the step's tests
+    need no ffmpeg (frames spec, Req 13.6). The fake_tools fixture installs one in their place.
+
+    FakeTools(info, pairs) is built from the VideoInfo that probe gives back and a list of
+    synthetic (time, picture) Pairs. FakeTools.stream(info, count, make) is built from a count
+    and a function that makes pair k, for k from 0 to count − 1, only when decode reaches it, so
+    a test can feed a long stream without holding it (Req 13.7). Each decode call goes through
+    the pairs afresh.
+
+    probe and decode take the same arguments as ffmpeg.probe_stream and ffmpeg.decode, in the
+    order the step gives them. decode gives on_frame only the pairs whose times a new FrameGate
+    for the plan's Used_Part accepts, in order, as the real decode does. Each frame it gives is
+    a new uint8 array at the plan's size, made from its pair's picture: grey for a grey plan,
+    and a BGR frame with that grey in all three channels for a colour plan. So each Pick shows
+    the picture of the pair its Score_Frame came from, and a test can tell which pair became
+    which Pick.
+
+    It records each probe call as (video, timeout_seconds) in `probes`, and each decode call's
+    plan in `plans`. Two settings change what decode does: with `pick_pass_frames` set, the
+    Pick_Pass, the colour plan, gives only its first pick_pass_frames frames, and with `error`
+    set, decode raises it once the plan is recorded, before any frame.
+    """
+
+    def __init__(self, info: VideoInfo, pairs: Iterable[Pair], *,
+                 pick_pass_frames: int | None = None, error: Exception | None = None) -> None:
+        self.info = info
+        self.pairs = pairs
+        self.pick_pass_frames = pick_pass_frames
+        self.error = error
+        self.probes: list[tuple[Path, float]] = []
+        self.plans: list[DecodePlan] = []
+
+    @classmethod
+    def stream(cls, info: VideoInfo, count: int, make: Callable[[int], Pair],
+               **settings: Any) -> FakeTools:
+        """A FakeTools whose pair k, for k from 0 to count − 1, is make(k), made only when decode
+        reaches it. `settings` are FakeTools' own, like pick_pass_frames."""
+        return cls(info, _MadePairs(count, make), **settings)
+
+    def probe(self, video: Path, timeout_seconds: float) -> VideoInfo:
+        """Record the call and give back the VideoInfo."""
+        self.probes.append((video, timeout_seconds))
+        return self.info
+
+    def decode(self, plan: DecodePlan, timeout_seconds: float,
+               on_frame: Callable[[float, np.ndarray], None]) -> None:
+        """Record `plan`, then call on_frame(Frame_Time, frame) for each pair inside its
+        Used_Part, in order, keeping none of the frames it gives."""
+        from splatpipe.frames.ffmpeg import FrameGate
+
+        self.plans.append(plan)
+        if self.error is not None:
+            raise self.error
+        gate = FrameGate(plan.start, plan.end)
+        inside = ((time, picture) for time, picture in self.pairs if gate.accept(time))
+        # islice with None gives every pair, so only the Pick_Pass stops early, and only when
+        # pick_pass_frames is set.
+        for time, picture in islice(inside, self.pick_pass_frames if plan.colour else None):
+            on_frame(time, _frame(picture, plan))
+
+
+@dataclass(frozen=True)
+class _MadePairs:
+    """FakeTools.stream's pairs, make(0) to make(count − 1), made one at a time each time they're
+    gone through, so nothing holds them all."""
+
+    count: int
+    make: Callable[[int], Pair]
+
+    def __iter__(self) -> Iterator[Pair]:
+        return map(self.make, range(self.count))
+
+
+def _frame(picture: np.ndarray, plan: DecodePlan) -> np.ndarray:
+    """A new uint8 frame at the plan's size made from `picture`, each pixel taking the picture's
+    pixel whose area holds the pixel's centre: that grey for a grey plan, and a BGR frame with that
+    grey in all three channels for a colour plan."""
+    height, width = picture.shape
+    rows = (2 * np.arange(plan.height) + 1) * height // (2 * plan.height)
+    columns = (2 * np.arange(plan.width) + 1) * width // (2 * plan.width)
+    grey = picture[np.ix_(rows, columns)]
+    return np.repeat(grey[:, :, np.newaxis], 3, axis=2) if plan.colour else grey
+
+
+@pytest.fixture
+def fake_tools(monkeypatch: pytest.MonkeyPatch) -> type[FakeTools]:
+    """Give fake_tools, which builds a FakeTools as the class does, with fake_tools(info, pairs,
+    ...) or fake_tools.stream(info, count, make, ...), and installs it as the Frames_Step's tools
+    for this test. Building another one installs that one instead.
+
+    Installing is monkeypatch.setattr("splatpipe.frames.TOOLS", ...) with a Tools of the
+    FakeTools' probe and decode. The step reads TOOLS each time it runs, so a run through
+    splatpipe.frames.run, run_step or the step's CLI in this process uses the stand-in, and the
+    test reads what it recorded afterwards. splatpipe.frames is imported here, so only the tests
+    that use this fixture need it.
+    """
+    from splatpipe.frames import Tools
+
+    class Installed(FakeTools):
+        """A FakeTools that installs itself once it's built."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            monkeypatch.setattr("splatpipe.frames.TOOLS",
+                                Tools(probe=self.probe, decode=self.decode))
+
+    return Installed
