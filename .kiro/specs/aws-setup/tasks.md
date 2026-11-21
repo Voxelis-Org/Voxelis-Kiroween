@@ -28,7 +28,7 @@ Some files grow over several tasks, so each part comes with the task that the de
 
 ## Tasks
 
-- [ ] 1. cfn-lint, the template test, the job bucket and the security group
+- [x] 1. cfn-lint, the template test, the job bucket and the security group
   - Files: `cloud/aws-setup.yaml` and `tests/test_aws_setup.py` (new), `pyproject.toml`, `uv.lock`, `.kiro/steering/rules.md`, `.kiro/steering/structure.md` and `docs/third-party-licences.md` (changed).
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 4.1, 4.2, 4.3, 4.4, 10.1, 10.2, 10.3, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 16.3, 16.4, 16.6, 16.7, 16.8, 16.10, 16.11, 16.12, 17.1, 17.2, 17.3, 17.5, 17.6, 17.7, 17.8_
 
@@ -68,7 +68,7 @@ Some files grow over several tasks, so each part comes with the task that the de
     - The test is required, never optional. It needs no fixture, no network and no AWS credentials, and it's the only file that imports cfn-lint. Write no other new test (Req 17.5).
     - _Requirements: 17.1, 17.2, 17.3, 17.5_
 
-  - [~] 1.6 Run the Compliance_Check, make the Template_Test pass, and check the template's size
+  - [x] 1.6 Run the Compliance_Check, make the Template_Test pass, and check the template's size
     - Fix E3021 as Q4 decides: add the design's `Parameters` section with `DefaultVpcId` and set `VpcId: !Ref DefaultVpcId` on `JobSecurityGroup`, then change the header comment if it says there are no parameters. Also give the template the design's `Description`, which now ends "One parameter: the id of this region's default VPC." instead of "No parameters.", and fix the two comments that say the group has no `VpcId`: the one above `JobSecurityGroup` and the one on the `SecurityGroupId` output.
     - Activate the aws-infrastructure-as-code power, then run its `check_cloudformation_template_compliance` tool, on the `awslabs.aws-iac-mcp-server` server, with the whole of `cloud/aws-setup.yaml` as its `template_content` text.
     - Handle each failing rule with the four steps in the design's "The Compliance_Check" section. Fix it when it applies to the Stack. When the output shows "Unknown" as the resource, find the resource by passing the tool cut-down templates as text, each with `AWSTemplateFormatVersion` and a `Resources` section that holds one candidate, so no file is written.
@@ -79,7 +79,7 @@ Some files grow over several tasks, so each part comes with the task that the de
     - Check the template's size by hand with `(Get-Item cloud/aws-setup.yaml).Length`. It must be at most 51,200 bytes. If it's over, shorten the template, for example its comments, then run the Compliance_Check and the Template_Test again, so the template that's committed has passed all three checks.
     - _Requirements: 1.2, 1.8, 1.12, 1.13, 4.1, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 17.1, 17.3_
 
-  - [~] 1.7 Run the tests and commit
+  - [x] 1.7 Run the tests and commit
     - Search `cloud/aws-setup.yaml` for region names such as `us-east-1`, for 12-digit numbers and for the team members' names. It should hold none.
     - Run `uv run pytest`. Every test passes, the Template_Test and `tests/test_guard.py` included.
     - If anything in this sub-task changes `cloud/aws-setup.yaml`, run 1.6's three checks on it again before committing.
@@ -87,14 +87,14 @@ Some files grow over several tasks, so each part comes with the task that the de
     - On `feat/aws-setup`: `git add pyproject.toml uv.lock .kiro/steering/rules.md .kiro/steering/structure.md docs/third-party-licences.md cloud/aws-setup.yaml tests/test_aws_setup.py`, then `git commit -m "AWS setup: cfn-lint, the template test, the job bucket and the security group" -- pyproject.toml uv.lock .kiro/steering/rules.md .kiro/steering/structure.md docs/third-party-licences.md cloud/aws-setup.yaml tests/test_aws_setup.py`. cfn-lint, its licence row and CNRI-Python in `rules.md` go in this one commit.
     - _Requirements: 1.9, 16.12, 17.6, 17.7, 17.8_
 
-- [ ] 2. The IAM part of the template
+- [x] 2. The IAM part of the template
   - Files: `cloud/aws-setup.yaml` (changed).
   - Every IAM resource here follows the design: no name property (`RoleName`, `ManagedPolicyName`, `InstanceProfileName` or `GroupName`), every policy an `AWS::IAM::ManagedPolicy` with a `Description` and no inline `Policies`, `Version: "2012-10-17"` on each policy document, a `Sid` of letters and digits on each statement, and each ARN written out in full from the pseudo parameters, as the design's "ARNs" table gives it.
   - No statement here grants `s3:PutObjectTagging`, and none uses a wildcard such as `s3:PutObject*`, which would also match `s3:PutObjectTagging` (Q2).
   - After each sub-task, `uv run pytest tests/test_aws_setup.py` passes, so a cfn-lint finding shows up next to the change that caused it.
   - _Requirements: 1.3, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 2.6, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 9.1, 9.2, 9.3, 9.4, 10.1, 10.2, 10.3, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 17.1, 17.3, 17.6, 17.7, 17.8_
 
-  - [~] 2.1 Add the job role, its instance profile and its policy
+  - [x] 2.1 Add the job role, its instance profile and its policy
     - Add `JobPolicy`, `JobRole` and `JobInstanceProfile` as the design's "The Job_Role and the Job_Profile" section gives them.
     - `JobPolicy` holds the five statements of the design's table. `ListJobAndWorkFolders` allows `s3:ListBucket` on the bucket only with the `StringLike` condition `s3:prefix`: `["jobs/*", "work/*"]`. `ReadAndUploadJobFiles` allows `s3:GetObject`, `s3:PutObject` and `s3:AbortMultipartUpload` on `${JobBucket.Arn}/jobs/*` and `${JobBucket.Arn}/work/*`. So a Job_Machine lists, reads and uploads under both prefixes.
     - Of the three Session Manager statements, only `SessionManagerAgentChannels` has `"*"` as its resource, with the `aws:RequestedRegion` condition, because its three actions take no resource.
@@ -103,14 +103,14 @@ Some files grow over several tasks, so each part comes with the task that the de
     - Add the outputs `JobRoleArn` and `JobInstanceProfileArn`, each with the design's description and no `Export`.
     - _Requirements: 1.3, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 7.7, 10.1, 10.2, 10.3_
 
-  - [~] 2.2 Add the read policy
+  - [x] 2.2 Add the read policy
     - Add `ReadPolicy` with the seven statements of the design's "The Read_Policy" table.
     - Only `DescribeEc2InThisRegion` has `"*"` as its resource, with the `aws:RequestedRegion` condition. `ReadThisStack` takes `!Ref AWS::StackId`, so a later stack with the same name isn't covered.
     - `ListJobBucket` has no prefix condition, and `ReadJobFiles` covers `${JobBucket.Arn}/*`, so the Read_Policy lists the whole bucket and reads every file in it, under `jobs/` and `work/` alike.
     - It has no `s3:ListAllMyBuckets`, no IAM or `sts:` action, and nothing that starts, changes or deletes.
     - _Requirements: 1.3, 1.5, 1.6, 1.8, 1.9, 1.10, 1.11, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8_
 
-  - [~] 2.3 Add the runner's launch policy
+  - [x] 2.3 Add the runner's launch policy
     - Add `RunnerLaunchPolicy` with the eight statements of the design's launch table, which build A3. Each kind of resource in a launch gets its own statement.
     - `LaunchJobMachine` lists the 8 Allowed_Types in the glossary's order, needs `ec2:MetadataHttpTokens` to be `required` and `aws:RequestTag/project` to be `voxelis-kiroween`, and uses `ArnEquals` on `ec2:InstanceProfile` with `!GetAtt JobInstanceProfile.Arn`.
     - `LaunchInDefaultVpc` uses `ArnEquals` on `ec2:Vpc` with the Default_VPC's ARN, built from `${JobSecurityGroup.VpcId}`. `LaunchWithJobSecurityGroup` names only the Job_Security_Group, built from `${JobSecurityGroup.GroupId}`.
@@ -118,7 +118,7 @@ Some files grow over several tasks, so each part comes with the task that the de
     - No statement covers `key-pair` or `launch-template` resources, and there's no `ec2:StartInstances`.
     - _Requirements: 1.3, 1.5, 1.6, 1.8, 1.9, 1.10, 1.11, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8_
 
-  - [~] 2.4 Add the runner's manage policy and the runner role
+  - [x] 2.4 Add the runner's manage policy and the runner role
     - Add `RunnerManagePolicy` with the eight statements of the design's manage table. It has no action that shares, publishes, copies or exports an image or a snapshot, and no `s3:DeleteObject` (A4).
     - `UploadJobFiles` allows only `s3:PutObject` and `s3:AbortMultipartUpload`, only on `${JobBucket.Arn}/jobs/*`, for the job's video and job record in `input/`. So the Runner_Role uploads only under `jobs/` and never under `work/`, and it has no `s3:PutObjectTagging`. It still lists and reads the whole bucket through the Read_Policy.
     - `StartShellOnJobMachine` uses the `ssm:resourceTag/project` condition key, and `StartShellDocument` grants `SSM-SessionManagerRunShell` in a statement of its own. In `OwnShellsOnly`, write `${aws:userid}` as a plain string, never inside a `!Sub`, where it would have to be `${!aws:userid}`.
@@ -126,13 +126,13 @@ Some files grow over several tasks, so each part comes with the task that the de
     - Add the output `RunnerRoleArn`, with the design's description and no `Export`.
     - _Requirements: 1.3, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 10.1, 10.2, 10.3_
 
-  - [~] 2.5 Add the project group and the last output
+  - [x] 2.5 Add the project group and the last output
     - Add `AssumeRunnerPolicy` with its one statement, `AssumeRunnerRole`, which allows `sts:AssumeRole` on `!GetAtt RunnerRole.Arn` and nothing else, with no condition.
     - Add `ProjectGroup` with `ManagedPolicyArns: [!Ref ReadPolicy, !Ref AssumeRunnerPolicy]` and nothing more: no users and no self-service IAM permissions. The template makes no IAM user.
     - Add the output `GroupName` (`!Ref ProjectGroup`). The outputs are then exactly the seven of Req 10.1, each with a description and none with an `Export`.
     - _Requirements: 1.5, 1.6, 1.9, 9.1, 9.2, 9.3, 9.4, 10.1, 10.2, 10.3_
 
-  - [~] 2.6 Run the Compliance_Check on the whole template, make the Template_Test pass, and check the template's size
+  - [x] 2.6 Run the Compliance_Check on the whole template, make the Template_Test pass, and check the template's size
     - Run the Compliance_Check on the whole template, task 1's resources included, the same way as in 1.6.
     - The design expects one more Unfit_Rule: `IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE` on `JobPolicy` and on `ReadPolicy`, each with the reason in its "Suppressions" table. `IAM_NO_INLINE_POLICY_CHECK` should pass already, because every permission is a managed policy.
     - If the wildcard-resource rule fails on `RunnerLaunchPolicy`, `RunnerManagePolicy` or `AssumeRunnerPolicy`, for example because of ARNs that end in `/*`, it isn't an Unfit_Rule there. Ask the user before suppressing it.
@@ -142,7 +142,7 @@ Some files grow over several tasks, so each part comes with the task that the de
     - Check the whole template's size by hand with `(Get-Item cloud/aws-setup.yaml).Length`, as in 1.6. It must be at most 51,200 bytes, and the design expects about 20 KB. If any fix in this sub-task changes the template, run the other checks again, so the template that's committed has passed all of them.
     - _Requirements: 1.12, 1.13, 2.6, 3.6, 7.7, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 17.1, 17.3_
 
-  - [~] 2.7 Run the tests and commit
+  - [x] 2.7 Run the tests and commit
     - Search `cloud/aws-setup.yaml` for region names such as `us-east-1`, for 12-digit numbers and for the team members' names. It should hold none.
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - If anything in this sub-task changes `cloud/aws-setup.yaml`, run 2.6's checks on it again before committing.
@@ -150,41 +150,41 @@ Some files grow over several tasks, so each part comes with the task that the de
     - On `feat/aws-setup`: `git add cloud/aws-setup.yaml`, then `git commit -m "AWS setup: the roles, the policies and the project group" -- cloud/aws-setup.yaml`.
     - _Requirements: 1.9, 17.6, 17.7, 17.8_
 
-- [ ] 3. The stack's name in config, the quota line and the region rule
+- [x] 3. The stack's name in config, the quota line and the region rule
   - Files: `config.toml`, `tests/test_config.py`, `.kiro/steering/tech.md` and `.kiro/steering/rules.md`, all changed.
   - _Requirements: 10.4, 16.1, 16.13, 17.4, 17.6, 17.7, 17.8_
 
-  - [~] 3.1 Add `stack_name` to `[aws]` in `config.toml`
+  - [x] 3.1 Add `stack_name` to `[aws]` in `config.toml`
     - After `spend_variable`, add the design's comment line and `stack_name = "voxelis-kiroween"`. The other `[aws]` keys and every other section stay as they are.
     - _Requirements: 10.4_
 
-  - [~] 3.2 Add `stack_name` to `UNCHANGED_SECTIONS` in `tests/test_config.py`
+  - [x] 3.2 Add `stack_name` to `UNCHANGED_SECTIONS` in `tests/test_config.py`
     - `UNCHANGED_SECTIONS["aws"]` gets `"stack_name": "voxelis-kiroween"`, so `test_the_real_git_aws_paid_and_devlog_sections_are_unchanged` passes with the new key. Change nothing else in the file. This is the only edit to an existing test.
     - _Requirements: 17.4_
 
-  - [~] 3.3 Change the quota line in `.kiro/steering/tech.md`
+  - [x] 3.3 Change the quota line in `.kiro/steering/tech.md`
     - Replace the line that starts "The GPU quota is per account and region" with the design's text. It says our quota allows 32 vCPUs of G instances at a time in us-east-1, one job machine runs at a time, fast and default jobs run on a g5.8xlarge with 32 vCPUs on 16 cores and one NVIDIA A10G, the next job waits for it, and a new AWS account starts at 0 and has to ask AWS for more.
     - _Requirements: 16.1_
 
-  - [~] 3.4 Add the two region lines to `.kiro/steering/rules.md`
+  - [x] 3.4 Add the two region lines to `.kiro/steering/rules.md`
     - Under `## AWS access`, right after the line that starts "In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`", add the two lines in Req 16.13's second note, word for word. The design's "Steering, README and licence edits" section gives the same two lines. The first says aws commands also pass `--region us-east-1`, because an `AWS_REGION` or `AWS_DEFAULT_REGION` environment variable beats the profile's region, even with `--profile`. The second says Python also passes `region_name` from `[aws].region` in `config.toml` to `boto3.Session`.
     - The two lines replace no line. Every other line of `## AWS access` stays as it is, and so do task 1's licence lines.
     - _Requirements: 16.13_
 
-  - [~] 3.5 Run the tests and commit
+  - [x] 3.5 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_config.py` and `tests/test_guard.py` included.
     - Check that the commit message names no Other_Resource, and that nothing in this task called AWS.
     - On `feat/aws-setup`: `git add config.toml tests/test_config.py .kiro/steering/tech.md .kiro/steering/rules.md`, then `git commit -m "AWS setup: the stack's name in config, the GPU quota line and the region rule" -- config.toml tests/test_config.py .kiro/steering/tech.md .kiro/steering/rules.md`.
     - _Requirements: 17.4, 17.6, 17.7, 17.8_
 
-- [ ] 4. The setup guide
+- [x] 4. The setup guide
   - Files: `docs/aws-setup.md` (new), `README.md`, `docs/third-party-licences.md` and `.kiro/steering/structure.md` (changed).
   - The whole guide follows the design's "Rules for the whole guide": plain words for someone running their own copy; no person, team member, account id or region, with `<your-region>` and the `config.toml` values instead; no Other_Resource; every aws command on one line; and no account-wide setting.
   - Every aws command in the guide passes `--region <your-region>`, the `aws configure` lines included. The commands run on a laptop also pass `--profile`. The commands run in CloudShell are bash, with `--region` and no `--profile`, because CloudShell runs as the console's login and has no named profiles.
   - No command prints an account id, a key or an ARN. Each lookup prints only what it needs with `--query ... --output text`, and `create-stack` and `create-change-set` end with `> /dev/null`, because their output is an ARN.
   - _Requirements: 10.5, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.12, 12.13, 12.14, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8, 13.9, 13.10, 13.11, 13.12, 13.13, 13.14, 13.15, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 15.1, 15.2, 15.3, 15.4, 16.2, 16.5, 16.9, 16.12, 17.6, 17.7, 17.8_
 
-  - [~] 4.1 Write `docs/aws-setup.md` up to Step 6
+  - [x] 4.1 Write `docs/aws-setup.md` up to Step 6
     - Write `# AWS setup`, `## Who does what`, `## What the stack makes` and Steps 1 to 6, with the headings, the order and the content of the design's "The Setup_Guide" table, and with the design's CloudShell commands for Step 4.
     - `## Who does what`: only the Account_Owner uses the console and CloudShell, with the new admin login and MFA, and with the root user only where Steps 1, 2 and 6 say. Only they deploy or update the Stack. Everyone else uses only the AWS CLI on their own laptop. Kiro never deploys or updates the Stack, and on a laptop the guard hook blocks the commands that create or update stacks when Kiro runs them. Laptop commands name the profile with `--profile`, never `AWS_PROFILE`, because AWS keys in environment variables beat `AWS_PROFILE`. Every command names the region with `--region`, because an `AWS_REGION` or `AWS_DEFAULT_REGION` variable beats the profile's region, even with `--profile`. The CloudShell commands are the one exception to `--profile`. The section ends with the placeholders and the `config.toml` values that the guide uses.
     - `## What the stack makes`: the resources in plain words and the job bucket's layout. The copies of a job's `input/` and `out/` folders go under `jobs/<job id>/input/` and `jobs/<job id>/out/` and stay until someone deletes them. The copy of its `work/` folder goes under `work/<job id>/`, and the bucket deletes each file there 60 days after its upload. The bucket also cancels any upload that's still unfinished 7 days after it started, anywhere in the bucket.
@@ -197,7 +197,7 @@ Some files grow over several tasks, so each part comes with the task that the de
     - Step 6 makes a monthly cost budget for the whole account (A1), with an email alert and the Project_Tag, with the admin login, or with the root user if the Billing console refuses the admin login (A2). It says the alert only sends an email and stops nothing, and it leaves the setting for IAM access to billing as it is.
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.14, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.11, 13.14, 15.1, 15.2, 15.3, 15.4_
 
-  - [~] 4.2 Write Steps 7 and 8 and the rest of `docs/aws-setup.md`
+  - [x] 4.2 Write Steps 7 and 8 and the rest of `docs/aws-setup.md`
     - Write Step 7, Step 8, `## Opening a shell on a job machine`, `## Stack outputs`, `## Updating the stack`, `## Removing the setup` and `## Another region or another name`, as the design's table gives them.
     - Use the design's laptop commands as written, each with `--profile` and `--region <your-region>`: `aws configure --profile kiroween-read --region <your-region>`, the runner profile's `role_arn` line for PowerShell and for bash, the `source_profile` and `region` lines, the two profile checks, the two quota commands and the `start-session` command. Apart from the `role_arn` line, each works the same in PowerShell and in bash.
     - Step 7 is for each person, in their own terminal and not through Kiro: install the AWS CLI v2, make the read profile from their keys, make the runner profile and run the two checks. It has one line telling people to answer `n` if `aws configure` ends by offering to configure AWS skills and the AWS MCP server for their AI coding agent, because Kiro gets AWS access only through the two profiles (Q3). Its notes say that the runner role's ARN holds the account id and goes only into the person's own AWS CLI config file, that AWS error messages can hold the account id, and that `aws sts get-caller-identity` is no check because it prints the account id. They also say the read profile's keys can assume the runner role, so the line between the two profiles is Kiro's Approval_Prompt, the Spend_Guard and our rules, not IAM.
@@ -211,19 +211,19 @@ Some files grow over several tasks, so each part comes with the task that the de
     - Then read the whole guide against Requirement 15 and Req 13.10, 13.11 and 13.14. Each aws command passes `--region <your-region>`, each laptop command also passes `--profile`, and each CloudShell command passes no `--profile`. No command prints an account id, a key or an ARN. Each command that calls AWS reaches only the Stack, its change sets or the G_Quota, by name, apart from Step 4's `describe-vpcs` lookup, which finds the default VPC with the `is-default` filter (Q4), and the `start-session` command, which opens a shell on one job machine by its id.
     - _Requirements: 10.5, 12.1, 12.8, 12.11, 12.12, 12.13, 13.7, 13.8, 13.9, 13.10, 13.11, 13.12, 13.13, 13.14, 13.15, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 15.1, 15.2, 15.3, 15.4_
 
-  - [~] 4.3 Add the AWS setup section to `README.md`
+  - [x] 4.3 Add the AWS setup section to `README.md`
     - After "Run the tests", add the design's `## AWS setup` section, which links `docs/aws-setup.md`.
     - _Requirements: 16.5_
 
-  - [~] 4.4 Add the Session Manager plugin's row to `docs/third-party-licences.md`
+  - [x] 4.4 Add the Session Manager plugin's row to `docs/third-party-licences.md`
     - Add the design's "AWS Session Manager plugin" row after the `awslabs.aws-iac-mcp-server` row: Apache-2.0, a separate command line tool that people run with the AWS CLI to open a shell on a job machine, never vendored, linked or shipped, and Installed "Not yet". It comes in this task, with the guide that tells people to install it.
     - _Requirements: 16.9, 16.12_
 
-  - [~] 4.5 Change the `docs/` line in `.kiro/steering/structure.md`
+  - [x] 4.5 Change the `docs/` line in `.kiro/steering/structure.md`
     - Replace it with the design's text, which adds `aws-setup.md`, the guide to setting up AWS, and goes in with the guide. It stays the only line that starts with ``- `docs/`:`` and still names `pipeline.md`, so `tests/test_docs.py` still passes.
     - _Requirements: 16.2_
 
-  - [~] 4.6 Run the tests and commit
+  - [x] 4.6 Run the tests and commit
     - Search `docs/aws-setup.md` for region names such as `us-east-1`, for 12-digit numbers and for the team members' names. It should hold none.
     - Run `uv run pytest`. Every test passes, `tests/test_docs.py` and `tests/test_guard.py` included.
     - Check that the files and the commit message name no Other_Resource, and that nothing in this task ran an `aws` command or touched a stack.
