@@ -7,7 +7,9 @@ license = "MIT"
 requires-python = ">=3.11,<3.12"
 # No GPU packages here (torch, gsplat, the depth model).
 # They only go in the cloud machine image, never in the laptop install.
-dependencies = []
+dependencies = [
+    "boto3>=1.44.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

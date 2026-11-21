@@ -56,3 +56,155 @@ files = 2
 [fake.quality]
 # Number of small files the fake step writes.
 files = 3
+
+[cloud]
+# How many minutes before the Time_Cap a Step should stop and save, for the Cap_Deadline.
+upload_margin_minutes = 10
+# How often the status command and the machine's uploader poll, in seconds.
+poll_seconds = 20
+# Price of one in-use public IPv4 address, in US dollars per hour.
+ipv4_usd_per_hour = 0.005
+# Price of gp3 root storage, in US dollars per GB per month.
+gp3_usd_per_gb_month = 0.08
+# Root volume size in GB for every machine (jobs, smoke test and image builder).
+root_gb = 150
+# The instance type the smoke test runs on.
+smoke_instance_type = "g5.xlarge"
+# The instance type the image build runs on.
+image_builder_type = "g5.4xlarge"
+# The public SSM parameter that holds the current Base_AMI id.
+base_ami_parameter = "/aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-24.04/latest/ami-id"
+
+# One Machine_Spec per Allowed_Type. The type name holds a dot, so its table header is quoted,
+# or TOML would read [cloud.types.g5.xlarge] as nested tables. memory_gb and gpu_memory_gb are the
+# hard needs a Step's section is checked against; vcpus is the soft need and the G-quota cost.
+# Prices are us-east-1 Linux On-Demand, published 2026-11-21.
+[cloud.types."g5.xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 4
+# RAM in GB, a hard need.
+memory_gb = 16
+# GPU memory in GB (NVIDIA A10G), a hard need.
+gpu_memory_gb = 24
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 1.006
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g5.2xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 8
+# RAM in GB, a hard need.
+memory_gb = 32
+# GPU memory in GB (NVIDIA A10G), a hard need.
+gpu_memory_gb = 24
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 1.212
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g5.4xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 16
+# RAM in GB, a hard need.
+memory_gb = 64
+# GPU memory in GB (NVIDIA A10G), a hard need.
+gpu_memory_gb = 24
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 1.624
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g5.8xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 32
+# RAM in GB, a hard need.
+memory_gb = 128
+# GPU memory in GB (NVIDIA A10G), a hard need.
+gpu_memory_gb = 24
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 2.448
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g6.2xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 8
+# RAM in GB, a hard need.
+memory_gb = 32
+# GPU memory in GB (NVIDIA L4), a hard need.
+gpu_memory_gb = 24
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 0.9776
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g6.4xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 16
+# RAM in GB, a hard need.
+memory_gb = 64
+# GPU memory in GB (NVIDIA L4), a hard need.
+gpu_memory_gb = 24
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 1.3232
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g6e.2xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 8
+# RAM in GB, a hard need.
+memory_gb = 64
+# GPU memory in GB (NVIDIA L40S), a hard need.
+gpu_memory_gb = 48
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 2.24208
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.types."g6e.4xlarge"]
+# vCPUs, the cost against the G quota.
+vcpus = 16
+# RAM in GB, a hard need.
+memory_gb = 128
+# GPU memory in GB (NVIDIA L40S), a hard need.
+gpu_memory_gb = 48
+# us-east-1 On-Demand price per hour, in US dollars, on price_date.
+price_per_hour_usd = 3.00424
+# The date price_per_hour_usd was read.
+price_date = "2026-11-21"
+
+[cloud.presets.fast]
+# Ordered fallback. Primary g5.8xlarge is pinned; the rest are tunable.
+fallback = ["g5.8xlarge", "g5.4xlarge", "g6.4xlarge", "g5.2xlarge", "g6.2xlarge"]
+# Expected run time in minutes, for the money quote.
+expected_minutes = 30
+# The Time_Cap in minutes, the hard backstop when something hangs.
+cap_minutes = 120
+[cloud.presets.default]
+# Ordered fallback. Primary g5.8xlarge is pinned; the rest are tunable.
+fallback = ["g5.8xlarge", "g5.4xlarge", "g6.4xlarge"]
+# Expected run time in minutes, for the money quote.
+expected_minutes = 60
+# The Time_Cap in minutes, the hard backstop when something hangs.
+cap_minutes = 180
+[cloud.presets.quality]
+# Primary g6e.4xlarge and fallback g6e.2xlarge are pinned (assumption D), the 48 GB L40S class.
+fallback = ["g6e.4xlarge", "g6e.2xlarge"]
+# Expected run time in minutes, for the money quote.
+expected_minutes = 120
+# The Time_Cap in minutes, the hard backstop when something hangs.
+cap_minutes = 360
+
+# Expected/cap for the smoke test and the image build (settled in Q2).
+[cloud.smoke]
+# Expected run time in minutes, for the money quote.
+expected_minutes = 10
+# The Time_Cap in minutes.
+cap_minutes = 30
+[cloud.image]
+# Expected run time in minutes, for the money quote.
+expected_minutes = 45
+# The Time_Cap in minutes.
+cap_minutes = 120

@@ -1,0 +1,10 @@
+{
+  "name": "voxelis-kiroween",
+  "version": "0.1.0",
+  "description": "Pins PlayCanvas splat-transform for the machine image's npm ci. The laptop tests never run npm.",
+  "private": true,
+  "license": "MIT",
+  "dependencies": {
+    "@playcanvas/splat-transform": "3.8.0"
+  }
+}

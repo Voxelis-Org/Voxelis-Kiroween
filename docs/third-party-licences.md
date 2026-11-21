@@ -9,7 +9,13 @@ Every dependency, tool, model weight and dataset we use, with its licence and ho
 | pytest | MIT. Its dependencies are BSD-3-Clause (colorama), MIT (iniconfig, pluggy), Apache-2.0 or BSD-2-Clause (packaging) and BSD-2-Clause (Pygments). | Runs the tests. Dev group only. | Yes |
 | Hypothesis | MPL-2.0. Its dependency sortedcontainers is Apache-2.0. | Property tests. Dev group, tests only. | Yes |
 | cfn-lint | MIT-0. Its dependencies are MIT (PyYAML), BSD-3-Clause (jsonpatch, jsonpointer, networkx, sympy, mpmath), Apache-2.0 and CNRI-Python (regex) and PSF-2.0 (typing-extensions). | The template test in `tests/test_aws_setup.py` runs it on `cloud/aws-setup.yaml`. Dev group only. | Yes |
-| boto3 | Apache-2.0 | Talks to AWS, only inside `cloud/`. | Not yet |
+| boto3 | Apache-2.0 | Talks to AWS, only inside `cloud/`. | Yes |
+| botocore | Apache-2.0 | The low-level core boto3 is built on. Comes in through boto3, only inside `cloud/`. | Yes |
+| s3transfer | Apache-2.0 | Manages S3 uploads and downloads for boto3. Comes in through boto3, only inside `cloud/`. | Yes |
+| jmespath | MIT | Filters AWS responses for boto3. Comes in through boto3, only inside `cloud/`. | Yes |
+| python-dateutil | Apache-2.0 and BSD-3-Clause (dual-licensed) | Parses AWS timestamps for botocore. Comes in through botocore, only inside `cloud/`. | Yes |
+| six | MIT | Python 2/3 compatibility shim. Comes in through python-dateutil, only inside `cloud/`. | Yes |
+| urllib3 | MIT | The HTTP client botocore uses to reach AWS. Comes in through botocore, only inside `cloud/`. | Yes |
 | ffmpeg and ffprobe | LGPL or GPL, depending on the build | ffprobe reads the video's container, streams and length when a Job is made. ffmpeg extracts the frames. Both are separate command line tools, on our private machine image and on laptops for the tests, never vendored or linked. | Yes, on the laptop. Not yet on the machine image. |
 | COLMAP 4.2.1 | BSD-3-Clause | Command line tool on our private machine image. Finds the camera poses. Built without CUDA, OpenGL, the GUI, CGAL and LSD. | Not yet |
 | gsplat 1.5.3 | Apache-2.0 | Trains the splat. Cloud image only. | Not yet |
