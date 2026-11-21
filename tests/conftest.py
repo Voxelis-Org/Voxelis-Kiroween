@@ -1,16 +1,20 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
-new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config, and
-work_calls, which records whose Fake_Step work runs.
+new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
+set_frames, which changes its [frames] settings, and work_calls, which records whose Fake_Step
+work runs.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
-a Job in the real data/ folder (Req 14.2).
+a Job in the real data/ folder (Req 14.2). The test config also has [frames] with its three
+Preset tables, so a test that runs the Frames_Step without a Config of its own gets settings
+(frames spec, Req 9.11).
 """
 
+import json
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,14 +58,74 @@ files = 2
 files = 3
 """
 
+# The test config's [frames] Shared_Settings: the real values, except that min_picks is 1 and both
+# timeouts are 60 s, so tiny clips pass. Each value has the TOML type it has in the real config.
+FRAMES = {
+    "score_width": 320,
+    "tonemap_npl": 100,
+    "tonemap_desat": 0.0,
+    "still_motion": 1.0,
+    "motion_window_seconds": 1,
+    "min_still_seconds": 2,
+    "blip_seconds": 0.5,
+    "jolt_ratio": 0.6,
+    "jolt_window_seconds": 1,
+    "mask_samples": 240,
+    "mask_ratio": 0.2,
+    "mask_min_coverage": 0.002,
+    "mask_max_coverage": 0.25,
+    "jpeg_quality": 95,
+    "long_edge": 1600,
+    "seconds_per_pick": 2,
+    "max_picks": 400,
+    "min_picks": 1,
+    "min_vcpus": 16,
+    "min_memory_gb": 16,
+    "ffmpeg_timeout_seconds": 60,
+    "ffprobe_timeout_seconds": 60,
+}
 
-def config_text(jobs_folder: Path, **fail: str) -> str:
+# The test config's base_picks, the one Preset_Setting of [frames], for each Preset. They're tiny
+# for the same reason as min_picks.
+BASE_PICKS = {"fast": 2, "default": 3, "quality": 4}
+
+
+def toml_value(value: object) -> str:
+    """`value` as a TOML value: a bool as true or false, text in double quotes as JSON writes it,
+    and a number as Python writes it, which TOML reads back as the same int or float."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return json.dumps(value)
+    return repr(value)
+
+
+def frames_text(frames: Mapping[str, Any]) -> str:
+    """[frames] and its three Preset tables as TOML, with each key in `frames` set to its value
+    and every other key at its value in FRAMES or BASE_PICKS.
+
+    A Shared_Setting takes its new value, like {"mask_samples": 3}. base_picks takes a dict of
+    the Presets it changes, like {"base_picks": {"fast": 50}}, and the other Presets keep theirs.
+    """
+    shared = {**FRAMES, **{key: value for key, value in frames.items() if key != "base_picks"}}
+    base_picks = {**BASE_PICKS, **frames.get("base_picks", {})}
+    return ("\n[frames]\n"
+            + "".join(f"{key} = {toml_value(value)}\n" for key, value in shared.items())
+            + "".join(f"\n[frames.{preset}]\nbase_picks = {toml_value(value)}\n"
+                      for preset, value in base_picks.items()))
+
+
+def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
+                frames: Mapping[str, Any] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    section gets fail = "none". The Jobs_Folder is written with forward slashes, so a Windows
-    backslash can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames] comes last, with the keys in `frames` changed
+    as frames_text says. The Jobs_Folder is written with forward slashes, so a Windows backslash
+    can't become a TOML escape."""
+    modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
-    return jobs + "".join(STEP_TOML.format(name=name, fail=fail.get(name, "none"))
-                          for name in STEP_NAMES)
+    fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
+                    for name in STEP_NAMES)
+    return jobs + fakes + frames_text(frames or {})
 
 
 @pytest.fixture(autouse=True)
@@ -85,11 +149,29 @@ def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. load_config() reads the file each time it's
-    called, so the next run that loads the config sees the change.
+    fail = "none", and set_fail() sets them all back. [frames] is back to the test config's values
+    too. load_config() reads the file each time it's called, so the next run that loads the config
+    sees the change.
     """
     def rewrite(**modes: str) -> None:
-        temp_config.write_text(config_text(tmp_path / "jobs", **modes), encoding="utf-8")
+        temp_config.write_text(config_text(tmp_path / "jobs", fail=modes), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_frames(**values), which rewrites the test config with each [frames] key it names
+    set to the given value, like set_frames(mask_samples=3). base_picks, which each Preset has
+    its own of, takes a dict of the Presets to change, like set_frames(base_picks={"fast": 50}).
+
+    Like set_fail, each call writes the whole file again from config_text, so every key it doesn't
+    name is back to the test config's value, and every fail is back to "none". The next run that
+    loads the config sees the change. Each test gets a new test config, so the next test sees the
+    test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
 
     return rewrite
 

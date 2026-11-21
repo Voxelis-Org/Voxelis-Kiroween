@@ -33,6 +33,22 @@ def test_the_ffmpeg_row_says_what_ffprobe_reads_and_that_the_tools_are_never_ven
     assert "never vendored or linked" in how
 
 
+def test_numpy_and_headless_opencv_say_yes_and_opencv_never_reads_or_writes_video() -> None:
+    """Frames spec, Req 12.6."""
+    for name in ("numpy", "opencv-python-headless"):
+        assert licence_row(name)["Installed"] == "Yes", f"The {name} row should say Yes"
+    how = licence_row("opencv-python-headless")["How we use it"]
+    assert "never reads or writes video" in how, (
+        "The opencv-python-headless row should say it never reads or writes video")
+
+
+def test_the_ffmpeg_row_names_decoding_the_used_part_zscale_and_tonemap() -> None:
+    """Frames spec, Req 12.6."""
+    how = licence_row("ffmpeg and ffprobe")["How we use it"]
+    for words in ("ffmpeg decodes the frames of the Used_Part", "zscale", "tonemap"):
+        assert words in how, f"The ffmpeg and ffprobe row should say {words!r}"
+
+
 # The Skeleton's ## headings in docs/pipeline.md. They all come before the first ## Step: section.
 SKELETON_HEADINGS = (
     "The job folder", "The job record", "Step reports", "Presets and config.toml", "The step list",
