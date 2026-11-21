@@ -78,3 +78,4 @@ What the test found, and how the rules block it:
 - 2026-11-21 14:16+05:30 | feat/aws-setup | aws-setup 2.7 Run the tests and commit | cloud/aws-setup.yaml, .kiro/specs/aws-setup/tasks.md, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 14:20+05:30 | feat/aws-setup | aws-setup 3.3 Change the quota line in `.kiro/steering/tech.md` | .kiro/specs/aws-setup/tasks.md, .kiro/steering/tech.md, config.toml, .kiro/specs/aws-setup/tasks.meta.json
 - 2026-11-21 14:20+05:30 | feat/aws-setup | aws-setup 3.1 Add `stack_name` to `[aws]` in `config.toml` | .kiro/specs/aws-setup/tasks.md, .kiro/steering/tech.md, config.toml, .kiro/specs/aws-setup/tasks.meta.json
+- 2026-11-21 14:23+05:30 | feat/aws-setup | aws-setup 3.4 Add the two region lines to `.kiro/steering/rules.md` | .kiro/specs/aws-setup/tasks.md, .kiro/steering/rules.md, .kiro/steering/tech.md, config.toml, .kiro/specs/aws-setup/tasks.meta.json
