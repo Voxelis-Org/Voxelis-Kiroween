@@ -97,3 +97,4 @@ What the test found, and how the rules block it:
 - 2026-11-22 01:47+05:30 | feat/cloud-runner | cloud-jobs 2.1 Write `cloud/redact.py` | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/errors.py, cloud/redact.py
 - 2026-11-22 01:49+05:30 | feat/cloud-runner | cloud-jobs 2.2 Write `cloud/errors.py` | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/errors.py, cloud/redact.py
 - 2026-11-22 02:06+05:30 | feat/cloud-runner | cloud-jobs 2.3 Write `cloud/aws.py` and `tests/fake_aws.py` | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/aws.py, cloud/errors.py, cloud/redact.py, tests/fake_aws.py
+- 2026-11-22 02:09+05:30 | feat/cloud-runner | cloud-jobs 2.4 Write `cloud/stack.py` | .kiro/specs/cloud-jobs/tasks.md, .kiro/specs/cloud-jobs/tasks.meta.json, cloud/aws.py, cloud/errors.py, cloud/redact.py, cloud/stack.py, tests/fake_aws.py
