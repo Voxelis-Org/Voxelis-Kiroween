@@ -1,0 +1,500 @@
+# The CloudFormation template for the splat pipeline's AWS setup, in plain YAML. The account
+# owner deploys it once as the stack, from CloudShell in the AWS console, by following
+# docs/aws-setup.md.
+#
+# This file holds its own numbers and names: the 60 and 7 days of the bucket's lifecycle rules,
+# the ports 443 and 80, the allowed instance types, the project tag project=voxelis-kiroween and
+# the bucket's prefixes jobs/ and work/. They live here and not in config.toml, because
+# CloudFormation can't read config.toml. Changing one of them, an allowed instance type for
+# example, means editing this file and then updating the stack, as docs/aws-setup.md says.
+#
+# Keep this file within 51,200 bytes, the most that --template-body takes.
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS setup for the splat pipeline: a private job bucket, the job machines' role, instance profile and security group, the runner role, the read policy and the project group. One parameter: the id of this region's default VPC."
+
+Parameters:
+  DefaultVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: ID of this region's default VPC, where the job machines start.
+
+Resources:
+  JobBucket:
+    Type: AWS::S3::Bucket
+    # Deleting the stack, or an update that replaces the bucket, keeps the bucket and its files.
+    # A failed first create deletes the still-empty bucket. UpdateReplacePolicy has no
+    # RetainExceptOnCreate value.
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Metadata:
+      guard:
+        SuppressedRules:
+          - S3_BUCKET_LOGGING_ENABLED  # Access logs would need a second bucket, and nobody reads them for a private job bucket.
+          - S3_BUCKET_VERSIONING_ENABLED  # Versions would keep every replaced or expired job file, and its cost.
+          - S3_BUCKET_REPLICATION_ENABLED  # Job files can be made again from the video, so a copy in another region isn't worth its cost.
+          - S3_BUCKET_DEFAULT_LOCK_ENABLED  # Object lock needs versioning and would stop the 60-day rule from deleting work files.
+          - S3_BUCKET_NO_PUBLIC_RW_ACL  # ACLs are off and all four public access blocks are on. The rule wants AccessControl, which cfn-lint warns against (W3045).
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        # Only files under work/ are ever deleted. The abort rule stays a rule of its own with no
+        # filter, so it covers the whole bucket, jobs/ included, and only aborts unfinished uploads.
+        Rules:
+          - Id: delete-work-files-after-60-days
+            Status: Enabled
+            Prefix: work/
+            ExpirationInDays: 60
+          - Id: abort-unfinished-uploads-after-7-days
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  JobBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref JobBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyRequestsWithoutTls
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt JobBucket.Arn
+              - !Sub "${JobBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # Its VpcId is the DefaultVpcId parameter, so the group is in the default VPC of the stack's
+  # region. No ingress rules, so nothing comes in, and the two egress rules replace EC2's
+  # allow-all outbound rule.
+  JobSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+          - EC2_SECURITY_GROUP_EGRESS_OPEN_TO_WORLD_RULE  # Job machines reach AWS and package mirrors on public addresses, and only TCP 443 and 80 are open.
+    Properties:
+      # EC2 takes no apostrophes in these descriptions, and no & in the rule descriptions.
+      GroupDescription: "Job machines: nothing in, HTTPS and HTTP out"
+      VpcId: !Ref DefaultVpcId
+      SecurityGroupEgress:
+        - Description: HTTPS to AWS APIs, S3, Session Manager and package mirrors
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - Description: HTTP to the Ubuntu apt mirrors
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  # Everything a job machine may do: list, read and upload under jobs/ and work/ in the job
+  # bucket, and run the Session Manager agent for shells. It has no delete and no tag permission,
+  # because the 60-day rule finds the work files by their prefix and deletes them.
+  JobPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      guard:
+        SuppressedRules:
+          - IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE  # Session Manager's channel actions only take "*". That statement is limited to this stack's region.
+    Properties:
+      Description: Lets job machines list, read and upload files under jobs/ and work/ in the job bucket, with no deletes, and run the Session Manager agent.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ListJobAndWorkFolders
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource: !GetAtt JobBucket.Arn
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - "jobs/*"
+                  - "work/*"
+          - Sid: ReadAndUploadJobFiles
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+            Resource:
+              - !Sub "${JobBucket.Arn}/jobs/*"
+              - !Sub "${JobBucket.Arn}/work/*"
+          - Sid: SessionManagerAgentHeartbeat
+            Effect: Allow
+            Action: ssm:UpdateInstanceInformation
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+          # These three actions take no resource, so this is the policy's one statement whose
+          # resource is "*", and it's limited to the stack's region.
+          - Sid: SessionManagerAgentChannels
+            Effect: Allow
+            Action:
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+          - Sid: SessionManagerAgentDataChannel
+            Effect: Allow
+            Action: ssmmessages:OpenDataChannel
+            Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:session/*"
+
+  JobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: The role that job machines run as, through the job instance profile. Only EC2 can assume it.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Ec2AssumesThisRole
+            Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref JobPolicy
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  JobInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref JobRole
+
+  # Read-only access for the project group and the runner role: describe EC2, read the console
+  # output of tagged job machines, the GPU quota and the base AMI ids, list and read the whole job
+  # bucket, under jobs/ and work/ alike, and read this stack, all in the stack's region. It starts,
+  # changes and deletes nothing, and reads nothing in IAM.
+  ReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      guard:
+        SuppressedRules:
+          - IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE  # EC2's describe actions only take "*". That statement is limited to this stack's region.
+    Properties:
+      Description: Read-only access for the people who run jobs and for the runner role. Describes EC2, reads the console output of tagged job machines, the GPU quota and the Deep Learning Base AMI ids, lists and reads the whole job bucket, and reads this stack, all in this region. It starts, changes and deletes nothing.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # EC2's describe actions only take "*" as their resource, so this is the policy's one
+          # statement whose resource is "*", and it's limited to the stack's region.
+          - Sid: DescribeEc2InThisRegion
+            Effect: Allow
+            Action: "ec2:Describe*"
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+          - Sid: ReadJobMachineConsoles
+            Effect: Allow
+            Action: ec2:GetConsoleOutput
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/project: voxelis-kiroween
+          - Sid: ReadGpuQuota
+            Effect: Allow
+            Action:
+              - servicequotas:GetServiceQuota
+              - servicequotas:ListRequestedServiceQuotaChangeHistoryByQuota
+            Resource: !Sub "arn:${AWS::Partition}:servicequotas:${AWS::Region}:${AWS::AccountId}:ec2/L-DB2E81BA"
+          - Sid: ReadBaseAmiIds
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/deeplearning/ami/x86_64/base-*"
+          - Sid: ListJobBucket
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource: !GetAtt JobBucket.Arn
+          - Sid: ReadJobFiles
+            Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub "${JobBucket.Arn}/*"
+          # This stack's exact ARN, so a later stack with the same name isn't covered.
+          - Sid: ReadThisStack
+            Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResource
+              - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
+            Resource: !Ref AWS::StackId
+
+  # Launching job machines (A3). RunInstances checks each resource of a launch on its own, so each
+  # kind of resource gets its own statement. No statement covers key pairs or launch templates, so
+  # a launch that names one is refused. A machine starts only by a new launch, never by starting a
+  # stopped one, and every EC2 ARN here holds the stack's region, so launches only work there.
+  RunnerLaunchPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Lets the runner role launch job machines in this region, only of the allowed types, from an Amazon image or a tagged image of this account, with the job instance profile, IMDSv2, the project tag, the job security group and a subnet of the default VPC, and with no key pair or launch template.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # A condition whose key is missing from the request fails, so a launch without the
+          # project tag, the job instance profile or IMDSv2 is refused.
+          - Sid: LaunchJobMachine
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                ec2:InstanceType:
+                  - g5.xlarge
+                  - g5.2xlarge
+                  - g5.4xlarge
+                  - g5.8xlarge
+                  - g6.2xlarge
+                  - g6.4xlarge
+                  - g6e.2xlarge
+                  - g6e.4xlarge
+                ec2:MetadataHttpTokens: required
+                aws:RequestTag/project: voxelis-kiroween
+              ArnEquals:
+                ec2:InstanceProfile: !GetAtt JobInstanceProfile.Arn
+          - Sid: LaunchFromAmazonImage
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+            Condition:
+              StringEquals:
+                ec2:Owner: amazon
+          - Sid: LaunchFromMachineImage
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+            Condition:
+              StringEquals:
+                ec2:Owner: !Ref AWS::AccountId
+                aws:ResourceTag/project: voxelis-kiroween
+          - Sid: LaunchInDefaultVpc
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+            Condition:
+              ArnEquals:
+                ec2:Vpc: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${JobSecurityGroup.VpcId}"
+          # A launch that names no security group gets the VPC's default group, which isn't this
+          # one, so it's refused too.
+          - Sid: LaunchWithJobSecurityGroup
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${JobSecurityGroup.GroupId}"
+          - Sid: LaunchVolumes
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+          # Tags go on only in the request that makes the instance, volume, network interface,
+          # image or snapshot, so the project tag can't go on anything that already exists.
+          - Sid: TagOnlyWhenCreating
+            Effect: Allow
+            Action: ec2:CreateTags
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction:
+                  - RunInstances
+                  - CreateImage
+          - Sid: PassJobRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !GetAtt JobRole.Arn
+            Condition:
+              StringEquals:
+                iam:PassedToService: ec2.amazonaws.com
+
+  # Stopping and cleaning up job machines, uploading job files and opening shells. It reaches only
+  # machines, images and snapshots with the project tag, and every EC2 and SSM ARN here holds the
+  # stack's region. It has no action that shares, publishes, copies or exports an image or a
+  # snapshot, because a machine image holds GPL command line tools that we don't distribute, and
+  # no delete in the job bucket (A4).
+  RunnerManagePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Lets the runner role stop and terminate tagged job machines in this region, make tagged images of them, remove tagged images and snapshots, upload files under jobs/ in the job bucket with no deletes, and open shells on tagged job machines and end or resume only its own. It can't share, publish, copy or export an image or a snapshot.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: StopJobMachines
+            Effect: Allow
+            Action:
+              - ec2:StopInstances
+              - ec2:TerminateInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/project: voxelis-kiroween
+          # A CreateImage request needs both this statement and the next one, so it's refused
+          # unless it tags the new image and its snapshots with the project tag.
+          - Sid: ImageFromJobMachine
+            Effect: Allow
+            Action: ec2:CreateImage
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/project: voxelis-kiroween
+          - Sid: TagNewMachineImage
+            Effect: Allow
+            Action: ec2:CreateImage
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+            Condition:
+              StringEquals:
+                aws:RequestTag/project: voxelis-kiroween
+          - Sid: RemoveMachineImages
+            Effect: Allow
+            Action:
+              - ec2:DeregisterImage
+              - ec2:DeleteSnapshot
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/project: voxelis-kiroween
+          # The start command uploads the job's video and job record to jobs/<job id>/input/. Only
+          # job machines upload to work/. No tag permission, because the lifecycle rules have no
+          # tag filter. The read policy still lists and reads the whole bucket.
+          - Sid: UploadJobFiles
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+            Resource: !Sub "${JobBucket.Arn}/jobs/*"
+          - Sid: StartShellOnJobMachine
+            Effect: Allow
+            Action: ssm:StartSession
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                ssm:resourceTag/project: voxelis-kiroween
+          # Session Manager needs this grant for its shell document when a policy names documents.
+          # The document doesn't carry our tag, so this statement has no condition.
+          - Sid: StartShellDocument
+            Effect: Allow
+            Action: ssm:StartSession
+            Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/SSM-SessionManagerRunShell"
+          # Each session's session-id tag holds the aws:userid of the role session that started it,
+          # <role id>:<role session name>, so a role session ends or resumes only its own shells.
+          # ${aws:userid} stays a plain string, outside any !Sub, so CloudFormation passes it on
+          # unchanged. Inside a !Sub it would have to be ${!aws:userid}.
+          - Sid: OwnShellsOnly
+            Effect: Allow
+            Action:
+              - ssm:TerminateSession
+              - ssm:ResumeSession
+              - ssmmessages:OpenDataChannel
+            Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:session/*"
+            Condition:
+              StringEquals:
+                ssm:resourceTag/aws:ssmmessages:session-id: "${aws:userid}"
+
+  # The role that our start, smoke-test and stop-all commands use, through each person's runner
+  # profile. Its trust policy names the account's root principal, because an IAM group can't be a
+  # principal, so only principals in this account whose own policies allow sts:AssumeRole on this
+  # role can assume it. It asks for no MFA, because the start command can't type a code.
+  # MaxSessionDuration stays at its default of one hour.
+  RunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: The role that launches, stops and cleans up job machines, uploads job files and opens shells on job machines. Principals in this account whose own policies allow it can assume it, with no MFA.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AccountPrincipalsAssumeThisRole
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref ReadPolicy
+        - !Ref RunnerLaunchPolicy
+        - !Ref RunnerManagePolicy
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  # The project group's right to assume the runner role, which each person's runner profile uses.
+  # It has no condition: no MFA, because the start command can't type a code, and no region,
+  # because STS can use its global endpoint.
+  AssumeRunnerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Lets the people who run jobs assume the runner role, and nothing else.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeRunnerRole
+            Effect: Allow
+            Action: sts:AssumeRole
+            Resource: !GetAtt RunnerRole.Arn
+
+  # The IAM group for the people who run jobs. Adding a person's IAM user to it is the account
+  # owner's OK for them to run jobs. It holds only the read policy and the right to assume the
+  # runner role, with no self-service IAM permissions. The stack makes no IAM user and adds no
+  # one to the group.
+  ProjectGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      ManagedPolicyArns:
+        - !Ref ReadPolicy
+        - !Ref AssumeRunnerPolicy
+
+Outputs:
+  BucketName:
+    Description: Name of the job bucket, which holds one jobs/<job id>/ folder and one work/<job id>/ folder per job.
+    Value: !Ref JobBucket
+  JobRoleArn:
+    Description: ARN of the role that job machines run as.
+    Value: !GetAtt JobRole.Arn
+  JobInstanceProfileArn:
+    Description: ARN of the instance profile that every job machine starts with.
+    Value: !GetAtt JobInstanceProfile.Arn
+  RunnerRoleArn:
+    Description: ARN of the runner role, which each person's runner profile assumes.
+    Value: !GetAtt RunnerRole.Arn
+  SecurityGroupId:
+    Description: ID of the security group that every job machine starts with.
+    Value: !GetAtt JobSecurityGroup.GroupId  # gives the id with or without a VpcId, unlike !Ref
+  VpcId:
+    Description: ID of the default VPC that holds the security group. Job machines start in its default subnets.
+    Value: !GetAtt JobSecurityGroup.VpcId
+  GroupName:
+    Description: Name of the IAM group for the people who run jobs.
+    Value: !Ref ProjectGroup

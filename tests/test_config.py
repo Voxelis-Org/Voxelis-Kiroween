@@ -343,7 +343,7 @@ UNCHANGED_SECTIONS = {
     "git": {"main_branch": "main"},
     "aws": {"region": "us-east-1", "project_tag": "project=voxelis-kiroween",
             "read_profile": "kiroween-read", "runner_profile": "kiroween-runner",
-            "spend_variable": "APPROVED_SPEND"},
+            "spend_variable": "APPROVED_SPEND", "stack_name": "voxelis-kiroween"},
     "paid": {"aws": [
         "ec2 run-instances", "ec2 start-instances", "ec2 create-image",
         "ec2 request-spot-instances", "ec2 request-spot-fleet", "ec2 create-fleet",
