@@ -102,3 +102,4 @@ What the test found, and how the rules block it:
 - 2026-11-22 00:41+05:30 | feat/frame-picking | frames 6.6 Write the real ffmpeg tests in `tests/test_frames_ffmpeg.py` | .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json, tests/test_frames_ffmpeg.py
 - 2026-11-22 00:44+05:30 | feat/frame-picking | frames 6.7 Run the tests and commit | tests/test_frames_ffmpeg.py, .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json
 - 2026-11-22 00:57+05:30 | feat/frame-picking | frames 7.1 Write the step in `splatpipe/frames/__init__.py` | .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json, splatpipe/frames/__init__.py, splatpipe/frames/__main__.py
+- 2026-11-22 00:57+05:30 | feat/frame-picking | frames 7.2 Write `splatpipe/frames/__main__.py` | .kiro/specs/frames/tasks.md, .kiro/specs/frames/tasks.meta.json, splatpipe/frames/__init__.py, splatpipe/frames/__main__.py
