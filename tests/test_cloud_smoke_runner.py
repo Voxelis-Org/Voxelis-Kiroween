@@ -236,12 +236,16 @@ def test_the_smoke_checks_cover_the_image_in_order() -> None:
         "splat-transform", "moge-weights", "cloud-runner"]
 
 
+# What each tool prints for its version, as _run_command gives it back: stdout, a line break, then
+# stderr. COLMAP and Node print the version on stdout. splat-transform prints nothing on stdout and
+# its version on stderr, where all its status lines go, as the smoke machine found.
 @pytest.mark.parametrize(("name", "command", "output", "detail"), [
     ("colmap", ["colmap", "version"],
-     "COLMAP 4.2.1 (Commit 1a2b3c4 on 2026-11-20 without CUDA)\n",
+     "COLMAP 4.2.1 (Commit 1a2b3c4 on 2026-11-20 without CUDA)\n\n",
      "COLMAP 4.2.1 (Commit 1a2b3c4 on 2026-11-20 without CUDA)"),
-    ("node", ["node", "--version"], "v22.21.1\n", "node v22.21.1"),
-    ("splat-transform", [SPLAT_TRANSFORM, "--version"], "3.8.0\n", "splat-transform 3.8.0"),
+    ("node", ["node", "--version"], "v22.21.1\n\n", "node v22.21.1"),
+    ("splat-transform", [SPLAT_TRANSFORM, "--version"], "\nsplat-transform v3.8.0 (1a2b3c4)\n",
+     "splat-transform v3.8.0 (1a2b3c4)"),
 ])
 def test_each_tool_check_runs_its_tool_and_reports_its_version(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, command: list[str],
@@ -257,10 +261,19 @@ def test_each_tool_check_runs_its_tool_and_reports_its_version(
     assert asked == [(command, TIMEOUT)]
 
 
+def test_a_tool_check_finds_its_version_line_after_a_warning(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Node, or a library it loads, may print a warning on stderr before the tool's own version line.
+    output = "\n(node:4242) Warning: an example warning\nsplat-transform v3.8.0 (1a2b3c4)\n"
+    monkeypatch.setattr(cloud.smoke_runner, "_run_command", lambda given, timeout: output)
+    assert CHECKS["splat-transform"].run(context_in(tmp_path)) == "splat-transform v3.8.0 (1a2b3c4)"
+
+
 @pytest.mark.parametrize(("name", "output"), [
-    ("colmap", "Usage: something else\n"),
-    ("node", "22\n"),
-    ("splat-transform", "\n"),
+    ("colmap", "Usage: something else\n\n"),
+    ("node", "22\n\n"),
+    ("splat-transform", "\n\n"),
+    ("splat-transform", "\n(node:4242) Warning: an example warning\n"),
 ])
 def test_a_tool_check_fails_when_the_tool_prints_no_version(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, output: str) -> None:
@@ -325,6 +338,21 @@ def test_without_the_gpu_packages_each_gpu_check_fails_on_its_own() -> None:
 def test_run_command_gives_back_what_the_command_printed() -> None:
     output = cloud.smoke_runner._run_command([sys.executable, "-c", "print('hello')"], TIMEOUT)
     assert output.strip() == "hello"
+
+
+def test_run_command_gives_back_stdout_then_stderr() -> None:
+    # A tool may print its version on stderr, as splat-transform does, so both streams come back,
+    # stdout first.
+    script = "import sys; sys.stderr.write('on stderr\\n'); sys.stderr.flush(); print('on stdout')"
+    output = cloud.smoke_runner._run_command([sys.executable, "-c", script], TIMEOUT)
+    assert [line for line in output.splitlines() if line] == ["on stdout", "on stderr"]
+
+
+def test_run_command_finds_a_version_printed_only_on_stderr() -> None:
+    script = "import sys; sys.stderr.write('splat-transform v3.8.0 (1a2b3c4)\\n')"
+    output = cloud.smoke_runner._run_command([sys.executable, "-c", script], TIMEOUT)
+    assert cloud.smoke_runner._line_starting(output, "splat-transform") == (
+        "splat-transform v3.8.0 (1a2b3c4)")
 
 
 def test_run_command_names_the_exit_code_and_the_last_line_printed() -> None:

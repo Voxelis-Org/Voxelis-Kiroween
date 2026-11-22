@@ -264,29 +264,36 @@ def _check_ffmpeg(context: SmokeContext) -> str:
 
 def _check_colmap(context: SmokeContext) -> str:
     """COLMAP runs and prints its version."""
-    line = _first_line(_run_command(["colmap", "version"], _timeout(context)))
-    if not line.startswith("COLMAP"):
-        raise CloudError(f"`colmap version` printed {line!r}, not COLMAP's version. Check the "
+    output = _run_command(["colmap", "version"], _timeout(context))
+    line = _line_starting(output, "COLMAP")
+    if not line:
+        raise CloudError(f"`colmap version` {_printed(output)}, not COLMAP's version. Check the "
                          "image build's COLMAP step, then rebuild the image.")
     return line
 
 
 def _check_node(context: SmokeContext) -> str:
     """Node runs and prints its version."""
-    version = _first_line(_run_command(["node", "--version"], _timeout(context)))
-    if not version.startswith("v"):
-        raise CloudError(f"`node --version` printed {version!r}, not a version like v22.1.0. "
+    output = _run_command(["node", "--version"], _timeout(context))
+    version = _line_starting(output, "v")
+    if not version:
+        raise CloudError(f"`node --version` {_printed(output)}, not a version like v22.1.0. "
                          "Check the image build's Node step, then rebuild the image.")
     return f"node {version}"
 
 
 def _check_splat_transform(context: SmokeContext) -> str:
-    """splat-transform, which npm ci installed from package-lock.json, runs and prints its version."""
-    version = _first_line(_run_command([SPLAT_TRANSFORM, "--version"], _timeout(context)))
-    if not version:
-        raise CloudError("`splat-transform --version` printed nothing. Check the image build's "
-                         "npm ci step, then rebuild the image.")
-    return f"splat-transform {version}"
+    """splat-transform, which npm ci installed from package-lock.json, runs and prints its version.
+
+    It prints the version on stderr, where all its status lines go, and keeps stdout for output.
+    """
+    output = _run_command([SPLAT_TRANSFORM, "--version"], _timeout(context))
+    line = _line_starting(output, "splat-transform")
+    if not line:
+        raise CloudError(f"`splat-transform --version` {_printed(output)}, not its version, like "
+                         "splat-transform v3.8.0. Check the image build's npm ci step, then "
+                         "rebuild the image.")
+    return line
 
 
 def _check_moge_weights(context: SmokeContext) -> str:
@@ -407,10 +414,12 @@ def _timeout(context: SmokeContext) -> float:
 
 
 def _run_command(command: Sequence[str], timeout_seconds: float) -> str:
-    """Run one command and give back what it printed on stdout, or raise a readable CloudError.
+    """Run one command and give back what it printed, stdout first and then stderr, or raise a
+    readable CloudError.
 
-    A command that isn't installed, runs past `timeout_seconds` or exits with a code other than 0
-    fails, naming the command and the last line it printed.
+    Both streams come back because a tool may print its version on either: splat-transform puts
+    it on stderr. A command that isn't installed, runs past `timeout_seconds` or exits with a code
+    other than 0 fails, naming the command and the last line it printed.
     """
     shown = " ".join(command)
     try:
@@ -423,16 +432,30 @@ def _run_command(command: Sequence[str], timeout_seconds: float) -> str:
         raise CloudError(f"`{shown}` didn't finish within {timeout_seconds:g} s, the "
                          "check_timeout_seconds in [cloud.smoke].") from error
     stdout = result.stdout.decode("utf-8", errors="replace")
+    stderr = result.stderr.decode("utf-8", errors="replace")
     if result.returncode != 0:
-        stderr = result.stderr.decode("utf-8", errors="replace")
         raise CloudError(f"`{shown}` exited with code {result.returncode}: "
                          f"{_last_line(stderr) or _last_line(stdout) or 'it printed nothing'}")
-    return stdout
+    return f"{stdout}\n{stderr}"
 
 
 def _first_line(text: str) -> str:
     """The first line of `text` that isn't blank, stripped, or "" when there is none."""
     return next((line.strip() for line in text.splitlines() if line.strip()), "")
+
+
+def _line_starting(text: str, prefix: str) -> str:
+    """The first line of `text` that starts with `prefix`, stripped, or "" when there is none.
+
+    A tool's version line is found this way, so a warning printed before it doesn't hide it.
+    """
+    return next((line.strip() for line in text.splitlines() if line.strip().startswith(prefix)), "")
+
+
+def _printed(output: str) -> str:
+    """What a command printed, for a failed check's message: its first line, or that it was nothing."""
+    line = _first_line(output)
+    return f"printed {line!r}" if line else "printed nothing"
 
 
 def _last_line(text: str) -> str:
