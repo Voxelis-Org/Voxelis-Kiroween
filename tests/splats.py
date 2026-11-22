@@ -29,12 +29,28 @@ The Centre sets strategy is for Property 3 in tests/test_clean_filters.py: centr
 and a set of more than k centres for nearest_others to search, coincident pairs included.
 twin_candidates says where a pair can go without making a tie at a Gaussian's k-th nearest, and
 has_tie_at_kth_nearest is the brute-force check that drops a draw with one (Req 10.13).
+
+The Splats for the references strategy is for Property 4 in tests/test_clean_filters.py:
+reference_splats gives Splat_Data of 0 to 60 Gaussians, the empty set included, with finite
+Required_Properties, stored opacities from -12 to 12 and stored scales from -8 to 3, and drops a
+draw with tied Centre_Distances as splats does. The Settings strategy, valid_settings, gives
+valid values of the settings the filters and the limits read, as keyword arguments for
+clean_settings.
+
+The Splats for the extremes strategies are for Property 8 in tests/test_clean_filters.py.
+extreme_splats gives Splat_Data of 0 to 60 Gaussians whose centres, stored opacities and stored
+scales are any finite float32 values, 3.4e38, -3.4e38 and the subnormals included. It keeps the
+draws with tied Centre_Distances, because faint_keep searches for no neighbours. rescaled_splats
+gives Splat_Data and the same Gaussians with c added to every stored scale and every centre
+multiplied by 2**m, every moved value exact in float32, and drops a draw with tied
+Centre_Distances as splats does.
 """
 
 import functools
 import itertools
 import math
 import struct
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeVar
@@ -391,12 +407,12 @@ carried_faults = st.none() | st.tuples(st.sampled_from(CARRIED_NAMES),
 
 
 @st.composite
-def centre_bases(draw: st.DrawFn,
-                 clusters: Sequence[tuple[int, int, int]]) -> tuple[tuple[int, int, int], float]:
+def centre_bases(draw: st.DrawFn, clusters: Sequence[tuple[int, int, int]],
+                 kinds: Sequence[str] = CENTRE_KINDS) -> tuple[tuple[int, int, int], float]:
     """Where one Gaussian's centre is before its jitter, as a lattice point and the factor that
     multiplies it once the jitter is added: a lattice point or one of `clusters`, with a factor
-    of 1, or a far outlier, as CENTRE_KINDS weights them."""
-    kind = draw(st.sampled_from(CENTRE_KINDS))
+    of 1, or a far outlier, as `kinds` weights them, CENTRE_KINDS unless given."""
+    kind = draw(st.sampled_from(kinds))
     if kind == "lattice":
         return draw(lattice_points), 1.0
     if kind == "cluster":
@@ -563,3 +579,208 @@ def centre_distances(centres: np.ndarray) -> np.ndarray:
     as an (m, m) array, worked out as has_tied_distances does, which is how the tree does it."""
     d = centres[:, None, :] - centres[None, :, :]
     return np.sqrt(d[..., 0] * d[..., 0] + d[..., 1] * d[..., 1] + d[..., 2] * d[..., 2])
+
+
+# Splats for the references, for Property 4
+
+# The stored opacities and scales of Property 4's splats, as float32 values: opacities from -12
+# to 12, so Faint_Gaussians and the rest both turn up, and scales from -8 to 3. In these ranges
+# no exp that Property 4's reference takes overflows.
+plain_opacities = st.floats(min_value=-12, max_value=12, width=32)
+plain_scales = st.floats(min_value=-8, max_value=3, width=32)
+# Where a Gaussian of reference_splats has its centre before its jitter: a cluster six times in
+# nine, a lattice point twice and a far outlier once. Clusters come more often than CENTRE_KINDS
+# gives them, so that more Cubes hold enough Faint_Gaussians to keep them. Hypothesis shrinks to
+# the first.
+CLUSTERED_KINDS = ("lattice",) * 2 + ("cluster",) * 6 + ("outlier",)
+
+
+@st.composite
+def reference_splats(draw: st.DrawFn) -> np.ndarray:
+    """Splat_Data of 0 to MOST_GAUSSIANS Gaussians for Property 4, the empty set included, as a
+    structured array with a float32 field for each property of standard_fields(), as gaussians
+    gives. Every Required_Property is finite.
+
+    - Centres are lattice points, clusters and far outliers up to 3e38 and -3e38, each moved by
+      its index-based jitter, as splats draws them, but with clusters more often, as
+      CLUSTERED_KINDS weights them.
+    - Stored opacities are from -12 to 12, and stored scales from -8 to 3.
+    - The quaternions and the Carried_Properties keep the plain values gaussians gives them.
+
+    A draw is dropped with assume when a Gaussian has two others at the same Centre_Distance
+    (Req 10.13).
+    """
+    n = draw(st.integers(min_value=0, max_value=MOST_GAUSSIANS))
+    clusters = draw(st.lists(lattice_points, min_size=1, max_size=MOST_CLUSTERS))
+    bases = draw(st.lists(centre_bases(clusters, CLUSTERED_KINDS), min_size=n, max_size=n))
+    # Reshaped, so the empty set gives empty columns too.
+    points = np.array([point for point, _ in bases], dtype=np.float64).reshape(n, 3)
+    factors = np.array([factor for _, factor in bases], dtype=np.float64).reshape(n, 1)
+    centres = factors * (points + JITTERS[:n])
+    data = gaussians(n)
+    for axis, name in enumerate(("x", "y", "z")):
+        data[name] = centres[:, axis]
+    # Checked here, before the opacities and scales are drawn, so a dropped draw costs little.
+    assume(not has_tied_distances(np.column_stack(
+        [data[name].astype(np.float64) for name in ("x", "y", "z")])))
+    data["opacity"] = draw(st.lists(plain_opacities, min_size=n, max_size=n))
+    for name in ("scale_0", "scale_1", "scale_2"):
+        data[name] = draw(st.lists(plain_scales, min_size=n, max_size=n))
+    return data
+
+
+# Settings
+
+# faint_min_paint_share is 0 or a normal float, from sys.float_info.min, about 2.2e-308, up to but
+# not including 1, and never a subnormal one like 5e-324. faint_keep multiplies the share by a
+# Cube_Paint that it has shifted to 1 or more, and a subnormal share makes that product underflow,
+# which np.errstate(all="raise") in the filter tests turns into an error. The design doesn't allow
+# for that underflow, but no real config uses such a share, so faint.py stays as designed.
+paint_shares = (st.sampled_from((0.0, 0.10))
+                | st.floats(min_value=sys.float_info.min, max_value=1, exclude_max=True))
+# Valid values of the settings the filters and the limits read, as keyword arguments for
+# clean_settings, like clean_settings(**values). Each one is in the range Req 6.7 or 6.8 gives
+# it, and the config's own values and some ends of the ranges are drawn often.
+valid_settings = st.fixed_dictionaries({
+    # Hypothesis draws a float from 0 to 1 below 6.2e-6, the Real_Opacity of a stored opacity of
+    # -12, so often that 45% of Property 4's draws held no Faint_Gaussian. A float from 0.001 to
+    # 0.999, which it spreads more evenly, is drawn as often, and brought that down to about 20%.
+    "min_opacity": (st.sampled_from((0.0, 0.005, 1.0)) | st.floats(min_value=0, max_value=1)
+                    | st.floats(min_value=0.001, max_value=0.999)),
+    "faint_cube_divisions": st.just(128) | st.integers(min_value=1, max_value=300),
+    # Small counts, from 2 to 4, come often, so that clusters reach them and a Gaussian alone in
+    # its Cube doesn't.
+    "faint_min_per_cube": (st.just(8) | st.integers(min_value=2, max_value=4)
+                           | st.integers(min_value=1, max_value=10)),
+    "faint_min_paint_share": paint_shares,
+    "extent_trim_percent": (st.sampled_from((0.0, 1.0))
+                            | st.floats(min_value=0, max_value=50, exclude_max=True)),
+    "neighbours": st.integers(min_value=1, max_value=10),
+    "isolation_ratio": st.floats(min_value=0.5, max_value=20),
+    "max_removed_fraction": st.just(0.7) | st.floats(min_value=0, max_value=1),
+    "max_workers": st.integers(min_value=0, max_value=2),
+})
+
+
+# Splats for the extremes, for Property 8
+
+# The values extreme_values draws on purpose, beside what st.floats draws: 3.4e38 and -3.4e38,
+# from HUGE, and the smallest and the largest subnormal float32, 2**-149 and 2**-126 - 2**-149,
+# each with either sign.
+SUBNORMALS = (2.0 ** -149, 2.0 ** -126 - 2.0 ** -149)
+EXTREMES = (*HUGE, *SUBNORMALS, *(-value for value in SUBNORMALS))
+# float32's largest finite value, about 3.4028e38.
+FLOAT32_MAX = float(np.finfo(np.float32).max)
+# Any finite float32 value from st.floats, and one of EXTREMES one time in four. A float32 field
+# stores 3.4e38 as the float32 value nearest it, and every other value exactly. st.floats is
+# bounded at FLOAT32_MAX because, unbounded, it draws float64 values and drops each one too big
+# for a float32, which made two draws of extreme_splats in three invalid.
+extreme_values = mostly(st.floats(min_value=-FLOAT32_MAX, max_value=FLOAT32_MAX, width=32),
+                        *EXTREMES)
+
+
+@st.composite
+def extreme_splats(draw: st.DrawFn) -> np.ndarray:
+    """Splat_Data of 0 to MOST_GAUSSIANS Gaussians for the first half of Property 8, the empty set
+    included, as a structured array with a float32 field for each property of standard_fields(),
+    as gaussians gives. Its centres, stored opacities and stored scales are any finite float32
+    values from extreme_values, so 3.4e38, -3.4e38 and the subnormals turn up in each. The
+    quaternions and the Carried_Properties keep the plain values gaussians gives them.
+
+    Unlike the other Splats strategies, it keeps a draw in which a Gaussian has two others at the
+    same Centre_Distance. Req 10.13 keeps those out because the Isolated_Filter's answer can hang
+    on the tree's order, but faint_keep searches for no neighbours, so a tie can't change its
+    answer. Seen from a centre at 3e38 or 1e30, every centre near the origin is at one float64
+    distance, so 911 of 1,000 of these draws had a tie, every one of more than 20 Gaussians
+    among them. Dropping them failed Hypothesis's filter_too_much health check in all three runs
+    tried.
+    """
+    n = draw(st.integers(min_value=0, max_value=MOST_GAUSSIANS))
+    data = gaussians(n)
+    for name in ("x", "y", "z", "opacity", "scale_0", "scale_1", "scale_2"):
+        data[name] = draw(st.lists(extreme_values, min_size=n, max_size=n))
+    return data
+
+
+# Stored scales for the second half of Property 8: whole multiples of 1/4 from -8 to 3. And c,
+# which goes on every one of them: a whole multiple of 1/4 up to 10**6 in size. Every scale + c is
+# then a multiple of 1/4 below 2**22 in size, which float32 holds exactly. Above about 720 in
+# size, c puts every Real_Scale outside float64's range. st.integers draws small sizes so often
+# that only 1 draw in 7 had a c above 10**5 in size, so c is 10**6 or -10**6 one time in four.
+quarter_scales = st.integers(min_value=-32, max_value=12).map(lambda k: k / 4)
+scale_shifts = mostly(st.integers(min_value=-4 * 10 ** 6, max_value=4 * 10 ** 6)
+                      .map(lambda k: k / 4), 1e6, -1e6)
+# m, where every centre is multiplied by 2**m.
+centre_powers = st.integers(min_value=-20, max_value=20)
+# The smallest size of a centre coordinate that rescaled_splats draws. Each one is a lattice
+# coordinate plus its index-based jitter plus this, so it's from 2**-10 to about 3.01 in size, and
+# times 2**m it's a normal float32 value, exactly.
+SMALLEST_COORDINATE = 2.0 ** -10
+# Where a Gaussian of rescaled_splats has its centre before its jitter: a cluster six times in
+# eight and a lattice point twice, as CLUSTERED_KINDS gives them but with no far outlier, whose
+# coordinates can be far above 2**10.
+NEAR_KINDS = ("lattice",) * 2 + ("cluster",) * 6
+
+
+@dataclass(frozen=True)
+class Rescaled:
+    """A draw for the second half of Property 8: Splat_Data, and the same Gaussians with c added
+    to every stored scale and every centre multiplied by 2**m."""
+
+    data: np.ndarray
+    moved: np.ndarray
+    c: float
+    m: int
+
+
+@st.composite
+def rescaled_splats(draw: st.DrawFn) -> Rescaled:
+    """Splat_Data of 0 to MOST_GAUSSIANS Gaussians for the second half of Property 8, the empty
+    set included, and the same Gaussians with c added to every stored scale and every centre
+    multiplied by 2**m. Both are structured arrays with a float32 field for each property of
+    standard_fields(), as gaussians gives.
+
+    - Centres are lattice points and clusters, each moved by its index-based jitter and then by
+      SMALLEST_COORDINATE on every axis, so each coordinate is from 2**-10 to 2**10 in size. None
+      is 0: at a subnormal extent_trim_percent, a low corner interpolated up from a coordinate of
+      0 can underflow to 0 at one scale and not at another, which moves a centre across a Cube
+      face.
+    - Stored opacities are any finite float32 values from extreme_values, and stored scales are
+      from quarter_scales.
+    - c is from scale_shifts and m from centre_powers.
+    - The quaternions and the Carried_Properties keep the plain values gaussians gives them.
+
+    Every moved value is checked to be the float32 value equal to the exact result. A draw is
+    dropped with assume when a Gaussian has two others at the same Centre_Distance (Req 10.13).
+    """
+    n = draw(st.integers(min_value=0, max_value=MOST_GAUSSIANS))
+    clusters = draw(st.lists(lattice_points, min_size=1, max_size=MOST_CLUSTERS))
+    bases = draw(st.lists(centre_bases(clusters, NEAR_KINDS), min_size=n, max_size=n))
+    # Reshaped, so the empty set gives empty columns too.
+    points = np.array([point for point, _ in bases], dtype=np.float64).reshape(n, 3)
+    centres = points + JITTERS[:n] + SMALLEST_COORDINATE
+    data = gaussians(n)
+    for axis, name in enumerate(("x", "y", "z")):
+        data[name] = centres[:, axis]
+    # Checked here, before the opacities and scales are drawn, so a dropped draw costs little.
+    assume(not has_tied_distances(np.column_stack(
+        [data[name].astype(np.float64) for name in ("x", "y", "z")])))
+    data["opacity"] = draw(st.lists(extreme_values, min_size=n, max_size=n))
+    for name in ("scale_0", "scale_1", "scale_2"):
+        data[name] = draw(st.lists(quarter_scales, min_size=n, max_size=n))
+    c = draw(scale_shifts)
+    m = draw(centre_powers)
+    moved = data.copy()
+    for name in ("scale_0", "scale_1", "scale_2"):
+        moved[name] = exactly_float32(data[name].astype(np.float64) + c)
+    for name in ("x", "y", "z"):
+        moved[name] = exactly_float32(data[name].astype(np.float64) * 2.0 ** m)
+    return Rescaled(data, moved, c, m)
+
+
+def exactly_float32(values: np.ndarray) -> np.ndarray:
+    """`values`, a float64 array, as float32, after checking that float32 holds each one exactly,
+    so a moved value never differs from the exact result."""
+    stored = values.astype(np.float32)
+    assert (stored.astype(np.float64) == values).all(), "float32 can't hold a moved value exactly"
+    return stored

@@ -17,6 +17,24 @@ Isolated_Filter uses. A part holds its unit tests first and its property tests a
   (Req 2.16). Property 3 checks nearest_others on sets from centre_sets, coincident pairs
   included: each Gaussian gets k others, none of them itself and none twice, which are exactly
   its k nearest others found by brute force, at their brute-force Centre_Distances (Req 2.16).
+- The Faint_Filter, in faint.py: log_opacity is finite and at most 0 for stored opacities from
+  -3.4e38 to 3.4e38, and log_paint is finite for stored scales of 3.4e38 and -3.4e38 (Req 2.11).
+  A Cube of faint_min_per_cube Faint_Gaussians that paint just over faint_min_paint_share of it
+  keeps them all, one at a stored opacity of -1000 included, and drops them all with one fewer or
+  a little less Faint_Paint, while a Gaussian at or above min_opacity beside them is kept
+  (Req 2.4, 2.5, 2.9). A min_opacity of 0 makes no Faint_Gaussian and one of 1 makes every
+  Gaussian one, and a faint_min_paint_share of 0 keeps a Cube whose Faint_Paint underflows. A
+  centre on a Cube face goes to the Cube above it, a far outlier sets the Cube_Edge only when
+  nothing is trimmed, and a centre at 3e38 raises nothing (Req 2.6, 2.7, 2.11). Coincident centres
+  and a set of one give one Cube, an empty set gives an empty answer, and HUGE_DIVISIONS divisions
+  or subnormal centres give each distinct centre a Cube of its own (Req 2.8, 2.10). Property 4
+  checks faint_keep against cube_rule, a reference in plain Python that takes no logarithm and
+  shifts no sum, on Splat_Data from reference_splats, the empty set included, and settings from
+  valid_settings (Req 2.4 to 2.7, 2.9, 2.10, 2.20). Property 8 checks that faint_keep raises no
+  floating-point error, and log_opacity and log_paint give finite values, on Splat_Data from
+  extreme_splats, whose centres, stored opacities and stored scales are any finite float32
+  values. It also checks, on draws from rescaled_splats, that adding c to every stored scale and
+  multiplying every centre by 2**m changes no answer (Req 2.11).
 
 The autouse fixture float_errors_raise runs every test here inside np.errstate(all="raise"), so
 an overflow, an invalid value, a division by 0 or an underflow anywhere in a filter fails the
@@ -25,17 +43,22 @@ passes (Req 2.11).
 """
 
 import math
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from scipy.spatial import cKDTree
 
 from splatpipe.clean.broken import broken_keep
+from splatpipe.clean.faint import (FLOAT32_HALF_STEP, HUGE_DIVISIONS, cube_groups, faint_keep,
+                                   log_opacity, log_paint)
 from splatpipe.clean.neighbours import nearest_others, positions
+from splatpipe.clean.settings import CleanSettings
 
-from splats import centre_sets, gaussians, splats
+from splats import (Rescaled, centre_sets, clean_settings, extreme_splats, gaussians,
+                    reference_splats, rescaled_splats, splats, valid_settings)
 
 # The smallest float32 above 0, 2**-149, a subnormal.
 SMALLEST_SUBNORMAL = np.finfo(np.float32).smallest_subnormal
@@ -215,3 +238,427 @@ def test_no_gaussian_is_its_own_neighbour(centres_and_k: tuple[np.ndarray, int])
                              for other in range(tree.n) if other != point)
         assert set(others) == {other for _, other in by_distance[:k]}
         assert distances == [centre_distance(centres[point], centres[other]) for other in others]
+
+
+# The Faint_Filter
+
+# The test settings' faint_min_per_cube and faint_min_paint_share, 8 and 0.10.
+PER_CUBE = clean_settings().faint_min_per_cube
+SHARE = clean_settings().faint_min_paint_share
+# Stored opacities from one end of float32's range to the other.
+STORED_OPACITIES = (0.0, 1.0, -1.0, 40.0, -40.0, 1000.0, -1000.0, 3.4e38, -3.4e38)
+
+
+@dataclass(frozen=True)
+class Stored:
+    """One Gaussian as the Faint_Filter reads it: its stored centre, opacity and three scales."""
+
+    centre: tuple[float, float, float]
+    opacity: float
+    scales: tuple[float, float, float] = (0.0, 0.0, 0.0)  # so each Real_Scale is 1
+
+
+def log_real_opacity(stored: float) -> float:
+    """log Real_Opacity for the stored opacity `stored`, in plain Python: log(1 / (1 + e^-o)),
+    written as min(o, 0) - log(1 + e^-|o|) so that no exp can overflow."""
+    return min(stored, 0.0) - math.log1p(math.exp(-abs(stored)))
+
+
+def logit(real_opacity: float) -> float:
+    """The stored opacity whose Real_Opacity is `real_opacity`."""
+    return math.log(real_opacity / (1 - real_opacity))
+
+
+def top_two(scales: Sequence[float]) -> float:
+    """The sum of the two largest of a Gaussian's three stored scales."""
+    return sum(sorted(scales)[1:])
+
+
+def paint(gaussian: Stored) -> float:
+    """The Gaussian's Paint by its rule: Real_Opacity x pi x the two largest Real_Scales."""
+    smaller, larger = sorted(gaussian.scales)[1:]
+    return (math.exp(log_real_opacity(gaussian.opacity)) * math.pi
+            * math.exp(smaller) * math.exp(larger))
+
+
+def faint_answer(members: Sequence[Stored], **settings: object) -> list[bool]:
+    """faint_keep's answer for the Gaussians `members`, as a list, with the test settings changed
+    as `settings` says, like faint_answer(members, min_opacity=0).
+
+    faint_keep gets the three float64 arrays filters.py gives it: the centres, one row each, the
+    stored opacities, and the sum of each Gaussian's two largest stored scales. Its answer must
+    be a bool array with one entry per Gaussian.
+    """
+    points = np.array([g.centre for g in members], dtype=np.float64).reshape(-1, 3)
+    opacity = np.array([g.opacity for g in members], dtype=np.float64)
+    sums = np.array([top_two(g.scales) for g in members], dtype=np.float64)
+    keep = faint_keep(points, opacity, sums, clean_settings(**settings))
+    assert keep.dtype == np.bool_ and keep.shape == (len(members),)
+    return keep.tolist()
+
+
+def cubes(points: Sequence[Sequence[float]], **settings: object) -> set[frozenset[int]]:
+    """cube_groups's Cubes for the centres `points`, each as the set of its rows, with the test
+    settings changed as `settings` says. Every row must be in exactly one Cube."""
+    order, starts = cube_groups(np.array(points, dtype=np.float64), clean_settings(**settings))
+    assert sorted(order.tolist()) == list(range(len(points)))
+    assert starts.dtype == np.bool_ and starts.shape == (len(points),) and starts[0]
+    bounds = [*np.flatnonzero(starts).tolist(), len(points)]
+    return {frozenset(order[a:b].tolist()) for a, b in zip(bounds, bounds[1:])}
+
+
+def test_log_opacity_is_finite_and_at_most_0_for_stored_opacities_from_minus_to_plus_3_4e38(
+        ) -> None:
+    la = log_opacity(np.array(STORED_OPACITIES))
+    assert la.dtype == np.float64
+    assert np.isfinite(la).all() and (la <= 0).all()
+    # So -3.4e38 gives -3.4e38, 0 gives -log 2, and 1000 and 3.4e38 give 0.
+    assert la.tolist() == pytest.approx([log_real_opacity(o) for o in STORED_OPACITIES])
+
+
+def test_log_paint_is_finite_for_stored_scales_of_3_4e38_and_minus_3_4e38() -> None:
+    # A stored opacity of 3.4e38 or -3.4e38 with each set of stored scales, so log Paint runs
+    # from about -1.0e39 to 6.8e38.
+    pairs = [(o, scales) for o in (3.4e38, -3.4e38)
+             for scales in ((3.4e38,) * 3, (-3.4e38,) * 3, (3.4e38, -3.4e38, 0.0))]
+    lp = log_paint(log_opacity(np.array([o for o, _ in pairs])),
+                   np.array([top_two(scales) for _, scales in pairs]))
+    assert np.isfinite(lp).all()
+    assert lp.tolist() == pytest.approx([log_real_opacity(o) + math.log(math.pi) + top_two(scales)
+                                         for o, scales in pairs])
+
+
+# Two bright Gaussians that make the Trimmed_Box run from (0, 0, 0) to (128, 128, 128) when
+# extent_trim_percent is 0, so at the test settings' 128 faint_cube_divisions the Cube_Edge is 1.
+FRAME = (Stored((0.0, 0.0, 0.0), 3.0), Stored((128.0, 128.0, 128.0), 3.0))
+# The bright Gaussian of the cube rule's Cube has a Real_Opacity of 0.5, which is above the test
+# settings' min_opacity of 0.005 and exactly at a min_opacity of 0.5.
+AT_OR_ABOVE = pytest.mark.parametrize("min_opacity", [0.005, 0.5], ids=["above", "at"])
+
+
+def in_cube(k: int) -> tuple[float, float, float]:
+    """The k-th of 16 centres in the Cube from (5, 5, 5) up to (6, 6, 6) when the Cube_Edge is 1."""
+    return (5 + k / 16, 5.5, 5.5)
+
+
+def faint_cube(faint_opacity: float, *, minus_1000: bool = True) -> tuple[list[Stored], Stored]:
+    """The cube rule's Cube, as its Faint_Gaussians and its bright Gaussian, which comes last.
+
+    faint_min_per_cube - 1 Faint_Gaussians have the Real_Opacity `faint_opacity`, and one more has
+    a stored opacity of -1000 unless `minus_1000` is false. Each of their Real_Scales is 1, so
+    each paints faint_opacity x pi, and the one at -1000 next to nothing. The bright Gaussian's
+    Real_Opacity is 0.5 and its two largest Real_Scales are 1 and 0.5, so it paints 0.25 pi.
+    """
+    opacities = [logit(faint_opacity)] * (PER_CUBE - 1) + ([-1000.0] if minus_1000 else [])
+    faint = [Stored(in_cube(k), o) for k, o in enumerate(opacities)]
+    half = -math.log(2)
+    return faint, Stored(in_cube(len(faint)), 0.0, (0.0, half, half))
+
+
+def faint_share(faint: Sequence[Stored], bright: Stored) -> float:
+    """The Faint_Paint of the Cube that holds `faint` and `bright` over its Cube_Paint, with each
+    Paint worked out by its rule."""
+    faint_paint = math.fsum(paint(g) for g in faint)
+    return faint_paint / (faint_paint + paint(bright))
+
+
+@AT_OR_ABOVE
+def test_a_cube_of_faint_min_per_cube_faint_gaussians_over_the_paint_share_keeps_them_all(
+        min_opacity: float) -> None:
+    faint, bright = faint_cube(0.004)
+    # 7 x 0.004 pi = 0.028 pi of a Cube_Paint of 0.278 pi, a share of 0.1007.
+    assert len(faint) == PER_CUBE and faint_share(faint, bright) > 1.005 * SHARE
+    answer = faint_answer([*FRAME, *faint, bright], extent_trim_percent=0, min_opacity=min_opacity)
+    assert answer == [True] * (len(faint) + 3)
+
+
+@AT_OR_ABOVE
+def test_the_same_cube_with_one_faint_gaussian_fewer_drops_them_all(min_opacity: float) -> None:
+    # Leaving out the one at -1000, which paints next to nothing, leaves the share at 0.1007.
+    faint, bright = faint_cube(0.004, minus_1000=False)
+    assert len(faint) == PER_CUBE - 1 and faint_share(faint, bright) > 1.005 * SHARE
+    answer = faint_answer([*FRAME, *faint, bright], extent_trim_percent=0, min_opacity=min_opacity)
+    assert answer == [True, True, *[False] * len(faint), True]
+
+
+@AT_OR_ABOVE
+def test_the_same_cube_with_a_little_less_faint_paint_drops_them_all(min_opacity: float) -> None:
+    faint, bright = faint_cube(0.0039)
+    # 7 x 0.0039 pi = 0.0273 pi of a Cube_Paint of 0.2773 pi, a share of 0.0984.
+    assert len(faint) == PER_CUBE and faint_share(faint, bright) < 0.99 * SHARE
+    answer = faint_answer([*FRAME, *faint, bright], extent_trim_percent=0, min_opacity=min_opacity)
+    assert answer == [True, True, *[False] * len(faint), True]
+
+
+def in_a_row(*stored_opacities: float) -> list[Stored]:
+    """Gaussians with the stored opacities given, at (0, 0, 0), (1, 0, 0) and so on, so that at
+    the test settings each is alone in its Cube."""
+    return [Stored((float(k), 0.0, 0.0), o) for k, o in enumerate(stored_opacities)]
+
+
+def test_a_min_opacity_of_0_makes_no_gaussian_faint() -> None:
+    # At the test settings' min_opacity each is a Faint_Gaussian alone in its Cube, so it's dropped.
+    specks = in_a_row(-3.4e38, -1000.0, -40.0, -6.0)
+    assert faint_answer(specks) == [False] * 4
+    assert faint_answer(specks, min_opacity=0) == [True] * 4
+
+
+def test_a_min_opacity_of_1_makes_every_gaussian_faint_a_stored_opacity_of_3_4e38_included(
+        ) -> None:
+    # At the test settings' min_opacity none is a Faint_Gaussian, so each is kept. At 1 each is,
+    # alone in its Cube, so it's dropped, though log_opacity gives 0, the log of 1, at 1000 and
+    # 3.4e38.
+    bright = in_a_row(3.4e38, 1000.0, 40.0, 0.0)
+    assert faint_answer(bright) == [True] * 4
+    assert faint_answer(bright, min_opacity=1) == [False] * 4
+
+
+def test_a_paint_share_of_0_keeps_a_cube_whose_faint_paint_underflows_next_to_a_bright_one(
+        ) -> None:
+    # Over the bright Gaussian's Paint, each Faint_Gaussian's is about e^-1000, which is 0 in
+    # float64, so their Faint_Paint underflows to 0.
+    faint = [Stored(in_cube(k), -1000.0) for k in range(PER_CUBE)]
+    members = [*FRAME, *faint, Stored(in_cube(PER_CUBE), 0.0)]
+    assert faint_answer(members, extent_trim_percent=0) == [True, True, *[False] * PER_CUBE, True]
+    assert faint_answer(members, extent_trim_percent=0,
+                        faint_min_paint_share=0) == [True] * (PER_CUBE + 3)
+
+
+@pytest.mark.parametrize("axis", [0, 1, 2], ids=["x", "y", "z"])
+def test_a_centre_on_a_cube_face_goes_to_the_cube_above_and_one_a_step_below_to_the_cube_below(
+        axis: int) -> None:
+    # With extent_trim_percent at 0, the corners at 0 and 32 make the Extent 32, so at the test
+    # settings' 128 faint_cube_divisions the Cube_Edge is 0.25, and there's a Cube face at 8.
+    def at(value: float) -> tuple[float, ...]:
+        centre = [16.125] * 3  # in the middle of a Cube on the other two axes
+        centre[axis] = value
+        return tuple(centre)
+
+    points = [(0.0, 0.0, 0.0), (32.0, 32.0, 32.0),
+              at(7.875), at(8.125), at(8.0), at(math.nextafter(8.0, 0.0))]
+    assert cubes(points, extent_trim_percent=0) == {
+        frozenset({0}), frozenset({1}), frozenset({2, 5}), frozenset({3, 4})}
+
+
+@pytest.mark.parametrize("far", [1e6, 3e38])
+def test_a_far_outlier_sets_the_cube_edge_at_a_trim_of_0_but_not_at_a_trim_of_1(far: float) -> None:
+    # 199 Gaussians on whole-number points from (0, 0, 0) to (5, 5, 5), and one far outlier.
+    lattice = [(float(x), float(y), float(z))
+               for z in range(6) for y in range(6) for x in range(6)][:199]
+    points = [*lattice, (far, 2.0, 2.0)]
+    # At 0 the outlier makes the Extent `far`, and a Cube_Edge of far / 128 holds the lattice.
+    assert cubes(points, extent_trim_percent=0) == {frozenset(range(199)), frozenset({199})}
+    # At 1 the Trimmed_Box leaves the outlier out and runs from (0, 0, 0) to (5, 5, 5), so a
+    # Cube_Edge of 5 / 128 gives every lattice point a Cube of its own. The outlier lands alone
+    # in a far Cube of that size. Put in the box's last Cube, it would share the Cube of (5, 2, 2).
+    assert cubes(points, extent_trim_percent=1) == {frozenset({k}) for k in range(200)}
+
+
+def test_every_centre_the_same_gives_one_cube_and_so_does_a_set_of_one() -> None:
+    assert cubes([(1.5, -2.25, 3.0)] * 5) == {frozenset(range(5))}
+    assert cubes([(1.5, -2.25, 3.0)]) == {frozenset({0})}
+
+
+def test_an_empty_set_gives_an_empty_answer() -> None:
+    assert faint_answer([]) == []
+
+
+@pytest.mark.parametrize("divisions", [HUGE_DIVISIONS, HUGE_DIVISIONS ** 4],
+                         ids=["HUGE_DIVISIONS", "too big for a float"])
+def test_huge_divisions_take_the_centre_path_and_give_each_distinct_centre_a_cube(
+        divisions: int) -> None:
+    # Two centres one float32 step apart on x, and two on one spot.
+    points = [(0.0, 0.0, 0.0), (1.0, 2.0, 3.0), (1.0, 2.0, 3.0), (1.0 + 2.0 ** -23, 2.0, 3.0)]
+    assert cubes(points, faint_cube_divisions=divisions) == {
+        frozenset({0}), frozenset({1, 2}), frozenset({3})}
+
+
+def test_subnormal_centres_with_a_tiny_extent_take_the_centre_path_and_give_each_a_cube() -> None:
+    # Centres a few times the smallest float32 step from 0, two of them on one spot, so the
+    # Extent is about 2.7e-45 and the Cube_Edge under FLOAT32_HALF_STEP.
+    tiny = float(SMALLEST_SUBNORMAL)
+    points = [(0.0, 0.0, 0.0), (tiny, 0.0, 0.0), (tiny, 0.0, 0.0), (0.0, tiny, 0.0),
+              (0.0, 0.0, 2 * tiny), (-tiny, 0.0, 0.0)]
+    assert cubes(points) == {frozenset({0}), frozenset({1, 2}), frozenset({3}), frozenset({4}),
+                             frozenset({5})}
+
+
+# How near a threshold a draw of Property 4 may come, as a relative distance. Nearer than that,
+# faint_keep's path through logarithms and shifted sums and the reference's plain one can round
+# to different answers, so the draw is dropped.
+NEAR = 1e-9
+
+
+def as_stored(data: np.ndarray) -> list[Stored]:
+    """The Gaussians of the Splat_Data `data` as the Faint_Filter reads them, one Stored each,
+    with every float32 value as the Python float that holds it exactly."""
+    return [Stored((float(g["x"]), float(g["y"]), float(g["z"])), float(g["opacity"]),
+                   (float(g["scale_0"]), float(g["scale_1"]), float(g["scale_2"])))
+            for g in data]
+
+
+def real_opacity(stored: float) -> float:
+    """The Real_Opacity for the stored opacity `stored`, the logistic function, with no log."""
+    return 1 / (1 + math.exp(-stored))
+
+
+def reference_paint(alpha: float, scales: Sequence[float]) -> float:
+    """The Paint of a Gaussian with the Real_Opacity `alpha` and the stored scales `scales`:
+    alpha x pi x the product of its two largest Real_Scales, each from math.exp."""
+    smaller, larger = sorted(math.exp(scale) for scale in scales)[1:]
+    return alpha * math.pi * smaller * larger
+
+
+def reference_cubes(members: Sequence[Stored], s: CleanSettings) -> list[tuple[float, ...]]:
+    """The Cube of each of `members`, a set of at least one Gaussian, as a key for a dict.
+
+    The Trimmed_Box's corners come from np.percentile on each axis, as the glossary defines
+    them, and the Extent and the Cube_Edge follow. A Gaussian's key is the tuple of
+    (p - low) // edge on the three axes, with Python's // on the float64 values faint_keep gets.
+    When the Extent is 0, every Gaussian gets the same key (Req 2.8).
+
+    A draw whose Cube_Edge is above 0 but at most FLOAT32_HALF_STEP is dropped with assume,
+    because faint_keep groups those by their centres, which a unit test covers.
+    """
+    columns = [[g.centre[axis] for g in members] for axis in range(3)]
+    t = s.extent_trim_percent
+    # The interpolation can underflow, between two tiny values or at a tiny trim percent, which
+    # is right, as faint.py allows.
+    with np.errstate(under="ignore"):
+        low = [float(np.percentile(column, t)) for column in columns]
+        high = [float(np.percentile(column, 100 - t)) for column in columns]
+    extent = max(top - bottom for bottom, top in zip(low, high))
+    if extent <= 0:
+        return [()] * len(members)
+    edge = extent / s.faint_cube_divisions
+    assume(edge > FLOAT32_HALF_STEP)
+    return [tuple((p - corner) // edge for p, corner in zip(g.centre, low)) for g in members]
+
+
+def cube_rule(members: Sequence[Stored], s: CleanSettings) -> list[bool]:
+    """The reference for Property 4, which shares no code with faint.py: which of `members` the
+    cube rule keeps, worked out in plain Python, one Gaussian at a time, on the whole set.
+
+    The Faint_Gaussians are those whose Real_Opacity is below min_opacity. Each Gaussian goes in
+    a dict entry for its Cube, keyed by reference_cubes. A Cube's Cube_Paint sums the Paint of
+    every Gaussian in it and its Faint_Paint that of its Faint_Gaussians, each with math.fsum. A
+    Cube keeps its Faint_Gaussians when it holds at least faint_min_per_cube of them and its
+    Faint_Paint is above faint_min_paint_share times its Cube_Paint, and every other Gaussian is
+    kept (Req 2.4, 2.5, 2.9). An empty set keeps nothing (Req 2.10). The reference takes no
+    logarithm and shifts no sum, so it's a separate path to the same rule.
+
+    A draw is dropped with assume when a Real_Opacity is within a relative NEAR of min_opacity,
+    or when a Cube that holds a Faint_Gaussian has a Faint_Paint within a relative NEAR of
+    faint_min_paint_share times its Cube_Paint. A Cube with no Faint_Gaussian has none to keep
+    or drop, so it isn't checked: its Faint_Paint of 0 would count as near a share of 0 times
+    its Cube_Paint.
+    """
+    if not members:
+        return []
+    alphas = [real_opacity(g.opacity) for g in members]
+    assume(not any(math.isclose(alpha, s.min_opacity, rel_tol=NEAR) for alpha in alphas))
+    faint = [alpha < s.min_opacity for alpha in alphas]
+    paints = [reference_paint(alpha, g.scales) for alpha, g in zip(alphas, members)]
+    by_cube: dict[tuple[float, ...], list[int]] = {}
+    for row, key in enumerate(reference_cubes(members, s)):
+        by_cube.setdefault(key, []).append(row)
+    keep = [True] * len(members)
+    for rows in by_cube.values():
+        faint_rows = [row for row in rows if faint[row]]
+        if not faint_rows:
+            continue
+        cube_paint = math.fsum(paints[row] for row in rows)
+        faint_paint = math.fsum(paints[row] for row in faint_rows)
+        bar = s.faint_min_paint_share * cube_paint
+        assume(not math.isclose(faint_paint, bar, rel_tol=NEAR))
+        keeps = len(faint_rows) >= s.faint_min_per_cube and faint_paint > bar
+        for row in faint_rows:
+            keep[row] = keeps
+    return keep
+
+
+@settings(deadline=None)
+@given(reference_splats(), valid_settings)
+def test_the_faint_filter_keeps_exactly_what_the_cube_rule_keeps(
+        data: np.ndarray, values: dict[str, object]) -> None:
+    """Feature: clean, Property 4: The Faint_Filter keeps exactly what the cube rule keeps
+
+    **Validates: Requirements 2.4, 2.5, 2.6, 2.7, 2.9, 2.10, 2.20**
+    """
+    members = as_stored(data)
+    expected = cube_rule(members, clean_settings(**values))
+    assert faint_answer(members, **values) == expected
+
+
+# Property 8, in two halves: any finite stored values raise no floating-point error, and a shift
+# of every stored scale with a power of 2 on every centre changes no answer.
+
+@settings(deadline=None)
+@given(extreme_splats(), valid_settings)
+def test_any_finite_stored_values_raise_no_floating_point_error(
+        data: np.ndarray, values: dict[str, object]) -> None:
+    """Feature: clean, Property 8: Large stored values change nothing and raise no floating-point error
+
+    **Validates: Requirements 2.11**
+    """
+    # float_errors_raise turns every overflow, invalid value, division by 0 or underflow that
+    # faint.py doesn't allow on purpose into a FloatingPointError, which fails the test.
+    members = as_stored(data)
+    la = log_opacity(np.array([g.opacity for g in members], dtype=np.float64))
+    assert np.isfinite(la).all() and (la <= 0).all()
+    lp = log_paint(la, np.array([top_two(g.scales) for g in members], dtype=np.float64))
+    assert np.isfinite(lp).all()
+    faint_answer(members, **values)
+
+
+# How near its threshold a share test of Property 8's second half may come, as a relative
+# distance. Adding c to every stored scale moves each log Paint's rounding by up to about 1e-10,
+# so nearer than this the two runs can round to different answers, and the draw is dropped.
+SHIFT_NEAR = 1e-6
+
+
+def near_a_share_threshold(members: Sequence[Stored], s: CleanSettings) -> bool:
+    """Whether a share test that faint_keep makes on `members` has a Faint_Paint within a
+    relative SHIFT_NEAR of faint_min_paint_share times its Cube_Paint.
+
+    faint_keep makes a share test only when faint_min_paint_share is above 0, and only for a
+    Cube that holds a Faint_Gaussian. The Faint_Gaussians come from log_opacity, as faint_keep
+    finds them, and the Cubes from reference_cubes. Each Cube's Paints are worked out over its
+    largest one, from log Paint, because real_opacity's math.exp would overflow at a stored
+    opacity of -3.4e38.
+    """
+    if s.faint_min_paint_share == 0 or not members:
+        return False
+    la = log_opacity(np.array([g.opacity for g in members], dtype=np.float64)).tolist()
+    bar = -math.inf if s.min_opacity == 0 else math.log(s.min_opacity)
+    faint = [s.min_opacity == 1 or alpha < bar for alpha in la]
+    lp = [alpha + math.log(math.pi) + top_two(g.scales) for alpha, g in zip(la, members)]
+    by_cube: dict[tuple[float, ...], list[int]] = {}
+    for row, key in enumerate(reference_cubes(members, s)):
+        by_cube.setdefault(key, []).append(row)
+    for rows in by_cube.values():
+        if not any(faint[row] for row in rows):
+            continue
+        top = max(lp[row] for row in rows)
+        paints = {row: math.exp(lp[row] - top) for row in rows}
+        cube_paint = math.fsum(paints.values())
+        faint_paint = math.fsum(paints[row] for row in rows if faint[row])
+        if math.isclose(faint_paint, s.faint_min_paint_share * cube_paint, rel_tol=SHIFT_NEAR):
+            return True
+    return False
+
+
+@settings(deadline=None)
+@given(rescaled_splats(), valid_settings)
+def test_shifting_every_stored_scale_and_scaling_every_centre_by_a_power_of_2_changes_nothing(
+        drawn: Rescaled, values: dict[str, object]) -> None:
+    """Feature: clean, Property 8: Large stored values change nothing and raise no floating-point error
+
+    **Validates: Requirements 2.11**
+    """
+    # In exact arithmetic neither change moves a Cube or a share test: 2**m passes exactly
+    # through the percentiles, the Extent and the floor division, and c multiplies every Paint
+    # by e**(2c). So a changed answer can only come from an overflow, an underflow or an infinity.
+    members = as_stored(drawn.data)
+    assume(not near_a_share_threshold(members, clean_settings(**values)))
+    assert faint_answer(as_stored(drawn.moved), **values) == faint_answer(members, **values)
