@@ -233,17 +233,17 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/clean`: `git add splatpipe/clean/faint.py tests/splats.py tests/test_clean_filters.py`, then commit those files with the title "Clean step: faint filter" and the body "Adds faint.py, which judges every faint Gaussian with the rest of its cube, so a faint sheet that paints a visible surface stays and scattered faint specks go, with no opacity floor. It works in the log domain and never casts a cube to an integer, so no finite stored value can overflow it, and the properties check it against a plain-Python reference."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 5. Isolated filter
+- [x] 5. Isolated filter
   - Files: `splatpipe/clean/isolated.py` (new), `tests/splats.py` and `tests/test_clean_filters.py` (changed).
   - _Requirements: 2.12, 2.13, 2.14, 2.15, 2.16, 2.21, 8.9, 10.1, 10.2, 10.3, 10.5, 10.13_
 
-  - [ ] 5.1 Write `splatpipe/clean/isolated.py`
+  - [x] 5.1 Write `splatpipe/clean/isolated.py`
     - `isolated_keep()`, as in the design's "isolated.py" section, with the `workers` it's given.
     - A set of `neighbours` Gaussians or fewer is kept whole, with no tree. Otherwise it builds the step's one `cKDTree`, gets every point's nearest others with `nearest_others`, and works out every Neighbour_Distance and Neighbour_Median from that same set before it drops any Gaussian.
     - The median is `np.median(nd[idx], axis=1, overwrite_input=True)`, and `dist` and `idx` are freed as the design says. A Gaussian is kept when its median is 0 or `nd / med <= isolation_ratio`, with the division taken only where `med > 0`.
     - _Requirements: 2.12, 2.13, 2.14, 2.15, 2.16, 8.9_
 
-  - [ ] 5.2 Write unit tests for the Isolated_Filter in `tests/test_clean_filters.py`
+  - [x] 5.2 Write unit tests for the Isolated_Filter in `tests/test_clean_filters.py`
     - A set of exactly `neighbours` Gaussians, however far apart, is kept whole, and no tree is built, as a spy on `cKDTree` shows (Req 2.14).
     - Coincident centres give a Neighbour_Median of 0 and are kept, with no division by 0 (Req 2.15).
     - One far Gaussian next to a tight cluster is dropped (Req 2.12).
@@ -251,7 +251,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every test here runs inside `np.errstate(all="raise")`.
     - _Requirements: 2.12, 2.14, 2.15, 10.1_
 
-  - [ ] 5.3 Write the property test for Property 5 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 5.3 Write the property test for Property 5 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 5: The Isolated_Filter keeps exactly what its rule keeps**
     - **Validates: Requirements 2.12, 2.13, 2.14, 2.21**
     - Add the design's "Splats for the references" strategy for this property to `tests/splats.py`: 1 to 60 finite centres, with task 3's tie check.
@@ -259,7 +259,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Drop with `assume` a draw within a relative 1e-9 of that threshold.
     - _Requirements: 2.12, 2.13, 2.14, 2.21, 10.5, 10.13_
 
-  - [ ] 5.4 Run the tests and commit
+  - [x] 5.4 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/clean`: `git add splatpipe/clean/isolated.py tests/splats.py tests/test_clean_filters.py`, then commit those files with the title "Clean step: isolated filter" and the body "Adds isolated.py, which drops a Gaussian whose mean distance to its nearest neighbours is many times the median of theirs. The test is local, so a sparse but even background, like a far wall or the sky, survives where a global distance cutoff would eat it."
     - _Requirements: 10.1, 10.2_
@@ -268,13 +268,13 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `splatpipe/clean/filters.py` and `splatpipe/clean/limits.py` (new), `tests/splats.py`, `tests/test_clean_filters.py` and `tests/test_clean_limits.py` (changed).
   - _Requirements: 2.1, 2.13, 2.17, 2.18, 2.22, 2.23, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 7.2, 7.3, 8.8, 8.9, 10.1, 10.2, 10.4, 10.5, 10.13_
 
-  - [ ] 6.1 Write `splatpipe/clean/filters.py`
+  - [x] 6.1 Write `splatpipe/clean/filters.py`
     - `Kept` and `run_filters()`, as in the design's "filters.py" section: `broken_keep` on the Splat_Data, `faint_keep` on what it kept, then `isolated_keep` on what that kept, each given the set before it as increasing index arrays, never as copies of rows.
     - Build the faint inputs at `rows1`: the positions, and the stored opacity and the sum of the two largest stored scales, in float64. Free `points1` and the faint arrays before the isolated stage, as the design's "Memory" section says. Give the isolated stage `max(1, max_workers)` workers, because scipy refuses 0.
     - Add `dropped_broken`, `dropped_faint`, then `dropped_isolated` and `kept_splats` through `add_count` as soon as each is known, each as an `int`. Never write to the Splat_Data.
     - _Requirements: 2.1, 2.17, 2.18, 7.2, 7.3, 8.9_
 
-  - [ ] 6.2 Write `splatpipe/clean/limits.py`
+  - [x] 6.2 Write `splatpipe/clean/limits.py`
     - `check_source_count()` and `check_limits()`, as in the design's "limits.py" section, pure and raising `ExpectedFailure`.
     - `check_source_count` refuses a count above `max_source_splats`, giving both numbers and saying the setting in `[clean]` can be raised on a machine with more memory.
     - `check_limits` works out the Removed_Fraction from the faint and isolated drops only. It checks the Removal_Cap, then `min_kept_splats`, then `warn_kept_fraction`, in that order, and returns the warning or `None`. The two failure messages give the counts and each filter's drops, the first gives the fraction and the cap as percentages and says that broken Gaussians don't count toward the cap, and both name the settings in `[clean]` to loosen, as the design lists them. It never trims the removals back to the cap.
