@@ -12,7 +12,9 @@ Cloud_Runner inherits that resume exactly, without pre-filtering a single Step (
 `run_job` sees what a resumed laptop run would. The `Uploader` tails `out/job.log` and uploads a
 Step's report only once that Step's outcome line has appeared, so it never uploads a half-written,
 non-atomic `write_json` report (Req 10.3); `sync_all` is the final authoritative pass, so the
-uploaded set ends up equal to the Job's `out/` and `work/` files (Req 10.5). `spend.jsonl` is owned
+uploaded set ends up equal to the Job's `out/` and `work/` files (Req 10.5). Every pass, the final
+one too, skips a file whose size and modified time are what they were when it last went up, so a
+long Job doesn't upload its unchanged frames and splat again on every poll. `spend.jsonl` is owned
 by `append_spend_line`, which reads and writes it straight in the bucket, so the rebuild and the
 Uploader both leave it alone to avoid clobbering the bucket's copy.
 
@@ -147,6 +149,14 @@ class Uploader:
     the uploaded set ends up equal to the Job's out/ and work/ files (Req 10.5). `spend.jsonl` is
     left to `append_spend_line`. The Uploader is best-effort: it swallows its own exceptions, so a
     transient read or upload error never stops the Job.
+
+    The Uploader remembers each file's size and modified time as they were just before it uploaded
+    the file, and every pass, `sync_all` too, skips a file that still has both. A file that changes
+    gets a new size or modified time and goes up again on the next pass, also when it changed while
+    it was uploading. So the bucket still ends up holding each file as it is on the machine, without
+    a thousand unchanged frames, or a splat of hundreds of MB, going up again on every poll. A file
+    that didn't go up, because its report was held back or its upload failed, isn't remembered, so a
+    later pass uploads it.
     """
 
     def __init__(self, aws: Aws, job_id: str, folder: Path, *, poll_seconds: float) -> None:
@@ -157,6 +167,8 @@ class Uploader:
         self._poll_seconds = float(poll_seconds)
         self._stopped = threading.Event()
         self._thread: threading.Thread | None = None
+        # Each uploaded key -> the file's (size in bytes, modified time in ns) just before it went up.
+        self._uploaded: dict[str, tuple[int, int]] = {}
 
     def start(self) -> None:
         """Start the background polling thread (a daemon, so it never keeps the process alive)."""
@@ -179,7 +191,8 @@ class Uploader:
             pass
 
     def sync_all(self) -> None:
-        """The final authoritative pass: upload every out/ and work/ file, reports included."""
+        """The final authoritative pass: upload every out/ and work/ file, reports included, that's
+        new or has changed since it last went up, so the bucket holds each file as it is now."""
         try:
             self._upload(None)
         except Exception:
@@ -191,7 +204,10 @@ class Uploader:
             self.sync()
 
     def _upload(self, finished: set[str] | None) -> None:
-        """Upload out/ and work/ once. `finished` gates reports; None uploads every report."""
+        """Upload out/ and work/ once, skipping each file unchanged since it last went up.
+
+        `finished` gates reports; None uploads every report.
+        """
         for path in _files_under(self._out):
             rel = path.relative_to(self._out).as_posix()
             if rel == _SPEND_FILE:  # append_spend_line owns spend.jsonl in the bucket
@@ -199,10 +215,28 @@ class Uploader:
             name = _report_step(rel)
             if name is not None and finished is not None and name not in finished:
                 continue  # a report whose Step hasn't logged its outcome yet (Req 10.3)
-            self._aws.s3_upload(path, f"jobs/{self._job_id}/out/{rel}")
+            self._upload_if_changed(path, f"jobs/{self._job_id}/out/{rel}")
         for path in _files_under(self._work):
             rel = path.relative_to(self._work).as_posix()
-            self._aws.s3_upload(path, f"work/{self._job_id}/{rel}")
+            self._upload_if_changed(path, f"work/{self._job_id}/{rel}")
+
+    def _upload_if_changed(self, path: Path, key: str) -> None:
+        """Upload `path` to `key`, unless its size and modified time are what they were the last
+        time it went up there.
+
+        The file is looked at before the upload, so a change made while it uploads leaves it
+        different from what's remembered, and the next pass uploads it again. Only an upload that
+        succeeds is remembered.
+        """
+        try:
+            info = path.stat()
+        except FileNotFoundError:  # removed since the listing, so there's nothing to upload
+            return
+        seen = (info.st_size, info.st_mtime_ns)
+        if self._uploaded.get(key) == seen:
+            return
+        self._aws.s3_upload(path, key)
+        self._uploaded[key] = seen
 
     def _finished_steps(self) -> set[str]:
         """The Step names whose done/failed outcome line has appeared in out/job.log (Req 10.3)."""

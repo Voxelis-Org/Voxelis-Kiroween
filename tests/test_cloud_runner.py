@@ -19,6 +19,9 @@ with `steps`, `now` and `shutdown` injected (Req 10.11).
 - A Spend_Line is written for each Step that ran and one for the machine's own time (Req 12.1, 12.2).
 - `main`, the command the User_Data runs, runs the Job, powers the machine off once and gives 0, or
   1 with the Readable_Error for a failed Job, and refuses a bad Job_Id before it touches AWS.
+- The Uploader skips a file whose size and modified time haven't changed since it last went up, in
+  a poll and in the final pass alike, and uploads a file again once either has changed. A report
+  held back until its Step has logged its outcome still goes up then (Req 10.2, 10.3, 10.5).
 
 `cloud.runner.REPO_ROOT` is pointed at a temp repo so the archived lock hashes are controlled, and
 the machine's environment (the image's recorded hashes and the instance type) is set with
@@ -32,6 +35,7 @@ import hashlib
 import json
 import logging
 import os
+import tempfile
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,7 +54,7 @@ from splatpipe.run import StepEntry, first_to_run, read_earlier
 from splatpipe.step import StepContext
 
 from cloud.errors import CloudError
-from cloud.runner import CAP_DEADLINE_ENV, rebuild_job_folder, run_cloud_job
+from cloud.runner import CAP_DEADLINE_ENV, Uploader, rebuild_job_folder, run_cloud_job
 from cloud.spend_file import LABEL_MACHINE
 
 from fake_aws import FakeAws, cloud_config
@@ -336,6 +340,120 @@ def test_main_refuses_a_bad_job_id_before_it_touches_aws(
     assert aws.calls == []
     assert poweroffs == []  # nothing ran, so the User_Data's poweroff trap ends the machine
     assert capsys.readouterr().err.strip()  # a Readable_Error, on stderr
+
+
+# The Uploader skips a file that hasn't changed since it last went up (Req 10.2, 10.5)
+
+# The files of a Job_Folder's out/ and work/ for the Uploader tests: fake_a's outcome line in the
+# Job_Log, so its report may go up, the report, its result line and a work file, and the
+# bucket-owned spend.jsonl, which the Uploader never uploads. Written as bytes, so each file has the
+# same size on every machine.
+UPLOADER_FILES = {
+    "out/job.log": b"2026-11-20T00:00:00Z INFO fake_a: done\n",
+    "out/reports/fake_a.json": b'{"step": "fake_a", "outcome": "done"}\n',
+    "out/fake_a.txt": b"The fake_a step ran.\n",
+    "out/spend.jsonl": b'{"id": "x"}\n',
+    "work/fake_a/file-000.txt": b"xxxxxxxxxxxxxxxx",
+}
+# All of them but spend.jsonl, which append_spend_line owns in the bucket.
+UPLOADED_FILES = tuple(rel for rel in UPLOADER_FILES if rel != "out/spend.jsonl")
+# How a file may change between two passes: its size alone, with its modified time put back as it
+# was, its modified time alone, with the same bytes, or both.
+CHANGES = ("size", "mtime", "both")
+
+
+def uploader_folder(root: Path) -> Path:
+    """A Job_Folder under `root` that holds UPLOADER_FILES."""
+    folder = root / "job"
+    for rel, data in UPLOADER_FILES.items():
+        path = folder / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return folder
+
+
+def bucket_key(rel: str) -> str:
+    """Where the Uploader puts a Job_Folder file: out/ under jobs/<id>/, work/ under work/<id>/."""
+    top, _, rest = rel.partition("/")
+    return f"jobs/{FIXED_ID}/out/{rest}" if top == "out" else f"work/{FIXED_ID}/{rest}"
+
+
+def uploaded_keys(aws: FakeAws) -> list[str]:
+    """The key of each s3_upload call on the fake, in order."""
+    return [key for op, key in aws.calls if op == "s3_upload"]
+
+
+def assert_bucket_matches(aws: FakeAws, folder: Path) -> None:
+    """Each file the Uploader uploads is in the bucket with the bytes it has on the machine."""
+    for rel in UPLOADED_FILES:
+        assert aws.objects[bucket_key(rel)] == (folder / rel).read_bytes(), rel
+
+
+def change(path: Path, how: str) -> None:
+    """Change the file at `path` in its size, its modified time or both, as `how` says."""
+    before = path.stat()
+    if how in ("size", "both"):
+        with open(path, "ab") as handle:
+            handle.write(b"+\n")  # a new last line, so job.log keeps fake_a's outcome line
+    later = before.st_mtime_ns + 5_000_000_000  # 5 s on, more than any file system's time step
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns if how == "size" else later))
+
+
+def test_a_second_pass_with_nothing_changed_uploads_nothing(tmp_path: Path) -> None:
+    folder = uploader_folder(tmp_path)
+    aws = FakeAws()
+    uploader = Uploader(aws, FIXED_ID, folder, poll_seconds=1)
+
+    uploader.sync()
+    assert sorted(uploaded_keys(aws)) == sorted(bucket_key(rel) for rel in UPLOADED_FILES)
+
+    aws.calls.clear()
+    uploader.sync()      # a poll with nothing changed
+    uploader.sync_all()  # and then the final pass
+    assert uploaded_keys(aws) == []
+    assert_bucket_matches(aws, folder)  # the bucket still holds every file as it is
+
+
+@settings(deadline=None)
+@given(changed=st.dictionaries(st.sampled_from(UPLOADED_FILES), st.sampled_from(CHANGES)),
+       final=st.booleans())
+def test_a_changed_file_goes_up_again(changed: dict[str, str], final: bool) -> None:
+    """For any of the Job's files, each changed in its size, its modified time or both, the next
+    pass, a poll or the final one, uploads exactly the changed files, and the bucket then holds
+    every file as it is on the machine."""
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = uploader_folder(Path(tmp))
+        aws = FakeAws()
+        uploader = Uploader(aws, FIXED_ID, folder, poll_seconds=1)
+        uploader.sync_all()
+        aws.calls.clear()
+
+        for rel, how in changed.items():
+            change(folder / rel, how)
+        (uploader.sync_all if final else uploader.sync)()
+
+        assert sorted(uploaded_keys(aws)) == sorted(bucket_key(rel) for rel in changed)
+        assert_bucket_matches(aws, folder)
+
+
+def test_a_held_back_report_goes_up_once_its_step_has_logged_its_outcome(tmp_path: Path) -> None:
+    folder = uploader_folder(tmp_path)
+    log = folder / "out" / "job.log"
+    log.write_bytes(b"2026-11-20T00:00:00Z INFO fake_a: started\n")  # no outcome line yet
+    aws = FakeAws()
+    uploader = Uploader(aws, FIXED_ID, folder, poll_seconds=1)
+    report = bucket_key("out/reports/fake_a.json")
+
+    uploader.sync()
+    assert report not in uploaded_keys(aws)  # held back (Req 10.3), so not remembered as up
+
+    with open(log, "ab") as handle:
+        handle.write(b"2026-11-20T00:00:01Z INFO fake_a: done\n")
+    aws.calls.clear()
+    uploader.sync()
+    # The report hasn't changed, but it goes up now that fake_a has logged its outcome, with the
+    # grown log. The other files haven't changed, so they stay put.
+    assert sorted(uploaded_keys(aws)) == sorted([bucket_key("out/job.log"), report])
 
 
 # Property 7: the Cloud_Runner resumes exactly where run_job does (Req 10.4, 16.3)
