@@ -93,3 +93,4 @@ What the test found, and how the rules block it:
 - 2026-11-22 19:53+05:30 | feat/clean | clean 5.3 Write the property test for Property 5 in `tests/test_clean_filters.py`, with Hypothesis | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, tests/splats.py, tests/test_clean_filters.py, splatpipe/clean/isolated.py
 - 2026-11-22 19:57+05:30 | feat/clean | clean 5.4 Run the tests and commit | splatpipe/clean/isolated.py, tests/splats.py, tests/test_clean_filters.py, .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json
 - 2026-11-22 21:18+05:30 | feat/clean | clean 6.1 Write `splatpipe/clean/filters.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, splatpipe/clean/filters.py, splatpipe/clean/limits.py
+- 2026-11-22 21:18+05:30 | feat/clean | clean 6.2 Write `splatpipe/clean/limits.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, splatpipe/clean/filters.py, splatpipe/clean/limits.py
