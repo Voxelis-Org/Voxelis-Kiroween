@@ -264,7 +264,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/clean`: `git add splatpipe/clean/isolated.py tests/splats.py tests/test_clean_filters.py`, then commit those files with the title "Clean step: isolated filter" and the body "Adds isolated.py, which drops a Gaussian whose mean distance to its nearest neighbours is many times the median of theirs. The test is local, so a sparse but even background, like a far wall or the sky, survives where a global distance cutoff would eat it."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 6. Filter order and the removal limits
+- [x] 6. Filter order and the removal limits
   - Files: `splatpipe/clean/filters.py` and `splatpipe/clean/limits.py` (new), `tests/splats.py`, `tests/test_clean_filters.py` and `tests/test_clean_limits.py` (changed).
   - _Requirements: 2.1, 2.13, 2.17, 2.18, 2.22, 2.23, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 7.2, 7.3, 8.8, 8.9, 10.1, 10.2, 10.4, 10.5, 10.13_
 
@@ -280,21 +280,21 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `check_limits` works out the Removed_Fraction from the faint and isolated drops only. It checks the Removal_Cap, then `min_kept_splats`, then `warn_kept_fraction`, in that order, and returns the warning or `None`. The two failure messages give the counts and each filter's drops, the first gives the fraction and the cap as percentages and says that broken Gaussians don't count toward the cap, and both name the settings in `[clean]` to loosen, as the design lists them. It never trims the removals back to the cap.
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 8.8_
 
-  - [ ] 6.3 Write unit tests for the Filter_Order in `tests/test_clean_filters.py`
+  - [x] 6.3 Write unit tests for the Filter_Order in `tests/test_clean_filters.py`
     - A Gaussian the Faint_Filter drops is no longer anyone's neighbour in the Isolated_Filter, which shows the Filter_Order and that each filter gets the set the one before it kept (Req 2.1, 2.13).
     - The counts reach `add_count` in order, each as an `int`, as each filter finishes. When `isolated_keep` is made to raise, only `dropped_broken` and `dropped_faint` were added (Req 2.17, 7.2, 7.3).
     - `max_workers` at 0 runs, and the query gets 1 worker.
     - Every test here runs inside `np.errstate(all="raise")`.
     - _Requirements: 2.1, 2.13, 2.17, 7.2, 7.3, 10.1_
 
-  - [ ] 6.4 Write the property test for Property 1 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 6.4 Write the property test for Property 1 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 1: The filters run in order and keep an ordered subset**
     - **Validates: Requirements 2.1, 2.17, 2.18**
     - This is the user's "it never changes the Gaussians it keeps" property, for the filters. Task 2's Property 9 carries it through the Clean_Splat.
     - Use task 3's "Splats" strategy and task 4's "Settings" strategy. `run_filters` gives back increasing rows, none repeated, and they're exactly the rows that calling `broken_keep`, `faint_keep` and `isolated_keep` one after the other gives. The Splat_Data's raw bytes are the same after `run_filters` as before, so every kept Gaussian holds its values bit for bit. Each `dropped_*` count is its stage's input size less its output size, and the three of them plus `kept_splats` add up to the source count.
     - _Requirements: 2.1, 2.17, 2.18, 10.5_
 
-  - [ ] 6.5 Write the property test for Property 6 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 6.5 Write the property test for Property 6 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 6: A dense, opaque grid loses nothing**
     - **Validates: Requirements 2.22**
     - This is the user's "it removes nothing from a dense grid of opaque, finite Gaussians" property.
@@ -302,7 +302,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - With the real `config.toml`'s `[clean]` settings, read by path and checked with `check_settings`, `run_filters` keeps every Gaussian: all three `dropped_*` counts are 0, whatever order the KD-tree puts the equally near Gaussians in.
     - _Requirements: 2.22, 10.5, 10.13_
 
-  - [ ] 6.6 Write unit tests for the limits in `tests/test_clean_limits.py`
+  - [x] 6.6 Write unit tests for the limits in `tests/test_clean_limits.py`
     - A count one over `max_source_splats` is refused, with both numbers and the note on more memory, and a count equal to it passes (Req 3.1).
     - The Removal_Cap's message holds the source count, each filter's drops, the Removed_Fraction, the cap, the note that broken Gaussians don't count and the settings to loosen (Req 3.2, 3.3). A share exactly at the cap, 7 of 10 at 0.7, passes. A splat where 90% are broken and nothing else is dropped passes with the cap at 0.7 (A4).
     - `min_kept_splats` one under, exactly and one over (Req 3.5). `warn_kept_fraction` the same way, with both counts and the Removed_Fraction in the warning (Req 3.6).
@@ -310,7 +310,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every failure is an `ExpectedFailure`, and no message holds "Traceback" (Req 3.8).
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 10.4_
 
-  - [ ] 6.7 Write the property test for Property 7 in `tests/test_clean_limits.py`, with Hypothesis
+  - [x] 6.7 Write the property test for Property 7 in `tests/test_clean_limits.py`, with Hypothesis
     - **Property 7: The Removal_Cap holds, and broken Gaussians don't count toward it**
     - **Validates: Requirements 2.23, 3.2, 3.4**
     - This is the user's "the step never removes more than 70%, with broken Gaussians outside the cap" property. The Config's `max_removed_fraction` is 0.70, and the settings strategy draws it often, beside the rest of 0 to 1.
@@ -318,7 +318,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `run_filters` then `check_limits` raises the Removal_Cap's `ExpectedFailure` exactly when the Gaussians that passed the Broken_Filter but were dropped later, counted by the test from Property 2's oracle and the kept rows, are more than `max_removed_fraction` of the source count, compared in float64 as `check_limits` does. When it doesn't raise the cap's failure, the share is at most `max_removed_fraction`, whatever else it refuses or warns about. Tell the cap's failure from the `min_kept_splats` one by its first sentence.
     - _Requirements: 2.23, 3.2, 3.4, 10.5_
 
-  - [ ] 6.8 Run the tests and commit
+  - [x] 6.8 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/clean`: `git add splatpipe/clean/filters.py splatpipe/clean/limits.py tests/splats.py tests/test_clean_filters.py tests/test_clean_limits.py`, then commit those files with the title "Clean step: filter order and removal limits" and the body "Adds filters.py, which runs the broken, faint and isolated filters in order on index arrays, so a kept Gaussian's values never change, and limits.py, which stops the step when the faint and isolated filters would take more than max_removed_fraction of the splat or leave fewer than min_kept_splats. Broken Gaussians don't count toward the cap, and a dense, even grid loses nothing."
     - _Requirements: 10.1, 10.2_
@@ -327,7 +327,7 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `package.json`, `package-lock.json`, `splatpipe/clean/export.py`, `tests/fake_splat_transform.py` and `tests/test_clean_export.py` (new), `docs/third-party-licences.md` and `tests/test_clean_repo.py` (changed).
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11, 5.12, 5.13, 5.14, 6.5, 6.12, 6.13, 8.7, 8.8, 9.6, 9.7, 10.1, 10.2, 10.4, 10.6, 10.7, 10.9_
 
-  - [ ] 7.1 Pin splat-transform 3.8.0 in `package.json` and `package-lock.json`
+  - [x] 7.1 Pin splat-transform 3.8.0 in `package.json` and `package-lock.json`
     - Check that `node --version` is 22 or newer. If Node is missing or older, stop and tell the user, because splat-transform 3.8.0 needs Node 22.
     - Write `package.json` at the repo root as the design's "Supporting changes" gives it: `"private": true`, the name `voxelis-kiroween-tools`, `"license": "MIT"`, `"engines": {"node": ">=22"}` and the dependency `"@playcanvas/splat-transform": "3.8.0"`, with no `^` or `~`.
     - Run `npm install` once to make `package-lock.json`, then `npm ci`, which installs exactly the lockfile. The lockfile resolves `node_modules/@playcanvas/splat-transform` to 3.8.0, and `node_modules/@playcanvas/splat-transform/bin/cli.mjs` exists. `node_modules/` stays in `.gitignore`.
