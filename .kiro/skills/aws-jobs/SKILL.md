@@ -28,7 +28,7 @@ What they mean for job machines:
 - Every launch is a paid run: a job, the smoke test and an image build alike. Apart from the jobs people start through the app, each launch needs its own yes, after Kiro has told the person the machine, the expected time and the rough cost.
 - Every paid entry point, the start, image-build and smoke-test commands included, calls `check_spend()` from `cloud/spend.py` with that machine, time and cost, before it uploads or launches anything (cloud.md).
 - When Kiro runs a raw `aws ec2 run-instances`, `aws ec2 create-image` or another command in `[paid].aws` in `config.toml`, the guard hook blocks it. So Kiro only starts paid things through our commands.
-- A failed launch ends the command. Trying again, in another zone or on a fallback type, is a new run with a new yes.
+- One yes covers the whole fallback list. On a capacity error the command tries the type's other zones and then the next fitting type on the list, as part of the same approved run, because only one machine ever launches and nothing bills until one does. Any other launch error, or no capacity anywhere on the list, ends the command; starting the job again is a new run with a new yes.
 - Nothing in our AWS setup stops a machine for us. The budget alert from Step 6 of the setup guide only sends an email. What stops the spend is the machine's own shutdown, its time cap and, as the last resort, the stop-all command.
 
 ### What a run costs
@@ -83,7 +83,7 @@ The runner role refuses any launch that breaks its rules, so every `run_instance
 
 ### Before the launch
 
-- Only one job machine runs at a time (tech.md). Our GPU quota of 32 vCPUs refuses a second g5.8xlarge with `VcpuLimitExceeded`, but two smaller machines fit under it. So the start command looks for a machine with our tag that isn't terminated yet, and stops if it finds one.
+- Admission is by the real GPU quota (tech.md). The start command reads the G quota (code `L-DB2E81BA`) from Service Quotas, adds up the vCPUs of our machines that aren't terminated (jobs, smoke tests and image builds, by our tag), and launches only when the chosen type's vCPUs still fit under the quota. So under our 32-vCPU quota one g5.8xlarge runs at a time, while two 16-vCPU fallback machines could run side by side; more than one of our machines may run when the quota allows, though it's still one machine per job. If no fitting type would stay under the quota, the command stops with a readable error giving the quota, the running total and the type's vCPUs, instead of letting AWS refuse the launch with `VcpuLimitExceeded`.
 - Not every Availability Zone offers every type ([launch troubleshooting](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/troubleshooting-launch.html)). This lists the zones that offer one ([DescribeInstanceTypeOfferings](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeInstanceTypeOfferings.html)), and the read policy allows it:
 
   ```
@@ -262,13 +262,13 @@ aws ec2 get-console-output --instance-id <instance-id> --latest --query Output -
 
 - The first lists our machines that aren't terminated, with their state and the reason for their last state change. Its `--query` leaves out the account id and the ARNs that the full output holds. Every lookup filters by our tag (rules.md).
 - The second prints the boot console, which also gets cloud-init's output. `--latest` asks for the newest output, which only Nitro machines like ours support. Without it, EC2 only posts output around state changes ([console output](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/troubleshoot-unreachable-instance.html#instance-console-console-output), [GetConsoleOutput](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_GetConsoleOutput.html)). The read policy allows it on machines with our tag.
-- Kiro may run the first. The console can show AWS error messages from the script, and those can hold the account id, which stays out of chats (rules.md, `docs/aws-setup.md`). So a person reads the console in their own terminal, unless the job script keeps AWS errors off the console.
+- Kiro may run the first. The console can show AWS error messages from the script, which can hold the account id. Cloud_Jobs applies the account redaction, replacing every run of exactly 12 digits with `<account>`, to the error messages, console output and job logs its commands print and to the text logs the machine uploads, so the account id stays out of chats (rules.md). So Kiro may read the redacted console output to debug a machine.
 
 ## Our rules that touch this
 
 - cloud.md: every paid entry point calls the spend guard first. Machine types, prices and time caps come from `config.toml`. Every instance gets the project tag and `InstanceInitiatedShutdownBehavior=terminate`.
 - rules.md, AWS access: everything runs in us-east-1. The runner profile is only for the start, image-build, smoke-test and stop-all commands, and the read profile is for everything else. Every aws command passes `--profile` and `--region us-east-1`, and Python on a laptop names both in `boto3.Session(profile_name=..., region_name=...)`. Code on the job machine uses its instance role. No AWS keys or account id go in the repo, chats or logs, and ARNs hold the account id. Look up only our own things, by name or by our tag.
-- tech.md: one job machine at a time, boto3 only inside `cloud/`, and the GPU packages only on the machine image.
+- tech.md: admission by the real GPU quota (one machine per job, not one in the whole account), boto3 only inside `cloud/`, and the GPU packages only on the machine image.
 - `docs/third-party-licences.md`: the Session Manager plugin has its row. The base AMI gets its row in the commit that first uses it.
 
 ## Open questions

@@ -1,9 +1,10 @@
-"""Tests for the cloud-jobs dependencies and their Licence_List rows (cloud-jobs task 1).
+"""Tests for the cloud-jobs dependencies and docs (cloud-jobs tasks 1 and 9).
 
-Each test reads the real file at the repo root, so it checks what `uv sync` and `npm ci` would
-install and what `docs/third-party-licences.md` records. These run on the CPU with no network.
-
-The doc, steering and skill checks for this file are a later sub-task (task 9) and are not here yet.
+Each test reads the real file at the repo root. The task-1 part checks what `uv sync` and `npm ci`
+would install and what `docs/third-party-licences.md` records. The task-9 part checks the cloud-run
+write-up in `docs/pipeline.md`, the README's "Run your own copy" section, and the quota-based
+admission, one-yes and redaction updates in the Tech_Steering and the aws-jobs skill (Req 15).
+These run on the CPU with no network.
 """
 
 import json
@@ -16,6 +17,10 @@ PYPROJECT = ROOT / "pyproject.toml"
 PACKAGE_JSON = ROOT / "package.json"
 PACKAGE_LOCK = ROOT / "package-lock.json"
 LICENCE_LIST = ROOT / "docs" / "third-party-licences.md"
+PIPELINE_DOC = ROOT / "docs" / "pipeline.md"
+README = ROOT / "README.md"
+TECH_STEERING = ROOT / ".kiro" / "steering" / "tech.md"
+AWS_JOBS_SKILL = ROOT / ".kiro" / "skills" / "aws-jobs" / "SKILL.md"
 
 SPLAT_TRANSFORM = "@playcanvas/splat-transform"
 SPLAT_TRANSFORM_VERSION = "3.8.0"
@@ -133,3 +138,130 @@ def test_the_splat_transform_row_covers_every_npm_licence_in_the_lockfile() -> N
     assert not uncovered, (
         f"the splat-transform row should cover every npm licence, but {uncovered} is not named; "
         "add a Licence_List row for any npm package its licence doesn't cover (Req 14.4)")
+
+
+# --- Task 9: the doc, steering and skill checks (Req 15) ---------------------------------------
+
+# The per-Step Step_Needs plan of Requirement 2's note, as {Step: substrings the row must contain}.
+STEP_NEEDS_PLAN = {
+    "Picking frames": ("16 vCPUs", "16 GB RAM"),
+    "Solving cameras": ("16 vCPUs", "16 GB RAM"),
+    "Depth priors": ("GPU", "16 GB VRAM"),
+    "Plain walls": ("32 GB RAM",),
+    "Training": ("GPU", "32 GB RAM"),
+    "Clean and export": ("8 vCPUs", "8 GB RAM"),
+}
+
+
+def markdown_section(text: str, heading: str) -> str:
+    """The text of the one `## <heading>` section: from its heading line to the line before the next
+    `#` or `##` heading, or the end. A `###` subsection of the section stays inside it, and a line in
+    a fenced ``` block is never read as a heading (so a `# comment` in a code example doesn't count)."""
+    lines = text.splitlines()
+    starts, fenced = [], False
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and line.strip() == f"## {heading}":
+            starts.append(index)
+    assert len(starts) == 1, f"expected one '## {heading}' heading, found {len(starts)}"
+    start, end, fenced = starts[0], len(lines), False
+    for index in range(start + 1, len(lines)):
+        if lines[index].lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and re.match(r"#{1,2} ", lines[index]):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+def test_the_pipeline_doc_has_the_cloud_run_section() -> None:
+    """Req 15.2: the Pipeline_Doc describes the cloud run and its commands."""
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    for command in ("cloud.start", "cloud.status", "cloud.download", "cloud.list", "cloud.stopall"):
+        assert command in section, (
+            f"the cloud-run section of docs/pipeline.md should describe {command}")
+    assert "Cloud_Runner" in section, "the cloud-run section should describe the Cloud_Runner"
+
+
+def test_the_pipeline_doc_documents_the_cap_deadline_variable() -> None:
+    """Req 15.2 (assumption C): the Cap_Deadline environment variable's name and meaning."""
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    assert "SPLATPIPE_CAP_DEADLINE" in section, (
+        "the cloud-run section should name the SPLATPIPE_CAP_DEADLINE environment variable")
+    assert "upload_margin_minutes" in section, (
+        "the cloud-run section should explain the cap deadline is the time cap minus "
+        "upload_margin_minutes")
+
+
+def test_the_pipeline_doc_records_the_per_step_step_needs_plan() -> None:
+    """Req 15.2 (assumptions D and E): the per-Step Step_Needs plan and the three min_* keys."""
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    for key in ("min_vcpus", "min_memory_gb", "min_gpu_memory_gb"):
+        assert key in section, f"the Step_Needs plan should name {key}"
+    rows = {cells[0]: cells[1] for cells in table_rows(section) if len(cells) == 2}
+    for step, needs in STEP_NEEDS_PLAN.items():
+        assert step in rows, f"the Step_Needs plan should have a row for {step!r}"
+        for need in needs:
+            assert need in rows[step], (
+                f"the {step!r} Step_Needs row should say {need!r}, not {rows[step]!r}")
+
+
+def test_the_pipeline_doc_says_the_cloud_run_is_not_a_step() -> None:
+    """Req 15.7: the cloud run is not a Step and adds no Step_List entry."""
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    lowered = section.lower()
+    assert "not a step" in lowered, "the cloud-run section should say the cloud run is not a step"
+    assert "adds no" in lowered and "step_list" in lowered, (
+        "the cloud-run section should say the cloud run adds no STEP_LIST entry")
+
+
+def test_the_readme_has_the_run_your_own_copy_section() -> None:
+    """Req 15.1: the README's "Run your own copy" section and the image-build estimate."""
+    section = markdown_section(README.read_text(encoding="utf-8"), "Run your own copy")
+    assert "GPU quota" in section, (
+        "the Run your own copy section should list an AWS account with GPU quota")
+    for figure in ("$1.20", "45 min"):
+        assert figure in section, (
+            f"the Run your own copy section should give the image-build estimate {figure!r}")
+    assert "estimate" in section.lower(), (
+        "the Run your own copy section should note the figures are estimates to check against "
+        "the Config prices")
+
+
+def test_the_tech_steering_admission_is_quota_based() -> None:
+    """Req 15.3: the Tech_Steering's one-at-a-time line is now the quota-based admission."""
+    text = TECH_STEERING.read_text(encoding="utf-8")
+    assert "Admission is by that real G quota" in text, (
+        "tech.md should say admission is by the real G quota, read from Service Quotas")
+    assert "more than one of our machines may run at once when the quota allows" in text, (
+        "tech.md should say more than one of our machines may run when the quota allows")
+    assert "one machine per job, not one machine in the whole account" in text, (
+        "tech.md should keep one machine per job, not one machine in the whole account")
+
+
+def test_the_aws_jobs_skill_says_one_yes_covers_the_fallback_list() -> None:
+    """Req 15.4: a fallback type is covered by the one yes, not a new run with a new yes."""
+    text = AWS_JOBS_SKILL.read_text(encoding="utf-8")
+    assert "One yes covers the whole fallback list" in text, (
+        "the aws-jobs skill should say one yes covers the whole fallback list")
+    assert "part of the same approved run" in text, (
+        "the aws-jobs skill should say moving to a fallback type is part of the same approved run")
+
+
+def test_the_aws_jobs_skill_admission_is_quota_based() -> None:
+    """Req 15.5: the skill's one-job-machine note is now the quota-based admission."""
+    text = AWS_JOBS_SKILL.read_text(encoding="utf-8")
+    assert "Admission is by the real GPU quota" in text, (
+        "the aws-jobs skill should say admission is by the real GPU quota")
+    assert "could run side by side" in text, (
+        "the aws-jobs skill should say two 16-vCPU fallback machines could run side by side")
+
+
+def test_the_aws_jobs_skill_notes_the_console_output_redaction() -> None:
+    """Req 15.6: the skill's console-output note says Cloud_Jobs applies the Account_Redaction."""
+    text = AWS_JOBS_SKILL.read_text(encoding="utf-8")
+    assert "Cloud_Jobs applies the account redaction" in text, (
+        "the aws-jobs skill should say Cloud_Jobs applies the account redaction")
+    assert "read the redacted console output to debug a machine" in text, (
+        "the aws-jobs skill should say Kiro may read the redacted console output to debug a machine")

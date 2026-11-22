@@ -13,7 +13,7 @@ inclusion: always
 - gsplat 1.5.3 for training.
 - The GPU packages (torch, gsplat, the depth model) only go in the cloud machine image. Never add them to `pyproject.toml` or the laptop install. That includes torch's CUDA wheels and the NVIDIA CUDA libraries that come with them.
 - AWS EC2 for the cloud: one GPU machine per job, started from our own machine image. The job files live in S3.
-- The GPU quota is per account and region. Ours allows 32 vCPUs of G instances (the GPU machines) at a time in us-east-1, and one job machine runs at a time: fast and default jobs run on a g5.8xlarge, with 32 vCPUs on 16 cores and one NVIDIA A10G. The next job waits for it to finish. A new AWS account starts at 0 and has to ask AWS for more before any job can start.
+- The GPU quota is per account and region. Ours allows 32 vCPUs of G instances (the GPU machines) at a time in us-east-1. Admission is by that real G quota, read from Service Quotas: the start command adds up the vCPUs of our running machines (jobs, smoke tests and image builds, found by our tag) and launches when the chosen type still fits the quota, so more than one of our machines may run at once when the quota allows. It's one machine per job, not one machine in the whole account. Fast and default jobs run on a g5.8xlarge, with 32 vCPUs on 16 cores and one NVIDIA A10G, so under a 32-vCPU quota one of those runs at a time while two 16-vCPU fallback machines could run side by side. A new AWS account starts at 0 and has to ask AWS for more before any job can start.
 - boto3 only inside `cloud/`.
 - Node only for PlayCanvas splat-transform.
 - Settings live in `config.toml` at the root, read with Python's built-in `tomllib`.
