@@ -9,6 +9,8 @@ project_tag = "project=voxelis-kiroween"
 read_profile = "kiroween-read"
 runner_profile = "kiroween-runner"
 spend_variable = "APPROVED_SPEND"
+# Name of the CloudFormation stack made from cloud/aws-setup.yaml. Our code finds its resources through its outputs.
+stack_name = "voxelis-kiroween"
 
 [paid]
 # Raw aws commands that start paid things, as "service operation".

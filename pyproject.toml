@@ -18,6 +18,7 @@ pythonpath = ["."]
 
 [dependency-groups]
 dev = [
+    "cfn-lint>=1.61.0",
     "hypothesis>=6.170.15",
     "pytest>=9.2.0",
 ]
