@@ -333,7 +333,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Run `npm install` once to make `package-lock.json`, then `npm ci`, which installs exactly the lockfile. The lockfile resolves `node_modules/@playcanvas/splat-transform` to 3.8.0, and `node_modules/@playcanvas/splat-transform/bin/cli.mjs` exists. `node_modules/` stays in `.gitignore`.
     - _Requirements: 6.12_
 
-  - [ ] 7.2 Check every package in the lockfile against the licence rules, and update `docs/third-party-licences.md` for splat-transform, its packages, Node and npm
+  - [x] 7.2 Check every package in the lockfile against the licence rules, and update `docs/third-party-licences.md` for splat-transform, its packages, Node and npm
     - Read every entry of `package-lock.json`'s `packages` with its `license` field. Where the field is missing or unclear, read the package's own licence file in `node_modules/`. For `webgpu`, also read what its prebuilt Dawn native binaries bundle, from its licence and notice files.
     - Check each licence against the permissive list in `.kiro/steering/rules.md`, and the Dawn binaries against its rule for bundled libraries. If any package or bundled library is copyleft, non-commercial, has no clear licence, or has a licence that isn't on the list, stop and ask the user before doing anything else in this task.
     - Then, in the splat-transform row, replace the general "Its npm packages are MIT, BSD-3-Clause and ISC" with each package in the lockfile and its licence: splat-transform's own dependencies `webgpu` and `@adobe/spz`, its peer dependency `playcanvas`, which npm installs too, and every other package the lockfile holds. Note the Dawn native binaries on `webgpu`'s entry as bundled libraries. Give a package a row of its own when it doesn't fit in that cell.
@@ -342,7 +342,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The npm row keeps its licence and its use. Its Installed cell becomes "Yes, on the laptop. Not yet on the machine image.", like Node's, because the clean step runs on the job machine too, so the machine image will need `npm ci` as well as Node.
     - _Requirements: 6.13, 9.7_
 
-  - [ ] 7.3 Write `splatpipe/clean/export.py`
+  - [x] 7.3 Write `splatpipe/clean/export.py`
     - `NODE_VERSION`, `CLI`, `TAIL_CHARS`, `find_splat_transform()`, `splat_transform_argv()` and `export_sog()`, as in the design's "export.py" section.
     - `find_splat_transform` checks both `shutil.which("node")` and `(repo_root / CLI).is_file()` before it refuses. Its message says which is missing, or that both are, to run `npm ci` at the repo root, and that splat-transform needs Node `NODE_VERSION` or newer.
     - `splat_transform_argv` gives `[node, cli, "-w", "-g", "cpu", "-i", <sh_iterations>, "--max-workers", <max_workers>, <source>, "-H", <bands>, <target>]` in that order, with absolute paths and no other option.
@@ -351,7 +351,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Log one INFO line with `logging.getLogger(__name__)` as splat-transform starts and one as it ends. On Linux only, the end line gives `resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss`. Import `resource` only there, because Windows has no such module.
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11, 5.12, 5.13, 5.14, 6.5, 8.7, 8.8_
 
-  - [ ] 7.4 Write the stand-in for splat-transform in `tests/fake_splat_transform.py`
+  - [x] 7.4 Write the stand-in for splat-transform in `tests/fake_splat_transform.py`
     - A Python script that a test runs in place of `cli.mjs`, by giving `export_sog` a `find` that returns `(sys.executable, <this script>)`.
     - It reads `FAKE_SPLAT_TRANSFORM` from its environment: `ok` writes a few bytes to its last argument, `fail` prints 3,000 characters of lines with `\r` progress redraws and colour codes and exits with 3, `silent` exits with 0 and writes nothing, `empty` writes a file of 0 bytes, and `hang` sleeps for 60 seconds.
     - _Requirements: 10.6_
@@ -370,7 +370,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The `.sog` is a zip whose `meta.json` says `"version": 2` (Req 5.1, 9.6).
     - _Requirements: 5.1, 5.3, 9.6, 10.6, 10.7_
 
-  - [ ] 7.7 Add the lockfile and licence-row checks to `tests/test_clean_repo.py`
+  - [x] 7.7 Add the lockfile and licence-row checks to `tests/test_clean_repo.py`
     - `package.json` pins `@playcanvas/splat-transform` at exactly `3.8.0`, and `package-lock.json` resolves it to 3.8.0 (Req 6.12).
     - The name of each package in `package-lock.json`, apart from the root entry, appears in the Licence_List (Req 6.13).
     - With task 2.7's row lookup, the Node.js, splat-transform 3.8.0 and npm rows each start their Installed cell with "Yes", and the Node.js row says it's never vendored, linked or shipped (Req 9.7).
