@@ -1,27 +1,51 @@
-"""Tests for the clean step's settings checks, in splatpipe/clean/settings.py (Req 6.6 to 6.10).
+"""Tests for the clean step's settings checks, in splatpipe/clean/settings.py (Req 6.6 to 6.10),
+and its limits, in splatpipe/clean/limits.py (Req 3).
 
 The tests of the kinds, ranges and names build their settings with clean_settings: the test
 config's [clean] for the fast Preset, with one setting changed. The tests of the eighteen values
 and of a missing setting read the test config itself, with load_config and set_clean.
 Property 10 checks the file-name checks against an oracle of its own, on the names that
 tests/splats.py draws.
+
+The limits have a part of their own after that. Its unit tests call check_source_count and
+check_limits on counts they choose, with a Kept made from those counts rather than by
+run_filters, and settings from clean_settings. A count one over max_source_splats is refused
+with both numbers and the note on more memory, and one equal to it passes (Req 3.1). A
+Removed_Fraction over the Removal_Cap fails with the source count, each filter's drops, the
+Removed_Fraction, the cap, the note that broken Gaussians don't count toward it and the settings
+to loosen, while one exactly at the cap passes, and so does a splat that's 90% broken with
+nothing else dropped (Req 3.2, 3.3, A4). One Gaussian under min_kept_splats fails with the
+counts and the settings to loosen, and exactly min_kept_splats or one over passes (Req 3.5).
+warn_kept_fraction warns the same way, with both counts and the Removed_Fraction (Req 3.6). A
+splat over the cap and under min_kept_splats gets the cap's failure (Req 3.4, 3.7). Each failure
+is an ExpectedFailure whose message holds no traceback (Req 3.8). Property 7 runs run_filters,
+inside np.errstate(all="raise"), and then check_limits, on Splat_Data from splats and settings
+from valid_settings. check_limits stops at the Removal_Cap exactly when the Gaussians that pass
+the Broken_Filter, by Property 2's oracle can_be_drawn, and aren't kept are more than
+max_removed_fraction of the source count, so broken Gaussians never count toward the cap
+(Req 2.23, 3.2, 3.4).
 """
 
 import dataclasses
 import itertools
+import re
 from collections.abc import Callable
 from typing import NamedTuple
 
+import numpy as np
 import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
+from splatpipe.clean.filters import Kept, run_filters
+from splatpipe.clean.limits import check_limits, check_source_count
 from splatpipe.clean.settings import check_plain_name, check_settings
 from splatpipe.config import load_config
 from splatpipe.errors import ExpectedFailure, PipelineError
 
 from conftest import CLEAN_PRESETS, CLEAN_SHARED
-from splats import PRESET, clean_settings, names, three_names
+from splats import PRESET, clean_settings, names, splats, three_names, valid_settings
+from test_clean_filters import can_be_drawn
 
 # The three Presets, written out here rather than taken from the code under test.
 PRESET_NAMES = ("fast", "default", "quality")
@@ -274,3 +298,178 @@ def test_the_file_name_checks_accept_exactly_the_plain_distinct_names(
     else:
         checked = clean_settings(**three)
         assert {setting: getattr(checked, setting) for setting in NAME_SETTINGS} == three
+
+
+# The limits, in limits.py (Req 3)
+
+# The settings in [clean] that make the faint and isolated filters drop fewer Gaussians, which
+# both of check_limits' failures name (Req 3.3, 3.5), written out here rather than taken from the
+# code under test.
+FILTER_SETTINGS = ("min_opacity", "faint_min_per_cube", "faint_min_paint_share",
+                   "faint_cube_divisions", "isolation_ratio")
+# A filter's name and the first number after it, which is how many it dropped.
+DROPS = re.compile(r"\b(broken|faint|isolated) filter\b\D*(\d+)")
+
+
+def limits(source: int, *, broken: int = 0, faint: int = 0, isolated: int = 0,
+           **values: object) -> str | None:
+    """What check_limits gives for a trained splat of `source` Gaussians when the broken, faint
+    and isolated filters drop `broken`, `faint` and `isolated` of them: the warning, or None.
+
+    The settings are the test config's with `values` changed, as clean_settings builds them. Its
+    limits are the real cap and warning, 0.7 and 0.5, and a min_kept_splats of 1.
+    """
+    left = source - broken - faint - isolated
+    kept = Kept(np.arange(left), broken, faint, isolated)
+    return check_limits(source, kept, clean_settings(**values))
+
+
+def source_count(count: int, **values: object) -> None:
+    """check_source_count for a trained splat of `count` Gaussians, under the test config's
+    settings with `values` changed."""
+    check_source_count(count, clean_settings(**values))
+
+
+def stopped(check: Callable[..., object], count: int, **values: object) -> str:
+    """The message of the ExpectedFailure that check(count, **values) raises, where `check` is
+    limits or source_count. It must hold no traceback.
+
+    As in refusal, the check reads only the words the code wrote itself: the message with each
+    value the test passed in taken out, as its repr and as its str, the longest first.
+    """
+    with pytest.raises(ExpectedFailure) as caught:
+        check(count, **values)
+    message = str(caught.value)
+    own_words = message
+    shown = [text for value in (count, *values.values()) for text in (repr(value), str(value))]
+    for text in sorted(shown, key=len, reverse=True):
+        own_words = own_words.replace(text, "")
+    assert "Traceback" not in own_words
+    return message
+
+
+def numbers_in(message: str) -> set[str]:
+    """Every number `message` shows, as it's written: whole, so 100 isn't found inside 1000, and
+    a percentage with its % sign, like 75.0%."""
+    return set(re.findall(r"\d+(?:\.\d+)?%?", message))
+
+
+def drops_in(message: str) -> dict[str, int]:
+    """How many each filter dropped, as `message` gives it after the filter's name."""
+    return {name: int(count) for name, count in DROPS.findall(message)}
+
+
+def test_a_count_one_over_max_source_splats_is_refused_with_both_numbers() -> None:
+    message = stopped(source_count, 101, max_source_splats=100)
+    assert {"101", "100"} <= numbers_in(message)
+    for words in ("max_source_splats", "[clean]", "raise", "more memory"):
+        assert words in message
+
+
+def test_a_count_equal_to_max_source_splats_passes() -> None:
+    assert source_count(100, max_source_splats=100) is None
+
+
+def test_over_the_cap_fails_with_the_counts_the_share_the_cap_and_what_to_change() -> None:
+    # The faint and isolated filters drop 750 of 1000, 75%, over a cap of 70%. With the 100
+    # broken ones it would be 85%, but they don't count toward the cap.
+    message = stopped(limits, 1000, broken=100, faint=500, isolated=250,
+                      max_removed_fraction=0.7)
+    assert {"1000", "75.0%", "70.0%"} <= numbers_in(message)
+    assert drops_in(message) == {"broken": 100, "faint": 500, "isolated": 250}
+    assert "broken gaussians" in message.lower() and "don't count toward the cap" in message
+    for words in (*FILTER_SETTINGS, "max_removed_fraction", "[clean]"):
+        assert words in message
+
+
+def test_a_removed_fraction_exactly_at_the_cap_passes() -> None:
+    # 7 of 10 at a cap of 0.7. A warn_kept_fraction of 0 never warns, so passing gives None.
+    assert limits(10, faint=4, isolated=3, max_removed_fraction=0.7,
+                  warn_kept_fraction=0) is None
+
+
+def test_a_splat_90_percent_broken_with_nothing_else_dropped_passes_a_cap_of_0_7() -> None:
+    # Broken Gaussians don't count toward the cap, so the Removed_Fraction is 0 (A4).
+    assert limits(10, broken=9, max_removed_fraction=0.7, warn_kept_fraction=0) is None
+
+
+def test_one_under_min_kept_splats_left_fails_with_the_counts_and_what_to_change() -> None:
+    # 599 of 1000 left, one under a min_kept_splats of 600. The faint and isolated filters drop
+    # 151, under the cap.
+    message = stopped(limits, 1000, broken=250, faint=100, isolated=51, min_kept_splats=600)
+    assert {"1000", "599"} <= numbers_in(message)
+    assert drops_in(message) == {"broken": 250, "faint": 100, "isolated": 51}
+    for words in (*FILTER_SETTINGS, "min_kept_splats", "[clean]"):
+        assert words in message
+
+
+# Exactly min_kept_splats left, and one over, with the isolated filter dropping one fewer for each
+# Gaussian more left. More than half is kept, so warn_kept_fraction's 0.5 gives no warning.
+@pytest.mark.parametrize("left", [600, 601], ids=["exactly", "one over"])
+def test_exactly_min_kept_splats_left_or_one_over_passes(left: int) -> None:
+    assert limits(1000, broken=250, faint=100, isolated=650 - left, min_kept_splats=600) is None
+
+
+def test_one_under_warn_kept_fraction_warns_with_both_counts_and_the_removed_fraction() -> None:
+    # 49 of 100 kept, one under a warn_kept_fraction of 0.5. The faint and isolated filters drop
+    # 41, 41%, under the cap.
+    warning = limits(100, broken=10, faint=20, isolated=21, warn_kept_fraction=0.5)
+    assert warning is not None
+    assert {"49", "100", "41.0%"} <= numbers_in(warning)
+
+
+# Exactly warn_kept_fraction's 50 of 100 kept, and one over, the isolated filter dropping one
+# fewer for each Gaussian more kept.
+@pytest.mark.parametrize("left", [50, 51], ids=["exactly", "one over"])
+def test_exactly_warn_kept_fraction_or_one_over_gives_no_warning(left: int) -> None:
+    assert limits(100, broken=10, faint=20, isolated=70 - left, warn_kept_fraction=0.5) is None
+
+
+def test_a_splat_over_the_cap_and_under_min_kept_splats_gets_the_caps_failure() -> None:
+    # The faint and isolated filters drop 800 of 1000, over a cap of 0.7, and leave 200, under a
+    # min_kept_splats of 500. A cap of 1 stops nothing, and 200 left pass a min_kept_splats of 1.
+    drops = {"faint": 600, "isolated": 200}
+    over_both = stopped(limits, 1000, **drops, max_removed_fraction=0.7, min_kept_splats=500)
+    over_the_cap = stopped(limits, 1000, **drops, max_removed_fraction=0.7, min_kept_splats=1)
+    too_few_left = stopped(limits, 1000, **drops, max_removed_fraction=1.0, min_kept_splats=500)
+    assert over_both == over_the_cap != too_few_left
+
+
+def first_sentence(message: str) -> str:
+    """The first sentence of `message`, up to its first full stop followed by a space. A
+    percentage like 70.0% holds a full stop too, but a digit follows it."""
+    return message.split(". ", 1)[0]
+
+
+@settings(deadline=None)
+@given(splats(), valid_settings)
+def test_the_removal_cap_holds_and_broken_gaussians_dont_count_toward_it(
+        data: np.ndarray, values: dict[str, object]) -> None:
+    """Feature: clean, Property 7: The Removal_Cap holds, and broken Gaussians don't count toward it
+
+    **Validates: Requirements 2.23, 3.2, 3.4**
+    """
+    s = clean_settings(**values)
+    source = len(data)
+    with np.errstate(all="raise"):  # as in every filter test (Req 2.11)
+        kept = run_filters(data, s, add_count=lambda name, value: None)  # outside a Step
+    # The test's own count of the Capped_Removals: the Gaussians that pass the Broken_Filter, by
+    # Property 2's oracle, but aren't kept. So no broken Gaussian is among them.
+    drawable = {row for row, gaussian in enumerate(data) if can_be_drawn(gaussian)}
+    capped = len(drawable - set(kept.rows.tolist()))
+    try:
+        check_limits(source, kept, s)
+    except ExpectedFailure as failure:
+        # check_limits' two failures, told apart by their first sentences: the cap's names
+        # max_removed_fraction, and the other one names min_kept_splats.
+        first = first_sentence(str(failure))
+        stopped_at_cap = "max_removed_fraction" in first
+        assert stopped_at_cap or "min_kept_splats" in first
+    else:
+        stopped_at_cap = False
+    # Compared in float64, as check_limits compares them, so a share exactly at the cap passes.
+    if stopped_at_cap:
+        assert capped / source > s.max_removed_fraction
+    else:
+        # Whatever else check_limits refused or warned about.
+        assert capped / source <= s.max_removed_fraction

@@ -1,8 +1,9 @@
 """Tests for the clean step's filters, in splatpipe/clean/, on Splat_Data and centres that the
 tests build as arrays themselves (Req 10.1).
 
-Each filter has a part of its own below, and so does the neighbour search that the
-Isolated_Filter uses. A part holds its unit tests first and its property tests after them:
+Each filter has a part of its own below, and so do the neighbour search that the
+Isolated_Filter uses and the Filter_Order that runs the three filters. A part holds its unit
+tests first and its property tests after them:
 
 - The Broken_Filter, in broken.py: a NaN, +infinity or -infinity in each Required_Property in
   turn drops a Gaussian, and so does the zero-length quaternion (0, -0.0, 0, 0). A NaN in a colour
@@ -43,6 +44,21 @@ Isolated_Filter uses. A part holds its unit tests first and its property tests a
   would drop the whole sparse grid (A5). Property 5 checks isolated_keep against isolation_rule,
   a brute-force reference in plain Python, on centres from reference_centres and settings from
   valid_settings (Req 2.12 to 2.14, 2.21).
+- The Filter_Order, in filters.py: run_filters on Splat_Data of two broken Gaussians, a tight
+  cluster, a floater and the floater's seven faint companions. Given the companions, the
+  Isolated_Filter would keep the floater, but the Faint_Filter drops them first, so the
+  Isolated_Filter drops it, which shows the Filter_Order and that each filter gets the set the
+  one before it kept (Req 2.1, 2.13). The counts reach add_count in order, each as an int, and
+  when isolated_keep raises, only dropped_broken and dropped_faint were added (Req 2.17, 7.2,
+  7.3). A max_workers of 0 runs, with 1 worker for the Isolated_Filter's tree query.
+  Property 1 checks run_filters on Splat_Data from splats and settings from valid_settings: it
+  gives back increasing rows, none repeated, exactly the rows the test gets by calling
+  broken_keep, faint_keep and isolated_keep one after the other, it leaves the Splat_Data's bytes
+  as they were, and each dropped_* count is the size of the set its filter was given less the
+  size of the set it kept (Req 2.1, 2.17, 2.18). Property 6 runs run_filters with the real
+  config.toml's [clean] settings on Splat_Data from grids, evenly spaced grids of more than
+  neighbours opaque Gaussians, full of ties: it keeps every Gaussian, and each dropped_* count is
+  0, however the tree breaks the ties (Req 2.22).
 
 The autouse fixture float_errors_raise runs every test here inside np.errstate(all="raise"), so
 an overflow, an invalid value, a division by 0 or an underflow anywhere in a filter fails the
@@ -50,26 +66,31 @@ test. Only the underflow a filter allows on purpose, inside its own np.errstate(
 passes (Req 2.11).
 """
 
+import functools
 import math
 import statistics
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
+from typing import NoReturn
 
 import numpy as np
 import pytest
 from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 from scipy.spatial import cKDTree
 
 from splatpipe.clean.broken import broken_keep
 from splatpipe.clean.faint import (FLOAT32_HALF_STEP, HUGE_DIVISIONS, cube_groups, faint_keep,
                                    log_opacity, log_paint)
+from splatpipe.clean.filters import run_filters
 from splatpipe.clean.isolated import isolated_keep
 from splatpipe.clean.neighbours import nearest_others, positions
-from splatpipe.clean.settings import CleanSettings
+from splatpipe.clean.settings import CleanSettings, check_settings
+from splatpipe.config import REPO_ROOT, load_config
 
 from splats import (Rescaled, centre_distances, centre_sets, clean_settings, extreme_splats,
-                    gaussians, reference_centres, reference_splats, rescaled_splats, splats,
-                    valid_settings)
+                    gaussians, grids, reference_centres, reference_splats, rescaled_splats,
+                    splats, valid_settings)
 
 # The smallest float32 above 0, 2**-149, a subnormal.
 SMALLEST_SUBNORMAL = np.finfo(np.float32).smallest_subnormal
@@ -816,3 +837,188 @@ def test_the_isolated_filter_keeps_exactly_what_its_rule_keeps(
     keep = isolated_keep(centres, s, workers=max(1, s.max_workers))
     assert keep.dtype == np.bool_ and keep.shape == (len(centres),)
     assert keep.tolist() == expected
+
+
+# The Filter_Order
+
+# The Splat_Data of the Filter_Order tests holds, in row order, BROKEN broken Gaussians, a tight
+# cluster of 27 bright Gaussians a centimetre apart, a bright floater 0.98 from the nearest of
+# them, and the floater's 7 faint companions, at the other corners of a cube of edge 0.01 that
+# has the floater at one corner.
+BROKEN = 2
+CLUSTER = even_grid(3, 0.01)
+FLOATER, *COMPANIONS = even_grid(2, 0.01, x0=1.0)
+# The rows that pass every filter: the cluster's.
+CLUSTER_ROWS = list(range(BROKEN, BROKEN + len(CLUSTER)))
+# The counts run_filters adds for that Splat_Data at the test settings, in order, each with its
+# type: the Broken_Filter drops the broken Gaussians, the Faint_Filter the companions and the
+# Isolated_Filter the floater.
+COUNTS = [("dropped_broken", BROKEN, int), ("dropped_faint", len(COMPANIONS), int),
+          ("dropped_isolated", 1, int), ("kept_splats", len(CLUSTER), int)]
+
+
+def propped_floater() -> np.ndarray:
+    """The Filter_Order tests' Splat_Data, made from gaussians, whose plain values make every
+    Gaussian drawable and bright, with two changes.
+
+    Each broken Gaussian gets a NaN opacity. Each companion gets a Real_Opacity of 0.001, below
+    the test settings' min_opacity of 0.005, so it's a Faint_Gaussian. The 7 companions are fewer
+    than faint_min_per_cube, so no Cube holds enough Faint_Gaussians to keep them, and the
+    Faint_Filter drops them all, whatever they paint.
+    """
+    assert len(COMPANIONS) < PER_CUBE
+    centres = [*CLUSTER, FLOATER, *COMPANIONS]
+    data = gaussians(BROKEN + len(centres))
+    for axis, name in enumerate(("x", "y", "z")):
+        data[name][BROKEN:] = [centre[axis] for centre in centres]
+    data["opacity"][:BROKEN] = np.nan
+    data["opacity"][-len(COMPANIONS):] = logit(0.001)
+    return data
+
+
+class Counts:
+    """A stand-in for the Step whose add_count run_filters is given. It records each count it's
+    given, in order, as (name, value, the value's type)."""
+
+    def __init__(self) -> None:
+        self.added: list[tuple[str, object, type]] = []
+
+    def add_count(self, name: str, value: int) -> None:
+        self.added.append((name, value, type(value)))
+
+
+def test_a_gaussian_the_faint_filter_drops_is_no_longer_anyones_neighbour_in_the_isolated_filter(
+        ) -> None:
+    data = propped_floater()
+    # Given everything the Broken_Filter keeps, the companions included, the Isolated_Filter
+    # would keep the floater: its Nearest_Neighbours would be the 7 companions and one Gaussian
+    # of the cluster, and its Neighbour_Distance would be about its Neighbour_Median.
+    drawable = np.arange(BROKEN, len(data))
+    assert isolated_answer(positions(data, drawable).tolist()) == [True] * len(drawable)
+    # But the Faint_Filter runs first and drops the companions, so the Isolated_Filter gets the
+    # cluster and the floater alone. Then the floater's Nearest_Neighbours are in the cluster,
+    # and its Neighbour_Distance is about 80 times its Neighbour_Median, ten times
+    # isolation_ratio, so the Isolated_Filter drops it. Run the other way round, or each on the
+    # whole set, the filters would keep it.
+    result = run_filters(data, clean_settings(), Counts().add_count)
+    assert result.rows.tolist() == CLUSTER_ROWS
+    assert (result.dropped_broken, result.dropped_faint,
+            result.dropped_isolated) == (BROKEN, len(COMPANIONS), 1)
+
+
+def test_the_counts_reach_add_count_in_order_each_as_an_int() -> None:
+    counts = Counts()
+    run_filters(propped_floater(), clean_settings(), counts.add_count)
+    assert counts.added == COUNTS
+
+
+def test_when_isolated_keep_raises_only_dropped_broken_and_dropped_faint_were_added(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(points: np.ndarray, s: CleanSettings, workers: int) -> NoReturn:
+        raise RuntimeError("the stand-in Isolated_Filter failed")
+
+    # Replaced where filters.py looks isolated_keep up.
+    monkeypatch.setattr("splatpipe.clean.filters.isolated_keep", fail)
+    counts = Counts()
+    with pytest.raises(RuntimeError, match="the stand-in Isolated_Filter failed"):
+        run_filters(propped_floater(), clean_settings(), counts.add_count)
+    # Each count was added as soon as its filter was done, so the two worked out before the
+    # failure are there, and the two that need the Isolated_Filter's answer aren't (Req 7.2).
+    assert counts.added == COUNTS[:2]
+
+
+def test_a_max_workers_of_0_runs_with_1_worker_for_the_isolated_filters_tree_query(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    workers_given: list[int] = []  # the workers of each isolated_keep call, in order
+
+    def spy(points: np.ndarray, s: CleanSettings, workers: int) -> np.ndarray:
+        workers_given.append(workers)
+        return isolated_keep(points, s, workers)
+
+    # Replaced where filters.py looks isolated_keep up, with a spy that calls the real one.
+    monkeypatch.setattr("splatpipe.clean.filters.isolated_keep", spy)
+    result = run_filters(propped_floater(), clean_settings(max_workers=0), Counts().add_count)
+    # isolated_keep hands its workers to its tree's query, which scipy refuses at 0. It got the
+    # cluster and the floater, more than neighbours Gaussians, so it built its tree and queried
+    # it, with 1 worker.
+    assert workers_given == [1]
+    assert result.rows.tolist() == CLUSTER_ROWS
+
+
+def filters_in_turn(data: np.ndarray, values: dict[str, object]) -> list[np.ndarray]:
+    """The rows of the Splat_Data `data` that each filter keeps when the test calls the three
+    itself, one after the other, with the settings `values`: the rows broken_keep keeps, then
+    those of them that faint_keep keeps, then those of them that isolated_keep keeps.
+
+    faint_keep gets its inputs from faint_answer, on what broken_keep kept. isolated_keep gets
+    the centres of what faint_keep kept from positions, and max(1, max_workers) worker threads,
+    as run_filters gives it, because scipy refuses 0.
+    """
+    s = clean_settings(**values)
+    after_broken = np.flatnonzero(broken_keep(data))
+    faint_kept = np.array(faint_answer(as_stored(data[after_broken]), **values), dtype=bool)
+    after_faint = after_broken[faint_kept]
+    isolated_kept = isolated_keep(positions(data, after_faint), s, workers=max(1, s.max_workers))
+    return [after_broken, after_faint, after_faint[isolated_kept]]
+
+
+@settings(deadline=None)
+@given(splats(), valid_settings)
+def test_the_filters_run_in_order_and_keep_an_ordered_subset(
+        data: np.ndarray, values: dict[str, object]) -> None:
+    """Feature: clean, Property 1: The filters run in order and keep an ordered subset
+
+    **Validates: Requirements 2.1, 2.17, 2.18**
+    """
+    before = data.tobytes()
+    counts = Counts()
+    result = run_filters(data, clean_settings(**values), counts.add_count)
+    # The raw bytes are the same, NaN payloads included, so nothing wrote to the Splat_Data and
+    # every kept Gaussian holds its values bit for bit.
+    assert data.tobytes() == before
+    rows = result.rows.tolist()
+    assert rows == sorted(set(rows)) and set(rows) <= set(range(len(data)))
+    after_broken, after_faint, after_isolated = filters_in_turn(data, values)
+    assert rows == after_isolated.tolist()
+    # Each filter's drops: the size of the set it was given less the size of the set it kept.
+    dropped = [len(data) - len(after_broken), len(after_broken) - len(after_faint),
+               len(after_faint) - len(after_isolated)]
+    assert [result.dropped_broken, result.dropped_faint, result.dropped_isolated] == dropped
+    reported = [(name, value) for name, value, _ in counts.added]
+    assert reported == [("dropped_broken", dropped[0]), ("dropped_faint", dropped[1]),
+                        ("dropped_isolated", dropped[2]), ("kept_splats", len(after_isolated))]
+    assert sum(value for _, value in reported) == len(data)
+
+
+# Property 6, on dense, opaque grids, with the real config's settings
+
+# The real config.toml, read by path, because conftest.py points CONFIG_PATH at a test config.
+REAL_CONFIG = REPO_ROOT / "config.toml"
+
+
+@functools.cache
+def real_settings() -> CleanSettings:
+    """The real config.toml's [clean] settings for the Preset called default, checked as the clean
+    step checks its own. Every setting the filters read is a Shared_Setting, so every Preset gives
+    the same ones."""
+    return check_settings(load_config(REAL_CONFIG).step_settings("clean", "default"))
+
+
+@settings(deadline=None)
+# Deferred, so the real config is read when this test runs, and a bad one fails this test alone.
+@given(st.deferred(lambda: grids(min_opacity=real_settings().min_opacity,
+                                 neighbours=real_settings().neighbours)))
+def test_a_dense_opaque_grid_loses_nothing(grid: np.ndarray) -> None:
+    """Feature: clean, Property 6: A dense, opaque grid loses nothing
+
+    **Validates: Requirements 2.22**
+    """
+    # No Gaussian of the grid is broken or a Faint_Gaussian, so the Faint_Filter keeps every one
+    # without making Cubes, and the Isolated_Filter is given the whole grid. A grid is full of
+    # equal Centre_Distances, and no draw is dropped for one, so wherever a tie decides which
+    # Gaussians are a Gaussian's Nearest_Neighbours, the tree picks them in its own order (A10).
+    counts = Counts()
+    result = run_filters(grid, real_settings(), counts.add_count)
+    assert result.rows.tolist() == list(range(len(grid)))
+    assert counts.added == [("dropped_broken", 0, int), ("dropped_faint", 0, int),
+                            ("dropped_isolated", 0, int), ("kept_splats", len(grid), int)]

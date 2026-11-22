@@ -48,6 +48,12 @@ draws with tied Centre_Distances, because faint_keep searches for no neighbours.
 gives Splat_Data and the same Gaussians with c added to every stored scale and every centre
 multiplied by 2**m, every moved value exact in float32, and drops a draw with tied
 Centre_Distances as splats does.
+
+The Grids strategy is for Property 6 in tests/test_clean_filters.py: grids gives Splat_Data on an
+evenly spaced grid of more than neighbours Gaussians, with finite properties, random unit
+quaternions and every Real_Opacity above min_opacity. It has no tie check, because a grid is full
+of Gaussians with two others at one Centre_Distance, and Property 6 has to hold whichever of them
+the tree counts (Req 10.13).
 """
 
 import functools
@@ -62,7 +68,7 @@ from typing import TypeVar
 import numpy as np
 from hypothesis import assume
 from hypothesis import strategies as st
-from hypothesis.extra.numpy import from_dtype
+from hypothesis.extra.numpy import arrays, from_dtype
 
 from splatpipe.clean.ply_read import PLY_TYPES
 from splatpipe.clean.settings import CleanSettings, check_settings
@@ -825,3 +831,93 @@ def exactly_float32(values: np.ndarray) -> np.ndarray:
     stored = values.astype(np.float32)
     assert (stored.astype(np.float64) == values).all(), "float32 can't hold a moved value exactly"
     return stored
+
+
+# Grids, for Property 6
+
+# The most Gaussians a grid has along one axis.
+GRID_SIDE = 6
+# Every grid's numbers of Gaussians along x, y and z, each from 1 to GRID_SIDE, the smallest grids
+# first, so Hypothesis shrinks to them.
+GRID_SHAPES = sorted(itertools.product(range(1, GRID_SIDE + 1), repeat=3), key=math.prod)
+# e, where a grid's spacing on one axis is 2**e.
+spacing_powers = st.integers(min_value=-8, max_value=8)
+# m, where a grid's origin on one axis is m times that axis's spacing. Each coordinate is then
+# (m + j) * 2**e for a j from 0 to GRID_SIDE - 1: a whole number at most 2**20 + 5 in size, which
+# float32 holds exactly, times a power of 2 that it holds exactly too.
+origin_multiples = st.integers(min_value=-2 ** 20, max_value=2 ** 20)
+# How far above the logit of min_opacity a grid's stored opacities start, so no rounding can make
+# one a Faint_Gaussian.
+OPACITY_MARGIN = 0.001
+# Any finite float32 value, for a grid's stored scales. st.floats often draws its own bounds,
+# about 3.4e38 and -3.4e38, and the subnormals.
+finite_float32s = st.floats(min_value=-FLOAT32_MAX, max_value=FLOAT32_MAX, width=32)
+# A grid's random unit quaternions are made from three numbers from 0 up to 1, each a whole
+# multiple of 1 / TURN_STEPS.
+TURN_STEPS = 1024
+
+
+@st.composite
+def grids(draw: st.DrawFn, *, min_opacity: float, neighbours: int) -> np.ndarray:
+    """Splat_Data on an evenly spaced grid of more than `neighbours` Gaussians, for Property 6, as
+    a structured array with a float32 field for each property of standard_fields(), as gaussians
+    gives. `min_opacity` has to be above 0 and below 1, as the real config's is.
+
+    - The grid has nx, ny and nz Gaussians along x, y and z, each from 1 to GRID_SIDE, with a
+      product above `neighbours`. Its rows run along x first, then y, then z.
+    - Each axis has its own spacing, 2**e for an e from spacing_powers, and its own origin, a
+      whole multiple of that spacing from origin_multiples. Every coordinate is checked to be the
+      float32 value equal to the exact one, so the grid really is even.
+    - Stored opacities are float32 values from OPACITY_MARGIN above the logit of `min_opacity` up
+      to float32's largest, so every Real_Opacity is above `min_opacity`.
+    - Quaternions are random unit ones, by Shoemake's method: for u from 0 to 1 and any v and w,
+      (sqrt(1 - u) sin 2πv, sqrt(1 - u) cos 2πv, sqrt(u) sin 2πw, sqrt(u) cos 2πw) has length 1,
+      and it's a uniformly random rotation when u, v and w are uniform from 0 up to 1. Each of
+      them is a whole multiple of 1 / TURN_STEPS, so every component is 0 or above 1e-18 in size,
+      and storing it as float32 can't underflow.
+    - Stored scales are any finite float32 values, from finite_float32s.
+    - The Carried_Properties keep the plain values gaussians gives them.
+
+    Each per-Gaussian value comes from Hypothesis's arrays, which draws a few of them and fills
+    the rest with one more. Drawn one at a time, the values of a grid of 216 Gaussians would take
+    more than the 8 KiB that Hypothesis lets one example draw.
+
+    It has no tie check: a grid is full of Gaussians with two others at one Centre_Distance, and
+    Property 6 has to hold whichever of them the tree counts (Req 10.13).
+    """
+    shape = draw(st.sampled_from([sides for sides in GRID_SHAPES if math.prod(sides) > neighbours]))
+    lines = []  # each axis's coordinates, exactly, in float64
+    for side in shape:
+        spacing = 2.0 ** draw(spacing_powers)
+        lines.append((draw(origin_multiples) + np.arange(side)) * spacing)
+    # Every centre of the grid, x changing fastest, then y, then z.
+    z, y, x = np.meshgrid(lines[2], lines[1], lines[0], indexing="ij")
+    n = math.prod(shape)
+    data = gaussians(n)
+    for name, coordinates in (("x", x), ("y", y), ("z", z)):
+        data[name] = exactly_float32(coordinates.ravel())
+    lowest = float32_at_least(math.log(min_opacity / (1 - min_opacity)) + OPACITY_MARGIN)
+    data["opacity"] = draw(arrays(np.float32, n, elements=st.floats(
+        min_value=lowest, max_value=FLOAT32_MAX, width=32)))
+    scales = draw(arrays(np.float32, (3, n), elements=finite_float32s))
+    for axis in range(3):
+        data[f"scale_{axis}"] = scales[axis]
+    u, v, w = draw(arrays(np.int64, (3, n), elements=st.integers(
+        min_value=0, max_value=TURN_STEPS - 1))) / TURN_STEPS
+    turns = (np.sqrt(1 - u) * np.sin(2 * np.pi * v), np.sqrt(1 - u) * np.cos(2 * np.pi * v),
+             np.sqrt(u) * np.sin(2 * np.pi * w), np.sqrt(u) * np.cos(2 * np.pi * w))
+    for name, component in zip(("rot_0", "rot_1", "rot_2", "rot_3"), turns):
+        data[name] = component
+    return data
+
+
+def float32_at_least(value: float) -> float:
+    """The smallest float32 value at or above `value`, a float inside float32's range.
+
+    st.floats with width=32 takes only bounds that float32 holds exactly. The comparison is made
+    between Python floats, because numpy would round `value` to float32 to compare it with one.
+    """
+    nearest = np.float32(value)
+    if float(nearest) < value:
+        nearest = np.nextafter(nearest, np.float32(math.inf))
+    return float(nearest)
