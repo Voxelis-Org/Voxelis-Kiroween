@@ -45,6 +45,15 @@ def archive_head(dest: Path, *, cwd: Path) -> None:
     _git("archive", "--format=tar", "--output", str(dest), "HEAD", cwd=cwd)
 
 
+def head_file(name: str, *, cwd: Path) -> bytes:
+    """HEAD's committed bytes of one file (`git show HEAD:<name>`), not the working tree's.
+
+    The Image_Build uploads its dependency manifests this way, so the uv.lock the builder installs
+    from is byte for byte the one whose hash `lock_hashes` tags on the image.
+    """
+    return _git("show", f"HEAD:{name}", cwd=cwd)
+
+
 def lock_hashes(*, cwd: Path) -> tuple[str, str]:
     """The sha-256 of HEAD's uv.lock and package-lock.json (Req 7.5, 7.6).
 

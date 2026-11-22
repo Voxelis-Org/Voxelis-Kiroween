@@ -184,7 +184,11 @@ class BotoAws:
         return [_as_image(raw) for raw in result.get("Images", [])]
 
     def console_output(self, instance_id: str) -> str:
-        result = self._call(lambda: self._ec2.get_console_output(InstanceId=instance_id))
+        # Latest=True asks for the newest output, which our Nitro machines support. Without it EC2
+        # only posts output around state changes, so a line printed long after boot, like the image
+        # build's done marker, would never show up.
+        result = self._call(lambda: self._ec2.get_console_output(
+            InstanceId=instance_id, Latest=True))
         output = result.get("Output") or ""
         try:  # EC2 returns the console output base64-encoded.
             return base64.b64decode(output).decode("utf-8", "replace")

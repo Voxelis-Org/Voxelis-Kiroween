@@ -8,7 +8,7 @@ inclusion: always
 - pytest for tests, Hypothesis for property tests. Hypothesis stays in the dev group because it's a test dependency only.
 - numpy, scipy and OpenCV for the CPU maths. OpenCV is always `opencv-python-headless`, never plain `opencv-python`. We never use cv2 to read or write video.
 - ffmpeg as a command line tool on the server. Frames always come from the ffmpeg command line.
-- COLMAP 4.2.1 as a command line tool on the server, built from source with `-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF`. The first three keep SiftGPU (non-commercial) out. The last two keep out CGAL (GPL) and LSD (AGPL), which we don't use: we do no Delaunay meshing and no line detection.
+- COLMAP 4.2.1 as a command line tool on the server, built from source with `-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF`. The first three keep SiftGPU (non-commercial) out. The last two keep out CGAL (GPL) and LSD (AGPL), which we don't use: we do no Delaunay meshing and no line detection. Two more flags: `-DONNX_ENABLED=OFF` leaves out the learned features and the ONNX Runtime binaries they'd download, while SIFT stays, and `-DBLA_VENDOR=OpenBLAS` builds with OpenBLAS's OpenMP build in place of Intel's MKL, whose licence isn't on our list.
 - SIFT runs on the CPU. Still pass `--FeatureExtraction.use_gpu 0` to `colmap feature_extractor` and `--FeatureMatching.use_gpu 0` to whichever matcher we run.
 - gsplat 1.5.3 for training.
 - The GPU packages (torch, gsplat, the depth model) only go in the cloud machine image. Never add them to `pyproject.toml` or the laptop install. That includes torch's CUDA wheels and the NVIDIA CUDA libraries that come with them.

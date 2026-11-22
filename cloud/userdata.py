@@ -34,6 +34,12 @@ from cloud.errors import CloudError
 
 CAP_DEADLINE_ENV = "SPLATPIPE_CAP_DEADLINE"   # the Cap_Deadline variable the Cloud_Runner sets (Req 10.7)
 
+# The machine paths a Job, the Smoke_Test and the Image_Build share: the folder the Code_Archive is
+# extracted into, and the Python of the environment the Image_Build sets up there with uv. cloud.image
+# installs into this same VENV_PYTHON, so the two can't drift apart.
+JOB_ROOT = "/opt/job"
+VENV_PYTHON = f"{JOB_ROOT}/.venv/bin/python"
+
 _MAX_BYTES = 16384   # the EC2 User_Data size limit (Req 8.7)
 
 # Safe patterns for the values that have no checker of their own. shlex.quote already makes every
@@ -136,11 +142,11 @@ def render_user_data(values: UserDataValues) -> str:
         f'export {CAP_DEADLINE_ENV}="$(date -u -d "+$((CAP_MINUTES - UPLOAD_MARGIN_MINUTES)) minutes" +%Y-%m-%dT%H:%M:%SZ)"',
         # Fetch the Code_Archive with the instance role, extract it to /opt/job, and run the
         # Cloud_Runner at the committed revision.
-        "mkdir -p /opt/job",
+        f"mkdir -p {JOB_ROOT}",
         'aws s3 cp "s3://$BUCKET/$CODE_ARCHIVE_KEY" /tmp/code.tar',
-        "tar -xf /tmp/code.tar -C /opt/job",
-        "cd /opt/job",
-        f'/opt/job/.venv/bin/python -m {module} --job "$JOB_ID"',
+        f"tar -xf /tmp/code.tar -C {JOB_ROOT}",
+        f"cd {JOB_ROOT}",
+        f'{VENV_PYTHON} -m {module} --job "$JOB_ID"',
     ]
     script = "\n".join(lines) + "\n"
     if len(script.encode("utf-8")) > _MAX_BYTES:

@@ -2,7 +2,7 @@
 name: gsplat-training
 description: Training a splat with gsplat 1.5.3. What rasterization() takes and gives back, the MCMC strategy and its settings, and how the example trainer (examples/simple_trainer.py) is put together, from its COLMAP loader to the PLY it writes. Use when writing or reviewing the training step, calling rasterization() or a densification strategy, choosing MCMCStrategy settings, adapting code from gsplat's examples, installing gsplat on the machine image, or reading a PLY that gsplat exported.
 metadata:
-  sources: the v1.5.3 tag of gsplat on GitHub (library source, examples/ and README), the 1.5.3 docs at docs.gsplat.studio/versions/1.5.3, gsplat's 1.5.3 files on PyPI, and the torch 2.5.1 extension builder, fused-ssim, torchmetrics and imageio-ffmpeg pages the trainer depends on, read November 2026
+  sources: the v1.5.3 tag of gsplat on GitHub (library source, examples/ and README), the 1.5.3 docs at docs.gsplat.studio/versions/1.5.3, gsplat's 1.5.3 files on PyPI, and the torch 2.7.1 extension builder, fused-ssim, torchmetrics and imageio-ffmpeg pages the trainer depends on, read November 2026
 ---
 
 # Training with gsplat 1.5.3
@@ -20,10 +20,11 @@ gsplat, torch and fused-ssim only exist on the machine image (tech.md), so nothi
 - PyPI has 1.5.3 as an sdist and as a pure-Python wheel, `gsplat-1.5.3-py3-none-any.whl`, and pip picks the wheel. gsplat's publish workflow builds both with `BUILD_NO_CUDA=1 python -m build`, so the wheel holds no compiled CUDA module. The README says the same: an install from PyPI builds the CUDA code on the first run.
 - With the wheel, the CUDA code compiles the first time gsplat needs it, not at install. `gsplat/cuda/_backend.py` tries the prebuilt module `gsplat.csrc` first. When that's missing, it compiles with torch's `cpp_extension` into `~/.cache/torch_extensions/py<python>_cu<cuda>/gsplat_cuda/` (under `TORCH_EXTENSIONS_DIR` instead, when that's set) and says this "may take a few minutes the first time". The cache is per user, and later runs load it.
 - That compile needs `nvcc`. With no CUDA toolkit, gsplat prints "No CUDA toolkit found. gsplat will be disabled." and every CUDA call fails.
-- Installing from source compiles the module during the install, through `setup.py`. That's the sdist, with `--no-binary gsplat`, or the README's `git+https://github.com/nerfstudio-project/gsplat.git` pinned to `@v1.5.3`. Both carry the CUDA sources and the glm headers, which the repo keeps as a git submodule. `setup.py` imports torch and the repo has no `pyproject.toml`, so torch goes in first and pip needs `--no-build-isolation`. `TORCH_CUDA_ARCH_LIST` picks the GPU architectures, `MAX_JOBS` defaults to 10, and `BUILD_NO_CUDA=1` skips the compile. On this path torch 2.5.1 also refuses an `nvcc` whose CUDA major version differs from the one torch was built with.
+- Installing from source compiles the module during the install, through `setup.py`. That's the sdist, with `--no-binary gsplat`, or the README's `git+https://github.com/nerfstudio-project/gsplat.git` pinned to `@v1.5.3`. Both carry the CUDA sources and the glm headers, which the repo keeps as a git submodule. `setup.py` imports torch and the repo has no `pyproject.toml`, so torch goes in first and pip needs `--no-build-isolation`. `TORCH_CUDA_ARCH_LIST` picks the GPU architectures, `MAX_JOBS` defaults to 10, and `BUILD_NO_CUDA=1` skips the compile. On this path torch 2.7.1 also refuses an `nvcc` whose CUDA major version differs from the one torch was built with.
 - gsplat also publishes prebuilt wheels for some torch and CUDA pairs at `https://docs.gsplat.studio/whl` (README).
 - So `TORCH_CUDA_ARCH_LIST=... pip install gsplat==1.5.3` compiles nothing. For nothing to compile when a job starts, install from source on the image, so that `gsplat.csrc` exists.
-- Warming the compile cache during the image build is the weaker option. In each new process, torch 2.5.1 regenerates its ninja file and runs ninja over the cached build. If the compile flags differ, ninja compiles the module again. Without `TORCH_CUDA_ARCH_LIST`, the flags follow the machine's own GPU, so the cache only holds when every job runs as the same user with the same `TORCH_CUDA_ARCH_LIST` as the build. `_backend.py`'s docstring warms it with `python -c "from gsplat.cuda._backend import _C"`, but also sets `FAST_COMPILE=1`, which compiles with `-O0` for debugging, so leave that out.
+- Our image does that (`cloud/image.py`). Its base image carries only CUDA 13.2 to 13.5 and no 12.x, so it installs torch 2.7.1 and torchvision 0.22.1 from PyTorch's cu128 index, NVIDIA's `cuda-toolkit-12-8` apt package for an nvcc that matches, and setuptools, wheel and ninja. Then it runs `uv pip install --no-build-isolation --no-binary gsplat gsplat==1.5.3` with `CUDA_HOME=/usr/local/cuda-12.8` and `TORCH_CUDA_ARCH_LIST="8.6;8.9"`, and the build fails unless `from gsplat import csrc` imports. That recipe worked on two real machines on that base image.
+- Warming the compile cache during the image build is the weaker option. In each new process, torch 2.7.1 regenerates its ninja file and runs ninja over the cached build. If the compile flags differ, ninja compiles the module again. Without `TORCH_CUDA_ARCH_LIST`, the flags follow the machine's own GPU, so the cache only holds when every job runs as the same user with the same `TORCH_CUDA_ARCH_LIST` as the build. `_backend.py`'s docstring warms it with `python -c "from gsplat.cuda._backend import _C"`, but also sets `FAST_COMPILE=1`, which compiles with `-O0` for debugging, so leave that out.
 
 ## rasterization()
 
@@ -230,7 +231,7 @@ So the keys are `means`, `scales`, `quats`, `opacities`, `sh0` and `shN`, the on
 11. At the eval steps, measures PSNR, SSIM and LPIPS on the held-out images and renders a trajectory video.
 12. Updates the viewer, when it's on.
 
-`fused_ssim(img1, img2, padding="same")` takes `[B, C, H, W]` images and returns the mean SSIM. Only `img1` gets a gradient, so the render goes first. `padding="valid"`, which the trainer uses, drops a 5-pixel border. It has no mask argument. The examples pin fused-ssim at commit `328dc9836f513d00c4b5bc38fe30478b4435cbb5`.
+`fused_ssim(img1, img2, padding="same")` takes `[B, C, H, W]` images and returns the mean SSIM. Only `img1` gets a gradient, so the render goes first. `padding="valid"`, which the trainer uses, drops a 5-pixel border. It has no mask argument. The examples pin fused-ssim at commit `328dc9836f513d00c4b5bc38fe30478b4435cbb5`. Its `setup.py` compiles for the GPU it sees, with its own `-arch` flag, and torch then ignores `TORCH_CUDA_ARCH_LIST`. On our A10G image builder that's sm_86, which also runs on the L4 and L40S (8.9). With no GPU visible it falls back to sm_75, sm_80 and sm_89.
 
 When `Dataset` returns a `mask` (fisheye only), the trainer sets the render to 0 outside it and leaves the photo as it is. That works for fisheye because `remap` already left those photo pixels black.
 
@@ -250,7 +251,7 @@ When `Dataset` returns a `mask` (fisheye only), the trainer sets the render to 0
 | `ssim_lambda` | `0.2` | |
 | `packed`, `antialiased`, `random_bkgd` | `False` | `antialiased` sets `rasterize_mode="antialiased"` |
 | `batch_size`, `steps_scaler` | `1`, `1.0` | `steps_scaler` multiplies the step counts, the SH interval and the strategy's refine steps |
-| `disable_viewer`, `disable_video` | `False` | see "Running it" |
+| `disable_viewer`, `disable_video` | `False` | see "How it runs" |
 | `lpips_net` | `"alex"` | `"vgg"` matches the LPIPS of the original 3DGS repo |
 | `pose_opt`, `app_opt`, `use_bilateral_grid`, `depth_loss`, `with_ut`, `visible_adam`, `sparse_grad` | `False` | the extras: camera pose refinement, per-image appearance, a bilateral grid, a depth loss against COLMAP's points, 3DGUT, the selective Adam from Taming 3DGS, and sparse gradients |
 
@@ -271,24 +272,16 @@ tb/                                  TensorBoard logs
 
 Steps in file names count from 0, so after 30,000 steps the last files say `29999`.
 
-### Running it
+### How it runs
 
-Run it from inside `examples/`, because it imports `datasets`, `utils` and `gsplat_viewer` by their top-level names. The command line comes from tyro: a preset name, `default` or `mcmc`, then any config field as a flag. The script runs through `gsplat.distributed.cli`, which needs CUDA and starts one process per visible GPU, turning the viewer off when there's more than one. `--ckpt <file>` skips training and only evaluates and renders from the checkpoint.
+We never run it (see "Our rules that touch this"). This is how it's meant to run, for reading its code and its benchmark scripts.
 
-On a machine nobody watches:
+It runs from inside `examples/`, because it imports `datasets`, `utils` and `gsplat_viewer` by their top-level names. The command line comes from tyro: a preset name, `default` or `mcmc`, then any config field as a flag. The script runs through `gsplat.distributed.cli`, which needs CUDA and starts one process per visible GPU, turning the viewer off when there's more than one. `--ckpt <file>` skips training and only evaluates and renders from the checkpoint.
 
-- Pass `--disable_viewer`. With the viewer on, the script serves it on port 8080 while it trains, then prints "Viewer running... Ctrl+C to exit." and sleeps for 1,000,000 seconds, about 11.5 days.
-- Pass `--disable_video` to skip the trajectory videos, which need imageio's ffmpeg plugin.
+- With the viewer on, the default, the script serves it on port 8080 while it trains, then prints "Viewer running... Ctrl+C to exit." and sleeps for 1,000,000 seconds, about 11.5 days. `--disable_viewer` turns that off. Code adapted from the example leaves the viewer out, since every machine ends when its job ends (rules.md).
+- `--disable_video` skips the trajectory videos, which need imageio's ffmpeg plugin.
 - `--eval_steps -1` skips evaluation, but the trainer still builds the LPIPS metric when it starts.
-- The script and its modules import viser, nerfview, tyro, torchmetrics, TensorBoard, imageio, PyYAML, OpenCV, SciPy, scikit-learn, matplotlib and the pycolmap fork, among others, when it starts. So they must be installed even with the viewer and evaluation off.
-
-A run of the MCMC preset that writes one PLY at the end:
-
-```bash
-python simple_trainer.py mcmc --disable_viewer --disable_video --eval_steps -1 \
-    --save_ply --ply_steps 30000 --strategy.cap-max 1000000 \
-    --data_dir <folder holding images/ and sparse/0/> --data_factor 1 --result_dir <results>
-```
+- The script and its modules import viser, nerfview, tyro, torchmetrics, TensorBoard, imageio, PyYAML, OpenCV, SciPy, scikit-learn, matplotlib and the pycolmap fork, among others, when it starts.
 
 ## export_splats()
 
@@ -397,13 +390,11 @@ export_splats(
 - Never call `rasterization_inria_wrapper()` or `rasterization_2dgs_inria_wrapper()`. They run Inria's CUDA rasterizer, or 2DGS's, which is based on it, and their docstrings say that backend has its own licence. rules.md bans Inria's code.
 - Use gsplat's `MCMCStrategy`, never code from the MCMC paper's own repo (`ubc-vision/3dgs-mcmc`), which is under Inria's non-commercial Gaussian-Splatting License.
 - Never copy `colormap()` from `examples/utils.py`. Its comment points to the 2DGS repo (`hbb1/2d-gaussian-splatting`), also under Inria's non-commercial licence. The examples' other borrowed code is permissive: `datasets/traj.py` says it's from Google's multinerf (Apache-2.0), `datasets/normalize.py` cites nerf-factory (Apache-2.0), and `rotation_6d_to_matrix()` in `utils.py` says it's adapted from pytorch3d.
-- Don't install `examples/requirements.txt` as it stands:
-  - It asks for plain `opencv-python`. We only ever install `opencv-python-headless`, and the Parser's OpenCV calls work with it.
-  - `imageio[ffmpeg]` brings imageio-ffmpeg, whose wheels ship their own ffmpeg executable. Our ffmpeg is only the command line tool on the machine image, so that needs Samarth's OK. The trainer only needs it for the trajectory videos, which `--disable_video` skips.
-  - It pins `numpy<2.0.0`, and our `uv.lock` has numpy 2.4.6.
-  - Most of the rest, among them the pycolmap fork, viser, nerfview, tyro, torchmetrics, tensorboard, tensorly, scikit-learn, matplotlib, splines and fused-bilagrid, have no line in `docs/third-party-licences.md` yet. Each needs its licence checked, and its line in the commit that adds it.
-- The trainer builds its LPIPS metric at start-up, and torchmetrics' LPIPS loads torchvision's pretrained AlexNet or VGG16 ImageNet weights, downloading them when they aren't cached. Those count as model weights, so their licence needs checking before the example runs on our machines.
-- Every machine ends when its job ends (rules.md), so pass `--disable_viewer` whenever the example runs on our machines.
+- We never run gsplat's example trainer or install its `examples/requirements.txt`, and we never use LPIPS: our trainer measures PSNR and SSIM only. So none of the example's licence questions reach our machines:
+  - its requirements' plain `opencv-python` (we only ever install `opencv-python-headless`), the ffmpeg executable inside `imageio[ffmpeg]` (our ffmpeg is only the command line tool on the machine image), and its `numpy<2.0.0` pin;
+  - the packages in it with no line in `docs/third-party-licences.md`, among them the pycolmap fork, viser, nerfview, tyro, torchmetrics, tensorboard, tensorly, scikit-learn, matplotlib, splines and fused-bilagrid;
+  - the pretrained AlexNet or VGG16 ImageNet weights that torchmetrics' LPIPS downloads, which the trainer loads at start-up.
+- So read the example for how it's put together, and write our trainer on gsplat's library API, with no viewer, no trajectory videos and no LPIPS. Anything it needs that the image doesn't have gets its line in `docs/third-party-licences.md` in the commit that adds it.
 - The training step reads `SPLATPIPE_CAP_DEADLINE`, the UTC time by which it should have saved and stopped (`docs/pipeline.md`, "The cap deadline"). The example has no deadline, so our loop has to check the clock and write the PLY in time.
 - The frames step writes `mask.png`, where black means ignore, for COLMAP and the training loss (`docs/pipeline.md`). The example never reads it, and fused-ssim takes no mask. Masking the way the example masks fisheye images means setting both the render and the photo to 0 where the mask is black.
 - The clean-export step reads `out/splat.ply` as a binary PLY in the usual 3DGS layout (its requirements, A1), and `export_splats(format="ply")` writes that layout. An MCMC splat has at most `cap_max` Gaussians, and clean-export refuses one with more than its `max_source_splats`, so keep the cap at or under that setting.
@@ -437,7 +428,8 @@ export_splats(
 - Docs, data conventions: <https://docs.gsplat.studio/versions/1.5.3/conventions/data_conventions.html>
 - Docs, evaluation and the MCMC numbers: <https://docs.gsplat.studio/versions/1.5.3/tests/eval.html>
 - fused-ssim at the examples' pinned commit: <https://github.com/rahul-goel/fused-ssim/blob/328dc9836f513d00c4b5bc38fe30478b4435cbb5/fused_ssim/__init__.py>
-- torch 2.5.1's `cpp_extension`, with the build folder, the CUDA version check and the JIT rebuild: <https://github.com/pytorch/pytorch/blob/v2.5.1/torch/utils/cpp_extension.py>
+- torch 2.7.1's `cpp_extension`, with the build folder, the CUDA version check and the JIT rebuild: <https://github.com/pytorch/pytorch/blob/v2.7.1/torch/utils/cpp_extension.py>
+- fused-ssim's `setup.py` at that commit, with its own architecture flags: <https://github.com/rahul-goel/fused-ssim/blob/328dc9836f513d00c4b5bc38fe30478b4435cbb5/setup.py>
 - torchmetrics' LPIPS, which loads the torchvision weights: <https://github.com/Lightning-AI/torchmetrics/blob/master/src/torchmetrics/functional/image/lpips.py>
 - imageio-ffmpeg, on the ffmpeg in its wheels: <https://github.com/imageio/imageio-ffmpeg>
 - 3D Gaussian Splatting as Markov Chain Monte Carlo: <https://arxiv.org/abs/2404.09591>

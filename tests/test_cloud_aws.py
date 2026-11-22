@@ -17,6 +17,7 @@ raises the botocore error in place, so nothing reaches the network.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import pytest
@@ -155,3 +156,28 @@ def test_run_instances_turns_a_botocore_error_into_a_redacted_cloud_error() -> N
     text = str(caught.value)
     assert ACCOUNT not in text
     assert "<account>" in text
+
+
+# BotoAws.console_output asks for the newest output and decodes it
+
+class _ConsoleEc2:
+    """A stand-in ec2 client that records get_console_output's kwargs and answers like EC2 does,
+    with the output base64-encoded."""
+
+    def __init__(self, text: str) -> None:
+        self.kwargs: dict[str, Any] = {}
+        self._text = text
+
+    def get_console_output(self, **kwargs: Any) -> Any:
+        self.kwargs = dict(kwargs)
+        return {"Output": base64.b64encode(self._text.encode("utf-8")).decode("ascii")}
+
+
+def test_console_output_asks_for_the_latest_output_and_decodes_it() -> None:
+    # Without Latest=True EC2 only posts console output around state changes, so a line printed long
+    # after boot, like the image build's done marker, would never show up.
+    ec2 = _ConsoleEc2("booted\nvoxelis-kiroween image build: install complete\n")
+    bot = BotoAws(_FakeSessionFor(ec2), region=REGION)  # type: ignore[arg-type]
+    text = bot.console_output("i-0abc")
+    assert ec2.kwargs == {"InstanceId": "i-0abc", "Latest": True}
+    assert text == "booted\nvoxelis-kiroween image build: install complete\n"

@@ -257,7 +257,9 @@ def git_repo(tmp_path: Path) -> Path:
     Skips the test, with a reason, when git isn't installed, the way pipeline-core skips a test that
     needs ffprobe. The repo holds a file under splatpipe/ and under cloud/, a config.toml, a uv.lock
     and a package-lock.json, all committed, so a repo test can dirty one path, archive HEAD, read the
-    HEAD sha and hash the lockfiles. Returns the repo's path.
+    HEAD sha and hash the lockfiles. It also commits the other dependency manifests the Image_Build
+    uploads for its builder: pyproject.toml, .python-version and package.json. Returns the repo's
+    path.
     """
     if shutil.which("git") is None:
         pytest.skip("git isn't installed, so this test can't run.")
@@ -269,6 +271,9 @@ def git_repo(tmp_path: Path) -> Path:
     (root / "config.toml").write_text("[jobs]\n", encoding="utf-8")
     (root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     (root / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
+    (root / "pyproject.toml").write_text('[project]\nname = "test"\n', encoding="utf-8")
+    (root / ".python-version").write_text("3.11\n", encoding="utf-8")
+    (root / "package.json").write_text('{"private": true}\n', encoding="utf-8")
     # The -c flags keep the commit off the host's git config: a fresh identity, no gpg signing and
     # no line-ending rewrite, so the repo builds the same on every machine.
     base = ["git", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false",
@@ -276,7 +281,7 @@ def git_repo(tmp_path: Path) -> Path:
             "-c", "commit.gpgsign=false"]
     _run_setup_git([*base, "init"], root)
     _run_setup_git([*base, "add", "--", "splatpipe", "cloud", "config.toml", "uv.lock",
-                    "package-lock.json"], root)
+                    "package-lock.json", "pyproject.toml", ".python-version", "package.json"], root)
     _run_setup_git([*base, "commit", "-m", "Initial commit"], root)
     return root
 
