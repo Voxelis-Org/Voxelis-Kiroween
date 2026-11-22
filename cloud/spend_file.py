@@ -8,7 +8,8 @@ The quote helpers the Start_Command uses before the Spend_Guard are pure: `estim
 seconds and a price into dollars, `rough_cost` is the money quote for a whole run (machine time, the
 public IPv4 address and the root volume), and `spend_line` builds one line. `append_spend_line` is
 the machine-side write: it appends a line to the Job's `out/spend.jsonl` in the bucket through the
-`Aws` seam, stamping the line's id from what is already there. The laptop-side merge joins later.
+`Aws` seam, stamping the line's id from what is already there. `merge_spend_file` is the laptop-side
+join: the Status and Download commands merge a Job's lines into `data/spend.jsonl` without duplicates.
 
 This module imports no boto3 and no GPU package, so it loads on a laptop.
 """
@@ -16,7 +17,8 @@ This module imports no boto3 and no GPU package, so it loads on a laptop.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cloud.config import CloudConfig, MachineSpec
@@ -80,6 +82,37 @@ def append_spend_line(aws: Aws, job_id: str, line: Mapping[str, Any]) -> None:
     if text and not text.endswith("\n"):
         text += "\n"
     aws.s3_put_text(key, f"{text}{rendered}\n")
+
+
+def merge_spend_file(local_path: Path, new_lines: Iterable[Mapping[str, Any]]) -> int:
+    """Merge `new_lines` into the laptop's `data/spend.jsonl` (the `local_path`), returning how many
+    were added (laptop side, Req 12.4, 12.5).
+
+    The Status_Command and the Download_Command read a Job's `out/spend.jsonl` from the bucket and
+    merge its lines here. A line whose `id` is already in the file, or already added earlier in this
+    same call, is skipped, so re-merging the same lines adds nothing and the file never holds two
+    lines with the same `id`: the merge is idempotent (Req 12.4). It writes only to `local_path`,
+    which the caller keeps under `data/`, which git ignores, so no Spend_Line lands in the repo
+    (Req 12.5). The file and its folder are made when a line is added; an all-duplicate merge, adding
+    nothing, leaves the file untouched.
+    """
+    path = Path(local_path)
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    seen = {earlier.get("id") for earlier in _read_jsonl(text)}
+    added: list[str] = []
+    for line in new_lines:
+        if line["id"] in seen:
+            continue
+        seen.add(line["id"])
+        added.append(json.dumps(dict(line), ensure_ascii=True, allow_nan=False))
+    if not added:
+        return 0
+    if text and not text.endswith("\n"):
+        text += "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text + "".join(f"{rendered}\n" for rendered in added),
+                    encoding="utf-8", newline="\n")
+    return len(added)
 
 
 def _read_jsonl(text: str) -> list[Any]:
