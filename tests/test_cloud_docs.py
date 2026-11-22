@@ -147,7 +147,6 @@ STEP_NEEDS_PLAN = {
     "Picking frames": ("16 vCPUs", "16 GB RAM"),
     "Solving cameras": ("16 vCPUs", "16 GB RAM"),
     "Depth priors": ("GPU", "16 GB VRAM"),
-    "Plain walls": ("32 GB RAM",),
     "Training": ("GPU", "32 GB RAM"),
     "Clean and export": ("8 vCPUs", "8 GB RAM"),
 }

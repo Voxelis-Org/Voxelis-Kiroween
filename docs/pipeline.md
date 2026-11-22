@@ -151,7 +151,7 @@ The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner run
 The list starts empty, and each step's spec adds its own entry. Until then, `splatpipe.run` refuses with "No steps are set up yet", so run one step on its own. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
-- Optional steps: depth priors, plain walls, and clean and export.
+- Optional steps: depth priors and clean and export.
 
 Running a job in the cloud comes in its own spec, and it isn't a step.
 
@@ -340,7 +340,6 @@ Each step records the machine it needs in its own config section, per preset, as
 | Picking frames | 16 vCPUs, 16 GB RAM |
 | Solving cameras | 16 vCPUs, 16 GB RAM |
 | Depth priors | a GPU with 16 GB VRAM |
-| Plain walls | 32 GB RAM, as many vCPUs as it can get |
 | Training | a GPU, 32 GB RAM |
 | Clean and export | 8 vCPUs, 8 GB RAM |
 

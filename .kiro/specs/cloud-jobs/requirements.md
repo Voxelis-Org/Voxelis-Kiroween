@@ -123,7 +123,7 @@ New terms this spec defines:
 9. THE every key in the `[cloud]` section and its tables SHALL have a short comment, which the Test_Suite checks, as the Config_Loader requires for a Pipeline_Section.
 10. THE Test_Suite SHALL check that `[cloud]` loads from the real Config, that each Allowed_Type has a Machine_Spec, that each Preset has a Fallback_List whose entries are all Allowed_Types, and that `[cloud]` holds no `[cloud.needs.*]` table.
 
-Note: the per-Step needs the Pipeline_Doc records as the plan (Requirement 15) are picking frames and solving cameras 16 vCPUs and 16 GB RAM, depth priors a GPU with 16 GB VRAM, plain walls 32 GB RAM and as many vCPUs as it can get, training a GPU and 32 GB RAM, and clean and export 8 vCPUs and 8 GB RAM. Each Step expresses these in its own section as `min_vcpus`, `min_memory_gb` and `min_gpu_memory_gb` for each Preset, a missing key meaning no need; for example frame-picking's `[frames]` sets `min_vcpus = 16` and `min_memory_gb = 16`.
+Note: the per-Step needs the Pipeline_Doc records as the plan (Requirement 15) are picking frames and solving cameras 16 vCPUs and 16 GB RAM, depth priors a GPU with 16 GB VRAM, training a GPU and 32 GB RAM, and clean and export 8 vCPUs and 8 GB RAM. Each Step expresses these in its own section as `min_vcpus`, `min_memory_gb` and `min_gpu_memory_gb` for each Preset, a missing key meaning no need; for example frame-picking's `[frames]` sets `min_vcpus = 16` and `min_memory_gb = 16`.
 
 ### Requirement 3: Choosing a machine type that fits every Step
 
