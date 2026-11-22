@@ -41,8 +41,15 @@ def head_commit(*, cwd: Path) -> str:
 
 
 def archive_head(dest: Path, *, cwd: Path) -> None:
-    """Write a `git archive HEAD` tar to `dest`, so the machine runs HEAD's code (Req 7.4)."""
-    _git("archive", "--format=tar", "--output", str(dest), "HEAD", cwd=cwd)
+    """Write a `git archive HEAD` tar to `dest`, so the machine runs HEAD's code (Req 7.4).
+
+    `core.autocrlf` is off for this one command, so each file goes in with HEAD's committed bytes.
+    With it on, as Git for Windows sets it by default, git archive turns every LF into CRLF. Then the
+    archived uv.lock and package-lock.json no longer match the hashes `lock_hashes` takes from the
+    committed blobs, and the machine's drift check stops the Job (Req 10.9).
+    """
+    _git("archive", "--format=tar", "--output", str(dest), "HEAD", cwd=cwd,
+         config=("core.autocrlf=false",))
 
 
 def head_file(name: str, *, cwd: Path) -> bytes:
@@ -66,15 +73,17 @@ def lock_hashes(*, cwd: Path) -> tuple[str, str]:
     return uv_lock, package_lock
 
 
-def _git(*args: str, cwd: Path) -> bytes:
+def _git(*args: str, cwd: Path, config: Sequence[str] = ()) -> bytes:
     """Run `git <args>` in `cwd` and return its stdout as bytes, or raise a CloudError.
 
-    A missing git is a Readable_Error that says to install it; a non-zero exit carries git's first
-    stderr line. stdout is captured as bytes, so `archive_head`'s tar and `lock_hashes`' blobs stay
-    byte-exact.
+    Each `config` item, like `core.autocrlf=false`, goes before the subcommand as `-c <item>`, so it
+    beats the user's and the repo's git config for this one command. A missing git is a
+    Readable_Error that says to install it; a non-zero exit carries git's first stderr line. stdout
+    is captured as bytes, so `archive_head`'s tar and `lock_hashes`' blobs stay byte-exact.
     """
+    options = [part for item in config for part in ("-c", item)]
     try:
-        result = subprocess.run(["git", *args], cwd=cwd, capture_output=True)
+        result = subprocess.run(["git", *options, *args], cwd=cwd, capture_output=True)
     except FileNotFoundError as error:
         raise CloudError("git isn't installed, so the repo can't be checked or archived. Install "
                          "git and make sure `git` runs in a terminal.") from error
