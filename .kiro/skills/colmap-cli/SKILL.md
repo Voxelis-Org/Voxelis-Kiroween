@@ -1,133 +1,208 @@
 ---
 name: colmap-cli
-description: COLMAP 4.2.1 command line on our CPU-only build (no CUDA, OpenGL or GUI), for feature_extractor, sequential_matcher, view_graph_calibrator, global_mapper, the incremental mapper and image_undistorter, with their main options and defaults, what they write and how they usually fail. Use when writing, running or debugging COLMAP commands for the camera solve, reading a COLMAP database or model folder, or choosing between the incremental and the global mapper.
+description: COLMAP 4.2.1 command line on our CPU-only, SIFT-only build (no CUDA, OpenGL, GUI, ONNX or downloads), for feature_extractor, sequential_matcher, view_graph_calibrator, global_mapper, the incremental mapper and image_undistorter, with every option the camera solve passes and its 4.2.1 default, what the commands write and how they usually fail. Use when writing, running or debugging COLMAP commands or the camera solve's COLMAP settings, reading a COLMAP database or model folder, choosing between the incremental and the global mapper, or running brew's COLMAP on a laptop.
 metadata:
-  sources: COLMAP docs (colmap.github.io, and doc/ at the 4.2.1 tag) and the COLMAP source at the 4.2.1 tag, read 2026
+  sources: COLMAP docs (colmap.github.io, and doc/ at the 4.2.1 tag), the COLMAP source at the 4.2.1 tag, and colmap <command> -h from Homebrew's COLMAP 4.2.1, read November 2026
 ---
 
 # COLMAP 4.2.1 command line
 
 Notes on the COLMAP commands the camera solve needs: `feature_extractor`, `sequential_matcher`,
-`view_graph_calibrator`, `global_mapper`, `mapper` and `image_undistorter`, for COLMAP 4.2.1 as
-we build it. They come from the COLMAP docs and the source at the `4.2.1` tag on GitHub; links
-are at the bottom. Defaults are the ones 4.2.1 uses in our build, read from the source.
+`view_graph_calibrator`, `global_mapper`, `mapper` and `image_undistorter`, for COLMAP 4.2.1 as the
+machine image builds it. They come from the COLMAP docs and the source at the `4.2.1` tag on
+GitHub, and every option name and default was checked against `colmap <command> -h` from
+Homebrew's COLMAP 4.2.1. Defaults that depend on how COLMAP was built are marked. Links are at the
+bottom.
+
+`references/options.md`, next to this file, has each command's full option list the way the step
+passes it. Read it before writing or changing the step's COLMAP commands or its config section.
 
 colmap.github.io follows COLMAP's main branch, which has moved past 4.2.1. It already describes
 things 4.2.1 doesn't have, such as `single_view_calibrator`, the `FLEXGLUE` matcher and the
 `SKEWED_PINHOLE` camera model, and its `/legacy/` snapshots stop at 4.0. The 4.2.1 wording is in
-`doc/*.rst` at the tag. On the machine, `colmap <command> -h` has the final say on option names
-and defaults.
+`doc/*.rst` at the tag, and on the machine image `colmap <command> -h` has the final say.
 
 ## Our build
 
-COLMAP 4.2.1 from source with `-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF
--DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF` (tech.md). At run time that means:
+The image builds COLMAP 4.2.1 from source with `-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF
+-DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF -DONNX_ENABLED=OFF -DDOWNLOAD_ENABLED=OFF`.
+tech.md lists the first five. The image build already passes `-DONNX_ENABLED=OFF`, and
+`-DDOWNLOAD_ENABLED=OFF` comes with the next image build; tech.md gets both when that work reaches
+main. At run time that means:
 
-- SiftGPU isn't compiled in. SIFT extraction and matching only run on the CPU: COLMAP's bundled
-  VLFeat code extracts, and a faiss index matches (brute force with
-  `--SiftMatching.cpu_brute_force_matcher 1`).
-- `--FeatureExtraction.use_gpu` and `--FeatureMatching.use_gpu` default to `0` in this build. The
-  help listings in the docs show `1` because they come from a GPU build. Pass `0` on every
-  extractor and matcher call anyway, so the command means the same on any build.
-- A `1` stops the command before it starts, with `Cannot use GPU feature extraction without CUDA
-  or OpenGL support. Consider setting use_gpu to false.` (or the feature matching version), then
-  `Invalid options provided.`.
-- Never turn GPU SIFT on, and never suggest a build that has it: SiftGPU is non-commercial.
-- Bundle adjustment is Ceres on the CPU. `--Mapper.ba_use_gpu`, `--BundleAdjustmentCeres.use_gpu`
-  and the `CASPAR` backend need CUDA, so leave them off. The global mapper asks for GPU solvers
-  by default; its section says what to pass.
-- tech.md doesn't set `ONNX_ENABLED` or `DOWNLOAD_ENABLED`, which default to ON. So the binary
-  can fetch learned-model weights and vocabulary trees when an option asks for one. SIFT with
-  the default `SIFT_BRUTEFORCE` matcher needs no download, and it's all we use.
-- To check a binary, `colmap version` prints `COLMAP 4.2.1 (Commit ... without GPU support, ...)`.
-  In the logs, `Creating SIFT CPU feature extractor` and `Creating SIFT CPU feature matcher`
-  confirm the CPU path.
+- **SIFT on the CPU.** SiftGPU isn't compiled in. COLMAP's bundled VLFeat code extracts, and a
+  faiss index matches (brute force with `--SiftMatching.cpu_brute_force_matcher 1`).
+  - `--FeatureExtraction.use_gpu` and `--FeatureMatching.use_gpu` default to 0 here, and to 1 in
+    any build with CUDA or OpenGL, brew's included. The step passes 0.
+  - A 1 stops this build before it starts, with `Cannot use GPU feature extraction without CUDA or
+    OpenGL support. Consider setting use_gpu to false.` (or the matching version), then `Invalid
+    options provided.`.
+  - Never turn GPU SIFT on, and never suggest a build that has it: SiftGPU is non-commercial.
+- **SIFT and `SIFT_BRUTEFORCE` only.** Without ONNX there are no learned extractors or matchers.
+  The type options still accept the ALIKED, LoMa and LightGlue names, because every build has the
+  same options, but a run that picks one fails with a message like `ALIKED feature extraction
+  requires ONNX support.` or `LightGlue feature matching requires ONNX support.`.
+- **Nothing downloaded.** Without download support the default addresses of model weights and
+  vocabulary trees are empty, and a URL given to an option fails with `COLMAP was compiled
+  without download support`. Loop detection in `sequential_matcher` needs a vocabulary tree, so
+  the step keeps it off and passes no tree. SIFT matching and the mappers need nothing from the
+  network.
+- **Bundle adjustment on the CPU.** It's Ceres on the CPU. `--Mapper.ba_use_gpu` and the `CASPAR`
+  backends need CUDA, so leave them off. The global mapper asks for GPU solvers by default, so the
+  step passes 0 for both of its GPU options.
+- **Checking a binary.** `colmap version` prints `COLMAP 4.2.1 (Commit ... without GPU support,
+  std hash maps)`, but "without GPU support" only means no CUDA: brew's OpenGL build prints it too.
+  A CPU-only build shows `--FeatureExtraction.use_gpu arg (=0)` in `colmap feature_extractor -h`,
+  and its logs say `Creating SIFT CPU feature extractor` and `Creating SIFT CPU feature matcher`.
+
+## Brew's COLMAP on a laptop
+
+`brew install colmap` also gives COLMAP 4.2.1. Homebrew's formula turns off CUDA and nothing else
+that matters here, so its build has the GUI and OpenGL, and with them SiftGPU. It also has ONNX
+(through Homebrew's onnxruntime), download support, CGAL and LSD.
+
+- For these commands its `-h` lists the same options as the image's. Only the defaults that depend
+  on the build differ: `use_gpu` is 1, and the model weights default to GitHub URLs.
+- Left to its defaults, it would run SIFT on the GPU, and loop detection or a learned feature type
+  would download files from GitHub. The step's options (`use_gpu 0`, SIFT, `SIFT_BRUTEFORCE`, loop
+  detection off) make it behave like the image's build.
+- It contains SiftGPU (non-commercial), CGAL (GPL) and LSD (AGPL), the parts the image leaves out
+  for their licences. Use it for `-h` and small CPU tests, always with `use_gpu 0`.
 
 ## Every command
 
-- Options are `--Group.name value`, and booleans take `0` or `1` (`true` and `false` work too).
-  `colmap <command> -h` lists every option with this build's defaults.
-- An unknown option stops the command with `Failed to parse options - unrecognised option ...`.
-  Guides for COLMAP 3.x use names 4.2.1 has dropped, like `--SiftExtraction.use_gpu`,
+- Options are `--Group.name value`, and booleans take 0 or 1 (`true` and `false` work too).
+  `colmap <command> -h` lists every option with the build's defaults, and rounds decimals to six
+  significant digits: `--SiftExtraction.peak_threshold` shows 0.00667 for 0.02 / 3.
+- These stop a command with exit 1 before it does anything:
+  - an unknown option: `Failed to parse options - unrecognised option '...'.`
+  - a value of the wrong type: `the argument ('abc') for option '...' is invalid.`
+  - an unknown name for a type option: `Unknown string value: NOPE for enum: FeatureExtractorType.`
+  - an option given twice: `option '--type' cannot be specified more than once.`
+- Guides for COLMAP 3.x use names 4.2.1 has dropped, like `--SiftExtraction.use_gpu`,
   `--SiftExtraction.num_threads`, `--SiftExtraction.max_image_size`, `--SiftMatching.use_gpu`,
   `--SiftMatching.guided_matching` and `--SiftMatching.max_num_matches`. In 4.2.1 those live
   under `--FeatureExtraction.*` and `--FeatureMatching.*`, and the RANSAC settings under
   `--TwoViewGeometry.*`. One line of 4.2.1's own FAQ still says `--SiftExtraction.max_image_size`.
 - Paths are checked before anything runs: `--image_path` must be an existing folder, and
   `--database_path` must not be a folder and must sit in one that exists. A failed check prints
-  the check, then `Invalid options provided.`, and exits 1.
-- The database is opened with create, so a mistyped database file name quietly gives a new,
-  empty database. The matchers then find nothing to match, and the mappers fail later with
-  `No images with matches` or `Cannot continue with empty pose graph`.
+  the check, such as `Check failed: ExistsDir(*image_path)`, then `Invalid options provided.`, and
+  exits 1.
+- The database is opened with create, so a mistyped database file name quietly gives a new, empty
+  database. The matchers then find nothing to match, `view_graph_calibrator` reports success, and
+  the mappers fail later with `No images with matches` or `Cannot continue with empty pose graph`.
 - Only one COLMAP process may have a database open; the source says not to open it from two at
   once. It runs in SQLite's WAL mode, so `database.db-wal` and `database.db-shm` sit beside it
   while it's open. Copy or read it only after the command that wrote it has exited.
-- In 4.2.1, `--project_path file.ini` takes options from the file only and silently ignores
-  every other flag on the line. COLMAP's main branch has since made flags win, and the live docs
-  describe that. Pass flags and leave `--project_path` out. The mappers still write a
-  `project.ini` that records the options they ran with.
+- In 4.2.1, `--project_path file.ini` takes options from the file only and silently ignores every
+  other flag on the line. COLMAP's main branch has since made flags win, and the live docs describe
+  that. Pass flags and leave `--project_path` out. The mappers still write a `project.ini` that
+  records the options they ran with.
 - Most commands exit 0 even when they skipped images, so check what they wrote (see "Checking a
   run").
 - `feature_extractor`, the matchers, `mapper` and `image_undistorter` treat the first SIGINT or
   SIGTERM as a request to stop: they finish at a safe point, keep what they have, and exit 130 or
   143. A second signal kills them. `view_graph_calibrator` and `global_mapper` have no such
-  handling, so a signal kills them at once: the global mapper leaves no model, and the
-  calibrator can leave its database half-changed.
-- A failed internal check ends the process with an abort, not a clean exit code, after printing
-  what failed.
-- glog writes to stderr and, by default, also to log files in `$GOOGLE_LOG_DIR` or `/tmp`.
-  `--log_target stderr` keeps it to stderr.
-- The random parts (RANSAC, the mappers) aren't repeatable by default, with their seed at -1.
-  Setting `--TwoViewGeometry.random_seed`, `--Mapper.random_seed` or `--GlobalMapper.random_seed`
-  to 0 or more makes them repeatable. Multi-threaded runs can still differ a little; COLMAP's own
-  determinism tests run single-threaded.
+  handling, so a signal kills them at once: the global mapper leaves no model, and the calibrator
+  can leave its database half-changed.
+- A failed internal check aborts the process after printing what failed, with SIGABRT: exit 134
+  in a shell, a return code of -6 in Python's `subprocess`.
+- **Logs.** glog writes to stderr and also to log files in `$TMPDIR`, or `/tmp` without it.
+  - With `--log_target stderr`, which the step passes, everything goes to stderr and no files are
+    written, once the options have parsed. A command whose options fail to parse has already
+    written its log files, so point `TMPDIR` at the step's work folder.
+  - glog colours warning and error lines whenever `TERM` names a colour terminal, even through a
+    pipe. The step passes `--log_color 0`. That option exists only in builds against glog 0.4 or
+    newer, and a build without it stops with `unrecognised option`.
+- **Seeds.** Every command takes `--default_random_seed` (0), the seed each thread's random
+  generator starts from. Matching and the two mappers also have a seed of their own:
+  `--TwoViewGeometry.random_seed`, `--Mapper.random_seed` and `--GlobalMapper.random_seed`, all -1
+  by default.
+  - At -1, RANSAC draws from the thread generators, so a result depends on how the work landed on
+    threads, and the global mapper seeds its rotation averaging and positioning from the clock.
+  - At 0 or more, each RANSAC run starts from that seed, and the global mapper seeds its rotation
+    averaging, positioning and retriangulation with it.
+  - `view_graph_calibrator` has no seed of its own and follows `--default_random_seed`.
+  - COLMAP only tests that runs repeat on a single thread, so with many threads they can still
+    differ a little.
+
+## Pass every option
+
+The step passes every option that can change what a command does, with its value from
+`config.toml`, so that no COLMAP default decides anything. Defaults move between builds, like
+`use_gpu` above, and between versions, and with every value passed, the step's config shows
+everything COLMAP runs with. `references/options.md` has each command's full list with 4.2.1's
+defaults, the values the step changes, and what it leaves out. It leaves out only:
+
+- `--help`, and `--project_path`, which would replace every other flag.
+- `--log_path`, which `--log_target stderr` doesn't use.
+- Paths and lists it has nothing to put in: known camera parameters, per-image masks, image
+  lists, a snapshot folder, constant camera or rig lists, a model to continue from, and
+  vocabulary trees. Left empty, they change nothing. Options that take a number to mean "none",
+  like `--Mapper.init_image_id1 -1`, it passes.
+- GPU indices.
+- The options of features it keeps off for good: loop detection's settings, and everything for
+  ALIKED, LoMa and LightGlue.
+
+Some values have no option at all, like the 0.25 minimum inlier ratio inside two-view RANSAC.
+Those stay as built.
 
 ## How the commands fit together
 
-This is how they fit the frames step's output. `$FRAMES` is `work/frames/`, which holds
-`images/`, `grey/`, `mask.png` and `frames.json`. `$OUT` stands for the camera solve's own work
-folder, which its spec will name. Every setting not shown is COLMAP's default; the step's own
-values belong in `config.toml`.
+This is how they fit the frames step's output. `$FRAMES` is `work/frames/`, which holds `images/`,
+`grey/`, `mask.png` and `frames.json`. `$OUT` stands for the camera solve's own work folder, which
+its spec will name. The commands below show the folders and the step's main choices, and `...`
+stands for the rest of each command's options in `references/options.md`.
 
 ```bash
-# 1. SIFT on the grey copies, one shared camera, the stuck-pixel mask when frames.json has mask_used
+# 1. SIFT on the grey copies, one camera for every pick, the stuck-pixel mask when frames.json has mask_used
 colmap feature_extractor \
   --database_path "$OUT/database.db" \
   --image_path "$FRAMES/grey" \
-  --ImageReader.single_camera 1 \
-  --ImageReader.camera_model SIMPLE_RADIAL \
+  --camera_mode 1 \
   --ImageReader.camera_mask_path "$FRAMES/mask.png" \
-  --FeatureExtraction.use_gpu 0
+  --FeatureExtraction.type SIFT \
+  --FeatureExtraction.use_gpu 0 \
+  ...
 
-# 2. Match each pick with the picks after it, in name order
+# 2. Match each pick with the picks after it, in name order, without loop detection
 colmap sequential_matcher \
   --database_path "$OUT/database.db" \
-  --FeatureMatching.use_gpu 0
+  --FeatureMatching.type SIFT_BRUTEFORCE \
+  --FeatureMatching.use_gpu 0 \
+  --SequentialMatching.loop_detection 0 \
+  ...
 
 # 3a. Incremental mapper
 mkdir -p "$OUT/sparse"
 colmap mapper \
   --database_path "$OUT/database.db" \
   --image_path "$FRAMES/images" \
-  --output_path "$OUT/sparse"
+  --output_path "$OUT/sparse" \
+  --Mapper.ba_use_gpu 0 \
+  ...
 
 # 3b. Or the global mapper, on a copy of the database
 cp "$OUT/database.db" "$OUT/database_global.db"
-colmap view_graph_calibrator --database_path "$OUT/database_global.db"
+colmap view_graph_calibrator \
+  --database_path "$OUT/database_global.db" \
+  ...
 mkdir -p "$OUT/sparse_global"
 colmap global_mapper \
   --database_path "$OUT/database_global.db" \
   --image_path "$FRAMES/images" \
   --output_path "$OUT/sparse_global" \
   --GlobalMapper.gp_use_gpu 0 \
-  --GlobalMapper.ba_ceres_use_gpu 0
+  --GlobalMapper.ba_ceres_use_gpu 0 \
+  ...
 
 # 4. Undistort the colour picks of the chosen model for training
 colmap image_undistorter \
   --image_path "$FRAMES/images" \
   --input_path "$OUT/sparse/0" \
   --output_path "$OUT/undistorted" \
-  --output_type COLMAP
+  --output_type COLMAP \
+  ...
 ```
 
 - COLMAP knows an image by its path relative to `--image_path`, so `grey/000000.jpg` and
@@ -150,35 +225,36 @@ database, along with the cameras.
 |---|---|---|
 | `--database_path` | required | SQLite file, created if missing. |
 | `--image_path` | required | Read recursively. Every readable image below it counts. |
-| `--image_list_path` | none | Text file of image names to read instead of all of them. |
-| `--ImageReader.single_camera` | 0 | 1 gives every image the same camera, so one set of intrinsics. |
+| `--camera_mode` | -1 | 1 gives every image the same camera, so one set of intrinsics. 0 is auto, 2 per folder, 3 per image. Any of them overrides the three `ImageReader.single_camera*` flags, and -1 leaves those in charge. The step passes 1. |
+| `--ImageReader.single_camera`, `--ImageReader.single_camera_per_folder`, `--ImageReader.single_camera_per_image` | 0, 0, 0 | The same choice as three flags. The FAQ uses `--ImageReader.single_camera 1`. |
 | `--ImageReader.camera_model` | `SIMPLE_RADIAL` | Starting camera model. See the cameras page. |
 | `--ImageReader.camera_params` | empty | Known intrinsics, comma-separated in the model's order. Marks the focal length as trusted. |
 | `--ImageReader.default_focal_length_factor` | 1.2 | Without EXIF or `camera_params`, the focal starts at this times the longer side, and isn't trusted. |
 | `--ImageReader.camera_mask_path` | empty | One mask for all images. Keypoints on 0 pixels are dropped. |
 | `--ImageReader.mask_path` | empty | Folder of per-image masks named `<image name>.png`. |
-| `--camera_mode` | -1 | Shorthand for the camera flags: 0 auto, 1 single, 2 per folder, 3 per image. -1 leaves them alone. |
-| `--FeatureExtraction.use_gpu` | 0 | Always pass 0. |
+| `--image_list_path` | empty | Text file of image names to read instead of all of them. |
+| `--descriptor_normalization` | `l1_root` | `l1_root` or `l2`. |
+| `--FeatureExtraction.type` | `SIFT` | The only type this build can run. |
+| `--FeatureExtraction.use_gpu` | 0 here, 1 in brew's | The step passes 0. |
 | `--FeatureExtraction.num_threads` | -1 | -1 uses every core, one SIFT extractor per thread. |
 | `--FeatureExtraction.max_image_size` | -1 | Longer images are scaled down before SIFT. -1 means 3200 for SIFT. |
-| `--FeatureExtraction.type` | `SIFT` | Keep SIFT. |
 | `--SiftExtraction.max_num_features` | 8192 | Per image. Keeps the larger-scale ones. |
 | `--SiftExtraction.first_octave` | -1 | -1 doubles the image first: more small features, more RAM. |
-| `--SiftExtraction.peak_threshold` | 0.0067 (0.02 / 3) | Lower finds more features in low-contrast images. |
+| `--SiftExtraction.peak_threshold` | 0.02 / 3 (`-h` shows 0.00667) | Lower finds more features in low-contrast images. It doesn't follow `octave_resolution`, so change the two together. |
 | `--SiftExtraction.estimate_affine_shape`, `--SiftExtraction.domain_size_pooling` | 0, 0 | DSP-SIFT with affine shapes: more matches, slower, through a separate CPU extractor. |
 
 All its output goes into the database: `cameras`, `rigs` and `frames` (one trivial rig per
 camera, one frame per image), `images` (with names relative to `--image_path`), `keypoints`,
-`descriptors`, and `pose_priors` for EXIF GPS or orientation. Our picks have no EXIF, because
-the frames step encodes them with OpenCV.
+`descriptors`, and `pose_priors` for EXIF GPS or orientation. Our picks have no EXIF, because the
+frames step encodes them with OpenCV.
 
 How it fails:
 
 - **Every frame gets its own camera.** In the default camera mode, a camera is recognised by its
   EXIF make, model, focal length and image size, and an image without them gets a new camera.
-  Our picks have no EXIF, so without `--ImageReader.single_camera 1` each pick gets separate
-  intrinsics. The log's `Camera: #N` line counts up and `cameras` gets one row per image. A clip
-  that switches lens or zoom breaks the one-camera assumption too.
+  Our picks have no EXIF, so without `--camera_mode 1` each pick gets separate intrinsics. The
+  log's `Camera: #N` line counts up and `cameras` gets one row per image. A clip that switches
+  lens or zoom breaks the one-camera assumption too.
 - **Images skipped with exit 0.** An unreadable file, or a size that doesn't fit the shared
   camera, is logged as a warning with a status such as `BITMAP_ERROR` or
   `CAMERA_SINGLE_DIM_ERROR`, and the run goes on. Compare the `images` count with the number of
@@ -192,10 +268,11 @@ How it fails:
   so new options don't apply to them. Start from a new database.
 - **Too many images.** `--image_path work/frames` would take the colour picks, the grey copies
   and `mask.png` as images. Point it at `grey/` itself.
-- **RAM.** With all threads and the default size and octave, it warns that CPU SIFT can use a
-  lot of RAM per thread. That warning is expected. If memory does run out, lower
-  `--FeatureExtraction.num_threads` or `--FeatureExtraction.max_image_size`, or set
-  `--SiftExtraction.first_octave 0`.
+- **RAM.** CPU SIFT can use a lot of RAM per thread on large images, and `first_octave -1`
+  doubles every image first. If memory runs out, lower `--FeatureExtraction.num_threads` or
+  `--FeatureExtraction.max_image_size`, or set `--SiftExtraction.first_octave 0`. COLMAP only
+  warns about this when `max_image_size` is left at -1, so the step's explicit 3200 silences the
+  warning without changing anything.
 - **Few features.** Each image logs `Features: N (SIFT)`. Blur and plain surfaces give few. The
   FAQ's way to more matches is DSP-SIFT with affine shapes, plus guided matching in the next
   step.
@@ -215,15 +292,16 @@ i+1 to i+overlap. Our zero-padded six-digit names sort in time order.
 | `--database_path` | required | |
 | `--SequentialMatching.overlap` | 10 | Pairs per image. |
 | `--SequentialMatching.quadratic_overlap` | 1 | Spread the pairs at 1, 2, 4, … images ahead. |
-| `--SequentialMatching.loop_detection` | 0 | Also match every `loop_detection_period` (10)th image with its `loop_detection_num_images` (50) most similar images, found with a vocabulary tree. |
-| `--SequentialMatching.vocab_tree_path` | empty | Empty means COLMAP's default SIFT tree, downloaded at run time. |
-| `--FeatureMatching.use_gpu` | 0 | Always pass 0. |
+| `--SequentialMatching.loop_detection` | 0 | The step passes 0. On, it would also match every 10th image with its most similar images, found with a vocabulary tree, which this build doesn't have. |
+| `--FeatureMatching.type` | `SIFT_BRUTEFORCE` | The only matcher this build can run with SIFT. |
+| `--FeatureMatching.use_gpu` | 0 here, 1 in brew's | The step passes 0. |
 | `--FeatureMatching.num_threads` | -1 | All cores. |
 | `--FeatureMatching.guided_matching` | 0 | A second pass guided by the pair's geometry: more matches, slower. |
 | `--SiftMatching.max_ratio` | 0.8 | Ratio test between the best and second-best match. |
 | `--SiftMatching.cross_check` | 1 | Keep only matches that agree both ways. |
 | `--TwoViewGeometry.min_num_inliers` | 15 | Fewer marks the pair degenerate. |
 | `--TwoViewGeometry.max_error` | 4 | RANSAC inlier threshold, in pixels. |
+| `--TwoViewGeometry.random_seed` | -1 | See "Seeds" above. The step passes 0. |
 
 It writes rows to `matches` (raw descriptor matches) and `two_view_geometries` (the inliers, the
 fitted model and a `config` code) for each pair. Only `two_view_geometries` feeds the mappers.
@@ -236,17 +314,16 @@ How it fails:
 - **A rerun changes nothing.** Pairs that already have both rows are skipped, so new matching
   options don't apply to them. Start from a new database, or run
   `colmap database_cleaner --database_path <db> --type matches`, which clears the matches and
-  the two-view geometries. `--type` takes one value, although the features page's example
-  passes it twice.
+  the two-view geometries. `--type` takes one value, and giving it twice fails, although the
+  features page's example passes it twice.
 - **The end of a loop never meets its start.** Without loop detection, a walk that comes back to
-  where it began is only matched to its neighbours, and the drift stays in the model. Loop
-  detection needs a vocabulary tree. By default COLMAP downloads one from its GitHub releases at
-  run time and caches it in `~/.cache/colmap`, which fails with no network. The tree is a data
-  file, so our licence rules apply: check its licence with Samarth, add its line, put it on the
-  image and pass it with `--SequentialMatching.vocab_tree_path`. The other way is
-  `exhaustive_matcher` on the same database afterwards. It skips the pairs that are already
-  matched, and the tutorial says exhaustive matching suits sets of up to a few hundred images.
-  400 picks make about 80,000 pairs, though, so time it on the CPU before relying on it.
+  where it began is only matched with its neighbours, so the drift at the join stays in the
+  model. Without a tree, more pairs are the only fix: a larger `--SequentialMatching.overlap`, or
+  `exhaustive_matcher` on the same database afterwards. That one skips the pairs already matched
+  but tries all the others, about 80,000 for 400 picks.
+- **Loop detection turned on.** With no `--SequentialMatching.vocab_tree_path`, this build has no
+  tree to fall back on, so matching fails as soon as it needs the tree, on a check that the tree
+  file opened. Brew's COLMAP would download a tree from GitHub instead.
 - **Pure rotation.** Standing in one spot and turning gives pairs with no baseline, stored as 5
   or 6, which give the mappers no parallax to triangulate from. The tutorial's capture advice is
   to move between views.
@@ -260,7 +337,8 @@ to the database, with refreshed two-view geometries. Run it after matching and b
 `global_mapper` when the focal lengths aren't trusted, which is our case. It changes the
 database in place and takes no `--image_path`.
 
-Its options have no group prefix.
+Its options have no group prefix, and it has no seed of its own: its RANSAC follows
+`--default_random_seed`.
 
 | Option | Default | What it does |
 |---|---|---|
@@ -290,8 +368,9 @@ How it fails:
   the incremental mapper; the docs say to work on a copy. A kill midway can leave the copy
   half-changed, so start again from the original.
 - **Success that did nothing.** `No image pairs to calibrate` still exits 0: matching found no
-  usable pairs. `No cameras to optimize` means every camera was already trusted, for example on
-  a second run over the same copy.
+  usable pairs, or `--database_path` was mistyped and named a new, empty database. `No cameras to
+  optimize` means every camera was already trusted, for example on a second run over the same
+  copy.
 - **A rejected camera.** With our one camera, `1 cameras rejected in view graph calibration`
   means the estimate fell outside 0.1 to 10 times the starting focal. The focal stays at the
   guess, 1.2 times the longer side, but is now marked as trusted, so the global mapper relies on
@@ -318,9 +397,9 @@ view graph separately by default.
 | `--GlobalMapper.ra_max_rotation_error_deg` | 10 | Pairs that disagree with the averaged rotations by more are cut, which can split the graph. |
 | `--GlobalMapper.ba_num_iterations` | 3 | Bundle adjustment rounds. |
 | `--GlobalMapper.ba_refine_focal_length`, `ba_refine_extra_params`, `ba_refine_principal_point` | 1, 1, 0 | What bundle adjustment may change in the cameras. |
-| `--GlobalMapper.gp_use_gpu`, `--GlobalMapper.ba_ceres_use_gpu` | 1, 1 | Pass 0 on our build. |
+| `--GlobalMapper.gp_use_gpu`, `--GlobalMapper.ba_ceres_use_gpu` | 1, 1 | The step passes 0 for both. Left at 1, they log `Requested to use GPU for bundle adjustment, but COLMAP was compiled without CUDA support. Falling back to CPU-based solvers.` and run on the CPU anyway. |
 | `--GlobalMapper.num_threads` | -1 | All cores. |
-| `--GlobalMapper.random_seed` | -1 | -1 isn't repeatable. 0 or more is. |
+| `--GlobalMapper.random_seed` | -1 | See "Seeds" above. 0 or more also turns off a custom solver ordering in positioning, which can make it slower. |
 
 ```text
 sparse_global/
@@ -345,9 +424,6 @@ How it fails:
 - **Nothing to map.** `Cannot continue with empty pose graph`, or every component failing with
   `Global mapping failed` or coming out too small, ends in `Failed to create sparse model` and
   exit 1.
-- **GPU warnings.** With the defaults it logs `Requested to use GPU for bundle adjustment, but
-  COLMAP was compiled without CUDA support. Falling back to CPU-based solvers.` It does run on
-  the CPU, so the warning is harmless, and the two `use_gpu 0` flags stop the request.
 - **Killed, nothing saved.** A signal or a time cap that ends it leaves no model, because the
   global mapper can't resume. Give it room inside the job's time limit.
 - **Bad matches hurt more.** The docs say it copes worse with outlier matches than the
@@ -373,11 +449,12 @@ adjustment as the model grows. COLMAP's default and most tested mapper.
 | `--Mapper.init_image_id1`, `--Mapper.init_image_id2` | -1 | Name the starting pair by image id. |
 | `--Mapper.abs_pose_min_num_inliers` | 30 | To register the next image. |
 | `--Mapper.ba_refine_focal_length`, `ba_refine_extra_params`, `ba_refine_principal_point` | 1, 1, 0 | What bundle adjustment may change in the cameras. |
+| `--Mapper.ba_local_max_num_iterations`, `--Mapper.ba_global_max_num_iterations` | -1, -1 | -1 means the Ceres defaults, 25 and 50. The step passes the numbers. |
 | `--Mapper.ba_global_frames_ratio`, `--Mapper.ba_global_points_ratio` | 1.1, 1.1 | Growth that triggers a global bundle adjustment. |
 | `--Mapper.max_extra_param` | 1 | Images whose distortion goes past this are filtered as bogus. |
-| `--Mapper.max_runtime_seconds` | -1 | Stop after this long and keep what's built. |
+| `--Mapper.max_runtime_seconds` | -1 | Stop after this long and keep what's built. -1 is no limit. |
 | `--Mapper.num_threads` | -1 | All cores. |
-| `--Mapper.random_seed` | -1 | -1 isn't repeatable. 0 or more is. |
+| `--Mapper.random_seed` | -1 | See "Seeds" above. The step passes 0. |
 | `--Mapper.ba_use_gpu` | 0 | Leave 0. |
 
 ```text
@@ -390,10 +467,12 @@ Each model is written to the next number when it's finished, in the order they w
 by size. `0/` is usually the biggest but not always, so choose by registered image count. Models
 are binary; see "Checking a run" for text.
 
-`automatic_reconstructor --data_type video` tunes the mapper for video. It halves
-`init_min_tri_angle` to 8, raises both `ba_global_*_ratio` options to 1.4 and lifts the
-`max_extra_param` limit. `mapper` on its own applies no preset, so pass those flags to get the
-same.
+`automatic_reconstructor --data_type video` is COLMAP's own preset for video, and its mapper
+values make a starting point: `init_min_tri_angle` halved to 8, both `ba_global_*_ratio` options
+at 1.4, and no `max_extra_param` limit. At its default `--quality high` it also extracts
+affine-shape SIFT at up to 2400 pixels, turns on guided matching, and raises the bundle adjustment
+iterations to 30 local and 75 global, with 3 local refinements. Don't run it here: in video mode
+it always turns on loop detection with the built-in tree, which this build doesn't have.
 
 How it fails:
 
@@ -430,12 +509,14 @@ model, in the folder layout COLMAP's dense tools use.
 | `--input_path` | required | One model folder, such as `sparse/0`. |
 | `--output_path` | required | Created if missing, but not its parents. |
 | `--output_type` | `COLMAP` | `COLMAP`, `PMVS` or `CMP-MVS`, case-sensitive. |
-| `--max_image_size` | -1 | Cap on the longer side of the output. |
+| `--max_image_size` | -1 | Cap on the longer side of the output. -1 is no cap. |
 | `--blank_pixels` | 0 | 0 crops to pixels the original covers. 1 keeps the whole view, with black edges. |
 | `--min_scale`, `--max_scale` | 0.2, 2 | Limits on the rescale that fitting `blank_pixels` needs. |
 | `--roi_min_x`, `--roi_min_y`, `--roi_max_x`, `--roi_max_y` | 0, 0, 1, 1 | Crop, as fractions of the original. |
 | `--jpeg_quality` | -1 | 1 to 100 for JPEG output. -1 writes at 100. |
-| `--copy_policy` | `COPY` | `COPY`, `SOFT_LINK` or `HARD_LINK`, for images that need no warp. |
+| `--copy_policy` | `copy` | `COPY`, `SOFT_LINK` or `HARD_LINK`, in any case, for images that need no warp. |
+| `--num_patch_match_src_images` | 20 | Only goes into `stereo/patch-match.cfg`. |
+| `--image_list_path` | empty | Text file of image names to undistort instead of every registered one. |
 | `--num_threads` | -1 | All cores. |
 
 ```text
@@ -460,7 +541,8 @@ How it fails:
 
 - **Lower-case type.** `--output_type colmap` fails with ``Invalid `output_type` ...``, exit 1.
 - **The wrong model level.** `--input_path sparse` instead of `sparse/0` aborts with
-  `rigs, cameras, frames, images, points3D files do not exist at ...`.
+  `rigs, cameras, frames, images, points3D files do not exist at ...`, exit 134. It makes the
+  output folder before it reads the model, so the failed run leaves an empty folder behind.
 - **A missing parent folder** aborts in a check.
 - **Missing images with exit 0.** `Cannot read image at path: ...` leaves that image out of
   `images/`, but `sparse/` still lists it. Compare the file count with the registered images.
@@ -500,7 +582,7 @@ import sqlite3
 
 con = sqlite3.connect("database.db")
 print(con.execute("SELECT COUNT(*) FROM images").fetchone())            # picks read
-print(con.execute("SELECT COUNT(*) FROM cameras").fetchone())           # 1 with single_camera
+print(con.execute("SELECT COUNT(*) FROM cameras").fetchone())           # 1 with camera_mode 1
 print(con.execute("SELECT MIN(rows), AVG(rows) FROM keypoints").fetchone())
 print(con.execute("SELECT config, COUNT(*) FROM two_view_geometries GROUP BY config").fetchall())
 con.close()
@@ -511,16 +593,17 @@ the model's parameter order, and `cameras.prior_focal_length` is the trusted-foc
 
 ## Our rules that touch this
 
-- COLMAP is a command line tool on our private machine image, built with the tech.md flags.
-  Don't vendor it, don't link it into our code, and never make the image public.
-- Always pass `--FeatureExtraction.use_gpu 0` and `--FeatureMatching.use_gpu 0`. Never GPU SIFT.
-- Anything COLMAP would download, like a vocabulary tree or learned model weights, needs
-  Samarth's OK and a line in `docs/third-party-licences.md` first. So would pycolmap, if our
-  code used it to read models. Reading the text files or the database with the standard library
-  adds nothing.
+- COLMAP is a command line tool on our private machine image, built with the flags above. Don't
+  vendor it, don't link it into our code, and never make the image public.
+- Always pass `--FeatureExtraction.use_gpu 0` and `--FeatureMatching.use_gpu 0`. Never GPU SIFT,
+  on the image or on brew's build.
+- The step passes every option it relies on, with values from its `config.toml` section, so no
+  COLMAP default decides anything. `references/options.md` lists them.
+- Nothing is downloaded while the step runs: SIFT only, no loop detection, no vocabulary tree. The
+  image's COLMAP can't download, and those options stop brew's from doing it. A tree, model
+  weights or pycolmap would each need Samarth's OK and a line in `docs/third-party-licences.md`
+  first. Reading the text files or the database with the standard library adds nothing.
 - Databases, models and undistorted images are job files under `data/`, never in git.
-- The camera solve's COLMAP numbers (overlap, thresholds, seeds, time limits) belong in its
-  `config.toml` section, not in code.
 - Tests that need COLMAP skip when it isn't installed, and the laptop only runs small CPU tests.
 
 ## Links
@@ -540,11 +623,15 @@ COLMAP docs, which follow the main branch:
 The 4.2.1 tag:
 
 - Docs source, the text for our version: <https://github.com/colmap/colmap/tree/4.2.1/doc>
+- Build options: <https://github.com/colmap/colmap/blob/4.2.1/CMakeLists.txt>
 - Where every option is registered: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/controllers/option_manager.cc>
 - The commands: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/exe/feature.cc>,
   <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/exe/sfm.cc> and
   <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/exe/image.cc>
 - SIFT defaults: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/feature/sift.h>
+- What a build without ONNX does: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/feature/aliked.cc>
+- The empty default trees without download support: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/retrieval/resources.h>
+- Seeds: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/math/random.cc>
 - Sequential pairing: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/controllers/pairing.h>
 - Two-view geometry: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/estimators/two_view_geometry.h>
 - Incremental mapper: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/controllers/incremental_pipeline.h>
@@ -554,6 +641,9 @@ The 4.2.1 tag:
 - View graph calibration: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/estimators/view_graph_calibration.h>
 - Undistortion: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/image/undistortion.h>
   and <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/controllers/undistorters.cc>
+- The video preset: <https://github.com/colmap/colmap/blob/4.2.1/src/colmap/controllers/automatic_reconstruction.cc>
+
+Homebrew's COLMAP formula: <https://github.com/Homebrew/homebrew-core/blob/main/Formula/c/colmap.rb>
 
 gsplat 1.5.3's COLMAP parser, for the undistorted folder layout:
 <https://github.com/nerfstudio-project/gsplat/blob/v1.5.3/examples/datasets/colmap.py>
