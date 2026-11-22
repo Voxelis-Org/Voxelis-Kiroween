@@ -25,7 +25,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - `tests/test_imports.py`: task 1 adds the train import check and `fused-ssim`, task 8 adds `gpu.py`'s source checks and the fresh-process import, and task 10 changes the Step_List check's docstring.
 - `tests/test_train_settings.py`: task 1 writes it, and task 10 adds the Fallback_List test.
 - `config.toml`: task 1 adds `[train]`, and task 9 adds the seven `[cloud.smoke]` keys.
-- `docs/pipeline.md` and `tests/test_docs.py`: task 9 changes and tests the smoke test part, and task 10 adds and tests `## Step: train` and four other parts.
+- `docs/pipeline.md` and `tests/test_docs.py`: task 9 changes and tests the smoke test part, and task 10 adds and tests `## Step: train` and four other parts. Before them, task 6 changes the `opencv-python-headless` row of `docs/third-party-licences.md` and its test in `tests/test_docs.py`.
 
 ## Working rules for every task
 
@@ -35,7 +35,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - torch, gsplat and fused-ssim are imported only by `splatpipe/train/gpu.py`. Every other file in `splatpipe/train/` imports only the standard library, numpy, cv2 and `splatpipe`, and nothing in `splatpipe/` imports `cloud/` or boto3. The step reaches `gpu.py` only through its `GPU` hook, when it runs.
 - No laptop test imports `splatpipe/train/gpu.py`, except to read its source as text. The tests run the step's GPU calls through `FakeGpu`, and reach `load_gpu`'s import only with `splatpipe.train.gpu_api.importlib` replaced by a stand-in.
 - cv2 only decodes JPEG and PNG stills. It never reads or writes video.
-- Every rate, weight, count, size, factor and time comes from `[train]`, or from `[cloud.smoke]` for the smoke check. Code holds only the Fixed_Constants of the requirements' glossary, plus the Smoke_Scene's radius of 1 and half-side of 0.25 (Req 9.5).
+- Every rate, weight, count, size, factor and time comes from `[train]`, or from `[cloud.smoke]` for the smoke check. Code holds only the Fixed_Constants of the requirements' glossary, the Smoke_Scene's radius of 1 and half-side of 0.25 among them (Req 9.5).
 - Write the code fresh. No code from COLMAP, from Inria's gaussian-splatting repo, from the MCMC paper's repo or from the effective-rank paper's repo. Code adapted from gsplat's examples keeps the Apache-2.0 note that the gsplat-training skill gives.
 - Tasks 2, 4, 5, 8, 9 and 10 load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before any code is written.
 - Nothing here costs money (A12). No task runs the Smoke_Test, an Image_Build, the Start_Command or any `aws` command, and no task sets `APPROVED_SPEND`.
@@ -192,7 +192,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
   - [ ] 4.1 Write `splatpipe/train/scene.py`
     - Load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before writing code.
-    - `ImagePixels`, `TrainingView`, `Scene`, `training_size()`, `scaled_intrinsics()`, `world_to_camera()`, `camera_centres()`, `scene_extent()`, `median_scene_depth()`, `keep_mask()` and `build_scene()`, as in the design's "scene.py (pure)" section. The module imports only numpy and `splatpipe`, and reads no file.
+    - `ImagePixels`, `TrainingView`, `Scene`, `training_size()`, `scaled_intrinsics()`, `world_to_camera()`, `camera_centres()`, `scene_extent()`, `median_scene_depth()`, `keep_mask()` and `build_scene()`, as in the design's "scene.py (pure)" section. The module imports only the standard library, numpy and `splatpipe`, and reads no file.
     - `training_size` rounds half up in integers and never scales up. `world_to_camera` divides the quaternion by its largest absolute value before it scales it to length 1.
     - `scene_extent` refuses a largest distance of 0 with the Req 3.7 message. `median_scene_depth` goes one camera at a time, leaves out each camera with no point at a z above 0, takes both medians with `numpy.median`, and refuses with the Req 3.9 message when no camera has a point in front.
     - `keep_mask` scales with the integer index maps of the design's decisions table, so each training pixel takes the mask pixel under its centre, not the one `cv2.INTER_NEAREST` takes. A pixel below `mask_threshold` is `False`.
@@ -201,7 +201,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
   - [ ] 4.2 Write `splatpipe/train/splats.py`
     - Load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before writing code, for SH_C0 and the colour, opacity and scale conventions.
-    - `SH_C0`, `SH_REST`, `Splats`, `choose_points()`, `need_points()`, `log_start_distances()`, `start_log_scales()`, `start_splats()`, `mean_exposure()` and `bake_exposure()`, as in the design's "splats.py (pure)" section. The module imports only numpy and `splatpipe`.
+    - `SH_C0`, `SH_REST`, `Splats`, `choose_points()`, `need_points()`, `log_start_distances()`, `start_log_scales()`, `start_splats()`, `mean_exposure()` and `bake_exposure()`, as in the design's "splats.py (pure)" section. The module imports only the standard library, numpy and `splatpipe`.
     - `choose_points` keeps the subset in file order with `np.sort`. `need_points` refuses a count below `neighbours` + 1 with the Req 1.18 message.
     - `log_start_distances` never forms the root mean square: each row's log is log m + ½ · log(mean((d / m)²)), with m the row's largest distance. A row with m = 0 takes the smallest log of the other rows, and an all-zero array is refused with the Req 3.15 message. `start_log_scales` adds `log(factor)` and gives three equal columns.
     - `start_splats` gives float32 arrays as Req 3.12 says, with `sh_rest` of shape (N, 15, 3).
@@ -301,8 +301,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     - _Requirements: 14.3, 14.12_
 
 - [ ] 6. The camera solve files and the GPU interface
-  - Files: `splatpipe/train/files.py`, `splatpipe/train/gpu_api.py`, `tests/test_train_files.py` and `tests/test_train_gpu_api.py` (new). `tests/camera_files.py` (changed).
-  - _Requirements: 1.1, 1.2, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 2.12, 3.2, 3.4, 4.16, 8.8, 8.10, 10.7, 14.1, 14.3, 14.6, 14.12_
+  - Files: `splatpipe/train/files.py`, `splatpipe/train/gpu_api.py`, `tests/test_train_files.py` and `tests/test_train_gpu_api.py` (new). `tests/camera_files.py`, `docs/third-party-licences.md` and `tests/test_docs.py` (changed).
+  - _Requirements: 1.1, 1.2, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 2.12, 3.2, 3.4, 4.16, 8.8, 8.10, 10.7, 13.16, 14.1, 14.3, 14.6, 14.12_
 
   - [ ] 6.1 Write `splatpipe/train/files.py`
     - The Fixed_Constant names `CAMERAS`, `IMAGES`, `MASKS`, `SPARSE`, `MODEL_FILES`, `TRAINED_SPLAT` and `RECORD`, and `check_inputs()`, `read_views()`, `move_into_out()`, `train_record()` and `write_record()`, as in the design's "files.py" section. The module imports only the standard library, numpy, cv2 and `splatpipe`.
@@ -310,7 +310,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `read_views` goes through the images in `images.bin`'s order and opens only the files they name. Each JPEG is read with `Path.read_bytes()` and `cv2.imdecode` with `IMREAD_COLOR | IMREAD_IGNORE_ORIENTATION`, checked against the Shared_Camera's size, scaled down with `INTER_AREA` when it's larger than the Training_Size, and turned to RGB. `masks/<stem>.png`, when it's there, is decoded with `IMREAD_GRAYSCALE | IMREAD_IGNORE_ORIENTATION`, checked against its image's size, and turned into a keep mask with `keep_mask`. An image without one gets `None`.
     - Each refusal of Req 1.12, 1.13 and 1.16 names the file and the reason, with both sizes when they differ, and a mask that leaves no pixel is refused too.
     - `move_into_out` is one `os.replace`. It and `write_record`, which calls `splatpipe.jsonio.write_json`, turn an `OSError` into the Req 8.10 failure. `train_record` gives only plain JSON values.
-    - _Requirements: 1.1, 1.2, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.2, 3.4, 8.8, 8.10, 10.7_
+    - This is the commit that brings the step's use of OpenCV in, so in `docs/third-party-licences.md` the `opencv-python-headless` row's "How we use it" also says that the train step decodes the camera solve's JPEG frames and PNG masks and scales them down. It keeps "It never reads or writes video". The Licence_List gains no row.
+    - _Requirements: 1.1, 1.2, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.2, 3.4, 8.8, 8.10, 10.7, 13.16_
 
   - [ ] 6.2 Write `splatpipe/train/gpu_api.py`
     - `GPU_MODULE`, `GPU_PACKAGES`, `GSPLAT_VERSION`, `GB`, `GpuInfo`, `TrainResult`, the `Gpu` protocol, `GpuOutOfMemory`, `NonFiniteLoss`, `out_of_memory_failure()`, `non_finite_message()`, `gpu_need_bytes()`, `gpu_fits()`, `check_gpu()` and `load_gpu()`, as in the design's "gpu_api.py" section. The module imports no torch. It imports `Scene`, `Splats` and `TrainSettings` from the CPU modules, so the protocol's types are real.
@@ -333,18 +334,19 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `move_into_out` and `write_record` with `os.replace` or `write_json` raising `OSError(errno.ENOSPC, "No space left on device")` name the file and the reason.
     - `train_record` passes `check_json_value` with and without a Cap_Deadline.
     - No message holds "Traceback".
-    - _Requirements: 1.2, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.2, 3.4, 8.8, 8.10, 10.7, 14.1, 14.6_
+    - In `tests/test_docs.py`, `test_numpy_and_headless_opencv_say_yes_and_opencv_never_reads_or_writes_video` also checks that the `opencv-python-headless` row names the train step's JPEG frames and PNG masks, and still that it never reads or writes video.
+    - _Requirements: 1.2, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 3.2, 3.4, 8.8, 8.10, 10.7, 13.16, 14.1, 14.6_
 
   - [ ] 6.5 Write unit tests for the GPU interface in `tests/test_train_gpu_api.py`
     - `gpu_fits` passes 24,146,608,128 bytes for a `min_gpu_memory_gb` of 24 and refuses it for 48, passes 48,305,799,168 bytes for both, and passes exactly 21,600,000,000 bytes for 24, all with a slack of 0.9.
     - `check_gpu` refuses no CUDA, gsplat 1.5.2 and a small GPU, in that order, each with its message, and passes whatever `min_vcpus` and `min_memory_gb` say.
-    - `load_gpu`, with `splatpipe.train.gpu_api.importlib` replaced by a stand-in whose `import_module` raises `ModuleNotFoundError` with `name` set to `torch`, `gsplat.strategy` or `fused_ssim`, gives the Req 2.2 message naming the package. With `fused_ssim_cuda`, the error goes up as it is. No test imports `splatpipe.train.gpu`.
+    - `load_gpu`, with `splatpipe.train.gpu_api.importlib` replaced by a stand-in whose `import_module` raises `ModuleNotFoundError` with `name` set to `torch`, `gsplat.strategy` or `fused_ssim`, gives the Req 2.2 message naming the package. With `fused_ssim_cuda`, the error goes up as it is. The stand-in records the name it's asked to import, and the tests check that it's `GPU_MODULE` and that `GPU_MODULE` is `"splatpipe.train.gpu"`, so a wrong name can't pass every laptop test and fail only in the Smoke_Test. A stand-in that gives back a module object shows `load_gpu` gives back that object. No test imports `splatpipe.train.gpu`.
     - `out_of_memory_failure` names Iteration 812, or the scene set-up for `None`, the Preset and `max_splats`. `non_finite_message` names the Iteration, the five Loss_Terms' values and the total.
     - _Requirements: 2.2, 2.3, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 2.12, 4.16, 14.1, 14.6_
 
   - [ ] 6.6 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
-    - On `feat/splat-training`: `git add splatpipe/train/files.py splatpipe/train/gpu_api.py tests/camera_files.py tests/test_train_files.py tests/test_train_gpu_api.py`, then commit those files with the message "Train: the camera solve files and the GPU interface".
+    - On `feat/splat-training`: `git add splatpipe/train/files.py splatpipe/train/gpu_api.py tests/camera_files.py tests/test_train_files.py tests/test_train_gpu_api.py docs/third-party-licences.md tests/test_docs.py`, then commit those files with the message "Train: the camera solve files and the GPU interface".
     - _Requirements: 14.3, 14.12_
 
 - [ ] 7. The step and its CLI
@@ -398,7 +400,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
 - [ ] 8. The GPU_Module and the Trainer
   - Files: `splatpipe/train/gpu.py` (new). `tests/test_imports.py` and `tests/test_cloud_imports.py` (changed).
-  - _Requirements: 2.4, 2.12, 3.2, 3.13, 4.1, 4.2, 4.3, 4.5, 4.7, 4.9, 4.10, 4.12, 4.13, 4.14, 4.15, 4.16, 4.17, 4.18, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 5.10, 6.1, 6.2, 6.3, 7.6, 7.10, 8.2, 9.11, 9.12, 10.1, 14.3, 14.7, 14.8, 14.12_
+  - _Requirements: 2.2, 2.4, 2.12, 3.2, 3.13, 4.1, 4.2, 4.3, 4.5, 4.7, 4.9, 4.10, 4.12, 4.13, 4.14, 4.15, 4.16, 4.17, 4.18, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 5.10, 6.1, 6.2, 6.3, 7.6, 7.10, 8.2, 9.11, 9.12, 10.1, 14.3, 14.7, 14.8, 14.12_
 
   - [ ] 8.1 Write `splatpipe/train/gpu.py`
     - Load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before writing code. Follow gsplat 1.5.3's API exactly as the skill and the design's "gpu.py (the GPU_Module and the Trainer)" section give it.
@@ -414,8 +416,9 @@ Some files grow over several tasks, so each piece comes with the first task that
   - [ ] 8.2 Write `gpu.py`'s source checks and the fresh-process import in `tests/test_imports.py`
     - Read `splatpipe/train/gpu.py` as text and never import it. It starts with the skill's Apache-2.0 note, with `# Copyright 2025 Nerfstudio Team` and `# Licensed under the Apache License, Version 2.0` before its first import, and the text holds none of the names `rasterization_inria_wrapper`, `rasterization_2dgs_inria_wrapper` and `export_splats`.
     - It's the only file in `splatpipe/train/` that imports torch, gsplat or fused_ssim, and it imports all three.
+    - `splatpipe.train.gpu_api.GPU_MODULE` names this file: its dots turned into folders, plus `.py`, is `splatpipe/train/gpu.py`, so the module `load_gpu` asks for is the one these checks read.
     - A fresh process that runs `import splatpipe.train` and imports each of its CPU modules has none of torch, gsplat and fused_ssim in `sys.modules`.
-    - _Requirements: 4.14, 4.15, 8.2, 9.11, 9.12, 14.7_
+    - _Requirements: 2.2, 4.14, 4.15, 8.2, 9.11, 9.12, 14.7_
 
   - [ ] 8.3 Change the splatpipe GPU check in `tests/test_cloud_imports.py`
     - `test_nothing_under_splatpipe_imports_cloud_boto3_or_a_gpu_package` keeps refusing `cloud` and boto3 in every file under `splatpipe/`, and every GPU package in every file but `splatpipe/train/gpu.py`, which may import torch, gsplat and fused_ssim and no other GPU package (A14).
@@ -533,7 +536,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - The last sub-task of each task is its checkpoint: the whole suite, then the commit by name. So the plan has no separate checkpoint tasks and stays at the design's 10, and 10.7 is the final full-suite run.
 - Every acceptance criterion in `requirements.md` is named by at least one task. Each of the design's 9 correctness properties has its own property test sub-task, with Hypothesis: Property 1 in 3.4, Properties 3 and 4 in 2.4 and 2.5, Properties 2 and 5 in 4.5 and 4.6, and Properties 6 to 9 in 5.3 to 5.6.
 - Task 8's code runs only on the GPU, so its tests read its source and check the imports. The Trainer first runs in the Smoke_Test's `training` check, and Req 12.11, the check's time on the g5.xlarge, shows only in that run's log.
-- One choice differs from a sentence in the design. The design's build order says task 9's laptop smoke test meets the real `gpu.py` failing on its first import, torch. To keep to the rule that no laptop test imports `gpu.py`, 7.5 and 9.6 replace `splatpipe.train.gpu_api.importlib` instead, which gives the same Req 2.2 message. The review can change this.
+- No laptop test imports `gpu.py`. 6.5, 7.5 and 9.6 replace `splatpipe.train.gpu_api.importlib` instead, which gives the same Req 2.2 message on any machine, with torch installed or not, and 6.5 and 8.2 check that `load_gpu` asks for the module whose file the source checks read. The review kept this and changed the design's build order to match.
 - No task runs anything paid. After the spec is built, the Smoke_Test re-run of 9.7 is a separate paid run, started only after the person's yes.
 - The graph runs the tasks in order, one at a time, so each task's test run and commit see only finished work. Inside a task, sub-tasks that write different files share a wave, tests come after the code they test, and each task's commit gates the next task's first sub-tasks.
 
