@@ -9,6 +9,8 @@ requires-python = ">=3.11,<3.12"
 # They only go in the cloud machine image, never in the laptop install.
 dependencies = [
     "boto3>=1.44.9",
+    "numpy>=2.4.6",
+    "opencv-python-headless>=5.1.0.95",
 ]
 
 [tool.pytest.ini_options]
