@@ -1,4 +1,5 @@
-"""The import checks (Req 12): they read the Pipeline's files with ast and run no Step (Req 12.5).
+"""The import checks (Req 12) and the dependency check: they read the Pipeline's files with ast,
+and pyproject.toml and uv.lock with tomllib, and run no Step (Req 12.5).
 
 `imports_in` collects every module name a file imports, with its line: each `import`, each
 `from ... import`, and each `import_module` or `__import__` call whose first argument is a
@@ -13,22 +14,34 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
 - Standard library only (Req 12.3, 11.1): splatpipe/*.py and splatpipe/fake/ import only names
   in sys.stdlib_module_names and splatpipe, and cloud/spend.py only the standard library. The
   Skeleton is read with glob, not rglob, so a step folder like splatpipe/frames/ can import
-  numpy, scipy and OpenCV.
+  numpy and OpenCV.
 - No Step module on import (Req 12.4): each splatpipe.X that a splatpipe/*.py imports is a
   Skeleton module, a splatpipe/X.py, and a fresh process that imports splatpipe.run has only
   Skeleton modules among its splatpipe.* modules.
 - The Step_List (Req 12.2, 8.2, 5.11): each STEP_LIST entry is splatpipe.<name> with a good
   Step_Name, isn't the Fake_Step, and its Step_Section loads from the real config for each Preset.
+- The Frames_Step's imports (frames spec, Req 9.9, 13.10): every splatpipe/frames/*.py imports
+  only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, so torch, gsplat, boto3 and
+  cloud/ stay out.
+- The dependencies (frames spec, Req 9.8): numpy and opencv-python-headless are runtime
+  dependencies in pyproject.toml and in the project's own entry in uv.lock, and no package in
+  either file is plain opencv-python, torch, gsplat or an nvidia-* or cuda-* package. Names are
+  compared as PEP 503 normalises them. The check neither requires nor refuses scipy, so the
+  clean-export spec can decide scipy without changing it.
 
-Each failure lists the file and the line of every import it found.
+Each import check's failure lists the file and the line of every import it found, and the
+dependency check's failure lists the file of every package it found.
 """
 
 import ast
 import json
 import os
+import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
+from typing import Any
 
 from splatpipe.config import PRESETS, REPO_ROOT, load_config
 from splatpipe.run import STEP_LIST
@@ -47,6 +60,20 @@ IMPORT_CALLS = frozenset({"import_module", "__import__"})
 # Run in a fresh process, because this one has imported more of splatpipe through conftest.py.
 LOADED_BY_RUN = ("import json, sys, splatpipe.run; "
                  "print(json.dumps(sorted(n for n in sys.modules if n.startswith('splatpipe.'))))")
+# The top-level names a splatpipe/frames/*.py may import besides the standard library (frames
+# spec, Req 9.9).
+FRAMES_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+UV_LOCK = REPO_ROOT / "uv.lock"
+# The runtime dependencies the Frames_Step needs (frames spec, Req 9.8).
+FRAMES_DEPENDENCIES = frozenset({"numpy", "opencv-python-headless"})
+# The packages that never go in pyproject.toml or uv.lock, by their normalised names: plain
+# opencv-python, which installs the same cv2 module as the headless one, and the GPU packages,
+# which only go in the cloud machine image (frames spec, Req 9.8).
+NEVER_PACKAGES = frozenset({"opencv-python", "torch", "gsplat"})
+NEVER_PREFIXES = ("nvidia-", "cuda-")
+# The first character of a requirement like "numpy>=2.4.6" that can't be part of its package name.
+NAME_END = re.compile(r"[^A-Za-z0-9._-]")
 
 
 def absolute(name: str, package: str) -> str:
@@ -113,6 +140,27 @@ def stdlib_only_files() -> list[tuple[Path, bool]]:
     return [(path, True) for path in pipeline] + [(REPO_ROOT / "cloud" / "spend.py", False)]
 
 
+def package_name(requirement: str) -> str:
+    """The package that a requirement like "numpy>=2.4.6" names, normalised as PEP 503 does, so
+    "OpenCV_Python" reads as opencv-python."""
+    name = NAME_END.split(requirement.strip(), maxsplit=1)[0]
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def pyproject_packages(pyproject: dict[str, Any]) -> list[str]:
+    """Every package that pyproject.toml names, normalised: its runtime dependencies, its extras
+    and its dependency groups."""
+    project = pyproject["project"]
+    lists = [project.get("dependencies", []), *project.get("optional-dependencies", {}).values(),
+             *pyproject.get("dependency-groups", {}).values()]
+    return [package_name(requirement) for requirements in lists for requirement in requirements]
+
+
+def never_a_dependency(name: str) -> bool:
+    """Whether a package, by its normalised name, must never be in pyproject.toml or uv.lock."""
+    return name in NEVER_PACKAGES or name.startswith(NEVER_PREFIXES)
+
+
 def test_the_reader_finds_every_kind_of_import_with_its_line() -> None:
     """Imports inside functions count, relative names are resolved against the package, and an
     import_module call whose name isn't a constant string isn't read."""
@@ -169,7 +217,8 @@ def test_importing_splatpipe_run_loads_only_skeleton_modules() -> None:
 
 
 def test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section() -> None:
-    """STEP_LIST starts empty, so this loads no Step_Section until a step spec adds its entry."""
+    """The Frames_Step is the first entry, so this loads [frames] from the real config for each
+    of the three Presets (frames spec, Req 11.7)."""
     config = load_config(REAL_CONFIG)
     for entry in STEP_LIST:
         assert check_step_name(entry.name) == entry.name
@@ -177,3 +226,26 @@ def test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section
         assert entry.module != "splatpipe.fake"  # the Fake_Step never runs on real Jobs (Req 8.2)
         for preset in PRESETS:
             config.step_settings(entry.name, preset)  # Req 5.11
+
+
+def test_the_frames_step_imports_only_the_standard_library_numpy_cv2_and_splatpipe() -> None:
+    """Frames spec, Req 9.9, 13.10."""
+    allowed = sys.stdlib_module_names | FRAMES_IMPORTS
+    found = [(where, name) for path in sorted(SPLATPIPE.glob("frames/*.py"))
+             for where, name in imports_of(path) if top(name) not in allowed]
+    assert found == []
+
+
+def test_pyproject_and_uv_lock_hold_numpy_and_headless_opencv_and_no_gpu_or_plain_opencv() -> None:
+    """Frames spec, Req 9.8. scipy is neither required nor refused, so the clean-export spec can
+    decide it without changing this test."""
+    pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    lock = {package["name"]: package
+            for package in tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))["package"]}
+    runtime = {package_name(requirement) for requirement in pyproject["project"]["dependencies"]}
+    assert FRAMES_DEPENDENCIES <= runtime
+    own_entry = lock[package_name(pyproject["project"]["name"])]
+    assert FRAMES_DEPENDENCIES <= {dependency["name"] for dependency in own_entry["dependencies"]}
+    named = [("pyproject.toml", name) for name in pyproject_packages(pyproject)]
+    named += [("uv.lock", name) for name in lock]
+    assert [(where, name) for where, name in named if never_a_dependency(name)] == []

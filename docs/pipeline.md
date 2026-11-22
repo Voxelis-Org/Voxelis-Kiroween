@@ -1,6 +1,6 @@
 # The pipeline
 
-`splatpipe/` turns one phone video into a 3D Gaussian splat, one step at a time. This doc starts with the skeleton, the shared code that every step plugs into: the job folder, the settings, the reports and the commands that run steps. Then each step has its own section, like the fake step's at the end, with the same parts. Each step spec adds or updates its own section as part of its tasks, so the steps we build separately keep fitting together.
+`splatpipe/` turns one phone video into a 3D Gaussian splat, one step at a time. This doc starts with the skeleton, the shared code that every step plugs into: the job folder, the settings, the reports and the commands that run steps. Then each step has its own section, like the fake step's below, with the same parts. Each step spec adds or updates its own section as part of its tasks, so the steps we build separately keep fitting together.
 
 ## The job folder
 
@@ -140,7 +140,7 @@ Each step has a section named after it:
 - `[<name>.fast]`, `[<name>.default]` and `[<name>.quality]` hold its preset settings. All three must be there, with the same keys.
 - A key is either shared or in the preset tables, never both, and the section holds no other tables.
 
-The step gets its shared settings and its preset's settings together, as `step.settings`. A section that breaks these rules fails the step with a readable error that names the section and the key or table. So does a setting the step asks for that isn't in its section. The fake step's section, at the end, is a small example.
+The step gets its shared settings and its preset's settings together, as `step.settings`. A section that breaks these rules fails the step with a readable error that names the section and the key or table. So does a setting the step asks for that isn't in its section. The fake step's section, below, is a small example.
 
 ## The step list
 
@@ -148,7 +148,7 @@ A step name has lowercase ASCII letters, digits and underscores, and starts with
 
 The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner runs, in order. Each entry is a `StepEntry(name, module, required)`. When a required step fails, the job fails. When an optional step fails, the job goes on without it. The fake step isn't in the list, so it never runs on real jobs. The tests pass their own lists.
 
-The list starts empty, and each step's spec adds its own entry. Until then, `splatpipe.run` refuses with "No steps are set up yet", so run one step on its own. The planned steps are:
+The list holds the frames step as its first, required entry: `StepEntry("frames", "splatpipe.frames", True)`. Each later step spec adds its own entry after the frames step. Until the camera solve spec adds its entry, a job is done once the frames step is done. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
 - Optional steps: depth priors, plain walls, and clean and export.
@@ -355,3 +355,167 @@ The real `config.toml` keeps `fail = "none"`, with a comment above every key. Te
 - `out/fake.txt`: one UTF-8 line, like `The fake step ran on job 20261119-142530-7f3a9c with the fast preset.` A done run replaces it. A failed run writes none and leaves an earlier one in place.
 
 Its report, `out/reports/fake.json`, comes from the step runner, like every step's.
+
+## Step: frames
+
+The frames step is in `splatpipe/frames/`, built like the fake step. It picks the frames of the job's video that the camera solve step works from, and saves them in its work folder, `work/frames/`.
+
+Its CLI is `uv run python -m splatpipe.frames --job <id> [--preset P]`, and its plain function is `splatpipe.frames.run(job_id, preset=None)`.
+
+It works in this order:
+
+1. It checks every setting, before any tool runs.
+2. The probe: ffprobe reads the video's size, rotation and colour transfer. For an HDR video, the step also asks ffmpeg whether it has the filters to tone map it.
+3. The score pass: ffmpeg decodes the part of the video to use as small grey score frames, `score_width` pixels wide. The step gives each score frame a sharpness, a motion and a contrast. It keeps those numbers and the time of every frame, but holds only an evenly thinned set of the frames themselves, at most twice `mask_samples`, for the mask.
+4. The still trim cuts off the still part at the start and the one at the end, each when it lasts `min_still_seconds` or more. Still parts in the middle stay, and a video that's still from start to end is kept whole. The frames left are the kept range. From its length, the step works out `target_picks`, the most picks it makes.
+5. The jolt filter drops the kept frames that are blurred next to their neighbours. When it keeps fewer frames than `target_picks`, the step skips it, with a warning.
+6. The step splits the kept range into `target_picks` parts, each with an equal share of the kept range's motion, or of its time when the total motion is 0. It picks the sharpest frame left in each part, the earliest on a tie. A part with no frame left gives no pick. With fewer picks than `min_picks`, the step fails here, before the pick pass.
+7. It looks for pixels stuck to the camera, like a drone's propeller or a watermark, in the mask samples. These are the thinned frames that lie in the kept range, or `mask_samples` of them spread evenly, the first and the last included, when more lie there. Then it decides whether to use the mask.
+8. The pick pass: ffmpeg decodes the same part of the video again, in colour at the pick size. The step saves each pick and its grey copy.
+9. It writes `mask.png` when it uses the mask, then `frames.json`, last of all.
+
+### What it reads
+
+- The job's copy of the video, through `step.job.video_path`.
+- The job record's `start_seconds` and `end_seconds`. The step uses each frame whose time is at or after `start_seconds` and before `end_seconds`. A frame's time comes from the video's own timestamps, in seconds from the start of the video, so a video with a variable frame rate gets its frames' real times. A frame with no time, or with a time that isn't after the last frame the step took, is skipped, so the times always go up.
+- Its settings, from `[frames]` and from the job's preset table, like `[frames.fast]`.
+- ffmpeg and ffprobe 5.1 or newer, as command line tools. ffprobe reads the size, rotation, sample aspect ratio and colour transfer of the video's first video stream that isn't cover art. ffmpeg decodes every frame the step uses and hands it over through a pipe.
+
+The job's machine image needs ffmpeg and ffprobe 5.1 or newer, because the step uses ffmpeg's `-fps_mode` option. It runs ffmpeg with `-fps_mode passthrough`, so no frame is repeated or dropped to keep a steady frame rate. Ubuntu 24.04's packaged ffmpeg, version 6.1, is new enough.
+
+An HDR video is one whose colour transfer is `arib-std-b67` (HLG) or `smpte2084` (PQ). For an HDR video, the step asks ffmpeg whether it has the `zscale` and `tonemap` filters. With both, both passes tone map each frame to SDR BT.709, with `tonemap_npl` and `tonemap_desat`, before it's made grey or saved. Without them, both passes read the frames without tone mapping, and the report gets a warning. When ffmpeg fails in the score pass with the tone map, the step adds a warning and runs the score pass again without it, and the pick pass runs without it too. Every other video, one whose colour transfer ffprobe doesn't report included, is read without tone mapping.
+
+### What it writes
+
+The step writes only into its work folder. The camera solve step reads these files, so their layout and the fields of `frames.json` are the contract between the two steps. The names are fixed in `splatpipe/frames/files.py`, not in `config.toml`.
+
+```
+work/frames/
+  images/000000.jpg ...   the picks, in colour
+  grey/000000.jpg ...     the grey copies, with the picks' names and size
+  mask.png                the mask, only when the step uses one
+  frames.json             the frames record, written last
+```
+
+- `images/` holds the picks, as JPEGs at `jpeg_quality`. Each is named after its number in time order, from `000000.jpg`, padded to 6 digits. A pick is the same video frame as its score frame, in colour at the pick size. The pick size is the video's size as a player shows it, with its rotation and sample aspect ratio applied, scaled so the long edge is `long_edge` pixels. A video whose long edge is `long_edge` or shorter keeps its own size, so a pick is never larger than the video.
+- `grey/` holds a grey copy of each pick, with the pick's name and size. Each one is the pick turned grey with global histogram equalisation (OpenCV's `equalizeHist`), as a JPEG at `jpeg_quality`. Only matching uses the grey copies.
+- `mask.png` is one mask for every pick: an 8-bit grey PNG at the pick size that holds only 0 and 255. Black (0) marks a pixel stuck to the camera, and white (255) every other pixel. Each mask pixel copies the score frame pixel under its centre, and nothing grows, shrinks or smooths the stuck pixels. COLMAP takes the mask as its single camera mask, `--ImageReader.camera_mask_path`, and the training loss reads the same file. For both, black means ignore. The step writes the mask only when it uses it: when it has at least 2 mask samples and the stuck pixels cover from `mask_min_coverage` to `mask_max_coverage` of the frame.
+- `frames.json` is the frames record, below. The step writes it after every pick, every grey copy and the mask. So a run that fails leaves no `frames.json`, and a work folder without it is unfinished, whatever else it holds.
+
+The step writes nothing before the pick pass. The step runner empties `work/frames/` before the step runs, so a run that fails before the pick pass leaves it empty.
+
+`frames.json` describes the picks and the mask. This example is from a 3840 × 2160 HDR video at 30 frames a second, with the `fast` preset, the part to use from 1.5 s to 61.2 s, and an ffmpeg without `zscale`:
+
+```json
+{
+  "colour_transfer": "arib-std-b67",
+  "tone_mapped": false,
+  "still_start_seconds": 2.4,
+  "still_end_seconds": 0.0,
+  "kept_start_seconds": 3.9,
+  "kept_end_seconds": 61.2,
+  "target_picks": 120,
+  "jolt_filter_skipped": false,
+  "pick_width": 1600,
+  "pick_height": 900,
+  "mask_coverage": 0.0125,
+  "mask_used": true,
+  "mask_file": "mask.png",
+  "picks": [
+    {"number": 0, "file": "000000.jpg", "frame_number": 72, "seconds": 3.9,
+     "sharpness": 812.5, "motion": 2.1, "contrast": 48.0}
+  ]
+}
+```
+
+| Field | What it holds |
+|---|---|
+| `colour_transfer` | The video's colour transfer as ffprobe reports it, like `"bt709"` or `"arib-std-b67"`, or `null` when ffprobe reports none. |
+| `tone_mapped` | Whether both passes ran with the tone map. |
+| `still_start_seconds`, `still_end_seconds` | The seconds the still trim cut at the start and at the end, 0.0 when it cut nothing there. |
+| `kept_start_seconds`, `kept_end_seconds` | Where the kept range starts and ends, in seconds. It starts at its first frame's time. It ends at the time of the frame after its last, or at `end_seconds` when no frame comes after it. |
+| `target_picks` | The number of parts the kept range was split into, so the most picks the step could make. |
+| `jolt_filter_skipped` | Whether the step skipped the jolt filter. |
+| `pick_width`, `pick_height` | The pick size, in pixels, which is also the grey copies' and the mask's size. |
+| `mask_coverage` | The share of a score frame's pixels that are stuck, from 0 to 1. 0.0 with fewer than 2 mask samples. |
+| `mask_used` | Whether the step uses the mask. |
+| `mask_file` | `"mask.png"` when the step uses the mask, else `null`. |
+| `picks` | One object per pick, in time order. |
+
+Each object in `picks` holds:
+
+| Field | What it holds |
+|---|---|
+| `number` | The pick's number in time order, from 0. |
+| `file` | Its file name in both `images/` and `grey/`, like `"000000.jpg"`. |
+| `frame_number` | Its score frame's place among the score frames of the part of the video to use, from 0. |
+| `seconds` | Its time, in seconds from the start of the video, on the same clock as `start_seconds` and `end_seconds`. |
+| `sharpness` | The variance of its score frame's Laplacian. |
+| `motion` | Its score frame's mean absolute change in brightness from the score frame before, from 0 to 255, or 0 for the first score frame. |
+| `contrast` | The standard deviation of its score frame's brightness, from 0 to 127.5. |
+
+Every value is plain JSON. Floats keep full precision, because the camera solve step may match on `seconds`.
+
+### Config section
+
+| Key | Table | Value | What it is |
+|---|---|---|---|
+| `score_width` | `[frames]` | `320` | The width of the grey score frames, in pixels. Their height keeps the video's shape, so a narrower video is scaled up for scoring. |
+| `tonemap_npl` | `[frames]` | `100` | The nominal peak brightness, in nits, that `zscale` maps an HDR video from. |
+| `tonemap_desat` | `[frames]` | `0.0` | How much `tonemap` desaturates an HDR video's bright highlights. 0 turns it off. |
+| `still_motion` | `[frames]` | `1.0` | A frame is still when the mean motion over its window is below this, on the 0 to 255 brightness scale. |
+| `motion_window_seconds` | `[frames]` | `1` | The length of the window for the still test, in seconds. |
+| `min_still_seconds` | `[frames]` | `2` | The shortest still start or still end that the still trim cuts, in seconds. |
+| `blip_seconds` | `[frames]` | `0.5` | A run of frames that aren't still counts as still when it's shorter than this many seconds. |
+| `jolt_ratio` | `[frames]` | `0.6` | The jolt filter keeps a frame when its sharpness is at least this share of the median sharpness over its window. |
+| `jolt_window_seconds` | `[frames]` | `1` | The length of the window for the jolt test, in seconds. |
+| `mask_samples` | `[frames]` | `240` | The most mask samples, the score frames used to find the stuck pixels. |
+| `mask_ratio` | `[frames]` | `0.2` | A pixel is stuck when its mean change in brightness, from one mask sample to the next, is below this share of the median over every pixel. |
+| `mask_min_coverage` | `[frames]` | `0.002` | The smallest share of the frame the stuck pixels must cover for the mask to be used. |
+| `mask_max_coverage` | `[frames]` | `0.25` | The largest share of the frame the stuck pixels may cover for the mask to be used. |
+| `jpeg_quality` | `[frames]` | `95` | The JPEG quality of the picks and their grey copies, from 1 to 100. |
+| `long_edge` | `[frames]` | `1600` | The long edge of the picks, in pixels. A smaller video isn't scaled up. |
+| `seconds_per_pick` | `[frames]` | `2` | Seconds of kept video per pick, when that gives more picks than `base_picks`. |
+| `max_picks` | `[frames]` | `400` | The most picks a job gets. |
+| `min_picks` | `[frames]` | `30` | The fewest picks a job can go on with. With fewer, the step fails before the pick pass, and its readable error says what to film differently. |
+| `min_vcpus` | `[frames]` | `16` | The fewest vCPUs the job's cloud machine needs for this step. |
+| `min_memory_gb` | `[frames]` | `16` | The least memory the job's cloud machine needs for this step, in GB. |
+| `ffmpeg_timeout_seconds` | `[frames]` | `1800` | The longest time each ffmpeg pass over the video may take, in seconds. |
+| `ffprobe_timeout_seconds` | `[frames]` | `30` | The longest time ffprobe, or ffmpeg listing its filters, may take, in seconds. |
+| `base_picks` | `[frames.fast]`, `[frames.default]` and `[frames.quality]` | `120`, `150` and `200` | The fewest picks the step aims for. |
+
+- A frame's window holds the frames whose time is at most half the window's length before or after its own, the frame itself included. The still test takes them from every frame of the part of the video to use, and the jolt test from the kept range only.
+- `target_picks` is min(`max_picks`, max(`base_picks`, ceil(kept seconds / `seconds_per_pick`))), where the kept seconds are `kept_end_seconds` minus `kept_start_seconds`. So with the `fast` preset, 240 s of kept video gives a `target_picks` of 120, and 420 s gives 210.
+- The step checks every setting before ffprobe or ffmpeg runs, `tonemap_npl` and `tonemap_desat` included, though only an HDR video uses them. A value of the wrong kind fails the step with a readable error that names the key, its table and what it must be. A bool is never a number here. The step also fails when `mask_min_coverage` is greater than `mask_max_coverage`, `min_picks` greater than `base_picks`, or `base_picks` greater than `max_picks`, naming both settings and their values.
+- `[frames]` has its own `ffprobe_timeout_seconds`, apart from the one in `[jobs]`, because a step sees only its own section.
+
+`min_vcpus` and `min_memory_gb` are the step's machine needs: the job's cloud machine needs at least 16 vCPUs and 16 GB of memory for this step. The cloud spec reads them to pick the machine. The step itself never checks the machine, so it runs the same on a laptop. It checks the two settings like the others, but never uses them.
+
+### Step report fields
+
+- `settings`: the 22 settings in `[frames]` and the preset's `base_picks`.
+- `timings.probe`: ffprobe, and for an HDR video the check for the `zscale` and `tonemap` filters.
+- `timings.score_pass`: the score pass with its scoring, its second run included when ffmpeg failed with the tone map.
+- `timings.choose`: the still trim, the jolt filter, the picks and the mask.
+- `timings.pick_pass`: the pick pass with its JPEG writes.
+- `counts.pick_width` and `counts.pick_height`: the pick size, in pixels.
+- `counts.decoded_frames`: the score frames in the part of the video to use.
+- `counts.still_start_frames` and `counts.still_end_frames`: the frames the still trim cut at the start and at the end.
+- `counts.kept_frames`: the frames in the kept range.
+- `counts.target_picks`: the number of parts the kept range was split into.
+- `counts.jolt_dropped_frames`: the frames the jolt filter dropped, 0 when the step skipped it.
+- `counts.picks`: the picks the step chose.
+- `counts.mask_samples`: the mask samples the step used to find the stuck pixels.
+- `counts.mask_pixels`: the stuck pixels, at the score frames' size.
+- `counts.mask_used`: 1 when the step uses the mask, 0 when it doesn't.
+- `warnings`, each only when it applies:
+  - For an HDR video when ffmpeg has no `zscale` or `tonemap` filter: "The video is HDR (colour transfer <transfer>), but this ffmpeg has no zscale or tonemap filter, so the frames were read without tone mapping and the picks' colours may look flat. An ffmpeg built with zscale fixes the colours."
+  - For an HDR video when ffmpeg failed in the score pass with the tone map, with ffmpeg's last line of error output: "The video is HDR (colour transfer <transfer>), but ffmpeg failed to tone map it (<last line>), so the frames were read without tone mapping and the picks' colours may look flat. An ffmpeg built with a working zscale fixes the colours."
+  - When the step skipped the jolt filter: "The jolt filter kept only <k> frames, fewer than the <n> picks this job aims for, so it was skipped and every kept frame could be picked."
+- `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message, saying what went wrong and what to do. Those failures are a bad setting, a missing ffmpeg or ffprobe, a tool that runs past its time limit, fails or prints output the step can't read, a video with no picture size, no frames in the part of the video to use, fewer picks than `min_picks`, a pick that ffmpeg doesn't give back in the pick pass, and a file that can't be written. Any other error is a bug, with the general message.
+
+The counts are whole numbers, so the seconds the still trim cut and the mask coverage are in `frames.json` instead. A failed report holds the counts and timings the step had worked out before it failed.
+
+### Files in out/
+
+The frames step writes no files to `out/` but its report, `out/reports/frames.json`, which the step runner writes, like every step's.

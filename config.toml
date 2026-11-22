@@ -56,3 +56,61 @@ files = 2
 [fake.quality]
 # Number of small files the fake step writes.
 files = 3
+
+[frames]
+# Width of the small grey frames the step scores, in pixels.
+score_width = 320
+# Nominal peak brightness, in nits, that zscale maps an HDR video from. Only HDR videos use it.
+tonemap_npl = 100
+# How much tonemap desaturates the bright highlights of an HDR video. 0 turns it off.
+tonemap_desat = 0.0
+# Mean motion over the window below which a frame counts as still, from 0 to 255.
+still_motion = 1.0
+# Length of the window for the still test, in seconds.
+motion_window_seconds = 1
+# Shortest still start or still end that gets cut off, in seconds.
+min_still_seconds = 2
+# Moving parts shorter than this count as still, in seconds.
+blip_seconds = 0.5
+# A frame is jolted when its sharpness is below this share of the window's median.
+jolt_ratio = 0.6
+# Length of the window for the jolt test, in seconds.
+jolt_window_seconds = 1
+# Most frames used to find the pixels stuck to the camera.
+mask_samples = 240
+# A pixel is stuck when its change is below this share of the median change.
+mask_ratio = 0.2
+# Smallest share of the frame the stuck pixels must cover for the mask to be used.
+mask_min_coverage = 0.002
+# Largest share of the frame the stuck pixels may cover for the mask to be used.
+mask_max_coverage = 0.25
+# JPEG quality of the picks and their grey copies, from 1 to 100.
+jpeg_quality = 95
+# Longest edge of the picks, in pixels. A smaller video isn't scaled up.
+long_edge = 1600
+# Seconds of kept video per pick, when that gives more than the preset's base_picks.
+seconds_per_pick = 2
+# Most picks a job gets.
+max_picks = 400
+# Fewest picks a job can go on with.
+min_picks = 30
+# Fewest vCPUs the job's cloud machine needs for this step. The step never checks it.
+min_vcpus = 16
+# Least memory the job's cloud machine needs for this step, in GB. The step never checks it.
+min_memory_gb = 16
+# Longest time each of the two ffmpeg reads of the video may take, in seconds.
+ffmpeg_timeout_seconds = 1800
+# Longest time ffprobe, or ffmpeg listing its filters, may take, in seconds.
+ffprobe_timeout_seconds = 30
+
+[frames.fast]
+# Fewest picks the step aims for.
+base_picks = 120
+
+[frames.default]
+# Fewest picks the step aims for.
+base_picks = 150
+
+[frames.quality]
+# Fewest picks the step aims for.
+base_picks = 200
