@@ -3,20 +3,25 @@
 The tests of the kinds, ranges and names build their settings with clean_settings: the test
 config's [clean] for the fast Preset, with one setting changed. The tests of the eighteen values
 and of a missing setting read the test config itself, with load_config and set_clean.
+Property 10 checks the file-name checks against an oracle of its own, on the names that
+tests/splats.py draws.
 """
 
 import dataclasses
+import itertools
 from collections.abc import Callable
 from typing import NamedTuple
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from splatpipe.clean.settings import check_settings
+from splatpipe.clean.settings import check_plain_name, check_settings
 from splatpipe.config import load_config
 from splatpipe.errors import ExpectedFailure, PipelineError
 
 from conftest import CLEAN_PRESETS, CLEAN_SHARED
-from splats import PRESET, clean_settings
+from splats import PRESET, clean_settings, names, three_names
 
 # The three Presets, written out here rather than taken from the code under test.
 PRESET_NAMES = ("fast", "default", "quality")
@@ -212,3 +217,46 @@ def test_two_names_that_differ_only_in_case_are_refused_naming_both(
     for word in ("train_ply", train_ply, other, other_name):
         assert word in message
     assert "names that differ only in case are one file on Windows" in message
+
+
+# Property tests
+
+# Each file-name setting's ending, written out here rather than taken from the code under test.
+# train_ply has none.
+ENDINGS: dict[str, str | None] = {"train_ply": None, "clean_ply": ".ply", "clean_sog": ".sog"}
+# What a Plain_File_Name can't hold: /, \, : and every character below U+0020, the space.
+NOT_IN_NAMES = frozenset("/\\:" + "".join(chr(code) for code in range(0x20)))
+
+
+def is_plain_name(name: str, ending: str | None) -> bool:
+    """The oracle for Property 10, which shares no code with check_plain_name: a name that isn't
+    empty, . or .., holds nothing in NOT_IN_NAMES, and ends in exactly `ending`, if there is one."""
+    return (name not in ("", ".", "..")
+            and NOT_IN_NAMES.isdisjoint(name)
+            and (ending is None or name[-len(ending):] == ending))
+
+
+@settings(deadline=None)
+@given(names, st.sampled_from(NAME_SETTINGS), three_names())
+def test_the_file_name_checks_accept_exactly_the_plain_distinct_names(
+        name: str, key: str, three: dict[str, str]) -> None:
+    """Feature: clean, Property 10: The file-name checks accept exactly the plain, distinct names
+
+    **Validates: Requirements 1.12, 4.7, 5.15, 6.9, 6.10**
+    """
+    ending = ENDINGS[key]
+    if is_plain_name(name, ending):
+        assert check_plain_name(key, name, ending) == name
+    else:
+        with pytest.raises(ExpectedFailure) as caught:
+            check_plain_name(key, name, ending)
+        assert key in str(caught.value)
+    # Three names that each pass are refused exactly when two are the same once case is ignored.
+    clashes = [(first, second) for first, second in itertools.combinations(NAME_SETTINGS, 2)
+               if three[first].casefold() == three[second].casefold()]
+    if clashes:
+        message = refusal(**three)
+        assert any(first in message and second in message for first, second in clashes)
+    else:
+        checked = clean_settings(**three)
+        assert {setting: getattr(checked, setting) for setting in NAME_SETTINGS} == three
