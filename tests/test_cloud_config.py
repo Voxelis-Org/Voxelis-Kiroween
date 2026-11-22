@@ -27,7 +27,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from splatpipe.config import PRESETS, REPO_ROOT
+from splatpipe.config import PRESETS, REPO_ROOT, load_config
 from splatpipe.errors import PipelineError
 
 from cloud.config import CloudConfig, MachineSpec, load_cloud_config
@@ -98,6 +98,17 @@ def test_the_smoke_and_image_runs_have_their_q2_minutes(cc: CloudConfig) -> None
     assert (cc.image.expected_minutes, cc.image.cap_minutes) == IMAGE_MINUTES
 
 
+def test_the_smoke_machines_settings_load_and_its_video_is_long_enough_for_a_job(
+        cc: CloudConfig) -> None:
+    checks = cc.smoke_checks
+    assert checks.check_timeout_seconds > 0
+    assert type(checks.scene_gaussians) is int and checks.scene_gaussians > 0
+    assert type(checks.image_pixels) is int and checks.image_pixels > 0
+    # The smoke machine makes a fake-step job from its test video, so the video has to be at least
+    # the shortest part of a video a job may use, or make_job refuses it.
+    assert checks.video_seconds >= load_config(REAL_CONFIG).jobs().min_used_seconds
+
+
 def test_the_smoke_and_image_instance_types_are_allowed_types(cc: CloudConfig) -> None:
     assert cc.smoke_instance_type in cc.types
     assert cc.image_builder_type in cc.types
@@ -150,7 +161,8 @@ def valid_cloud() -> dict[str, Any]:
             "default": {"fallback": ["g5.8xlarge"], "expected_minutes": 60, "cap_minutes": 180},
             "quality": {"fallback": ["g5.8xlarge"], "expected_minutes": 120, "cap_minutes": 360},
         },
-        "smoke": {"expected_minutes": 10, "cap_minutes": 30},
+        "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
+                  "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4},
         "image": {"expected_minutes": 45, "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
@@ -187,6 +199,12 @@ CORRUPTIONS = [
                  id="a bool as a type's vcpus"),
     pytest.param(lambda c: c["presets"]["fast"].update(fallback="g5.8xlarge"), "fallback",
                  id="a string as a preset fallback"),
+    pytest.param(lambda c: c["smoke"].pop("check_timeout_seconds"), "check_timeout_seconds",
+                 id="a smoke table with no check_timeout_seconds"),
+    pytest.param(lambda c: c["smoke"].update(scene_gaussians=2.5), "scene_gaussians",
+                 id="a float as the smoke scene's Gaussian count"),
+    pytest.param(lambda c: c["smoke"].update(image_pixels=0), "image_pixels",
+                 id="zero smoke image pixels"),
 ]
 
 
@@ -251,7 +269,11 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     return {
         "types": types,
         "presets": presets,
-        "smoke": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
+        "smoke": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers),
+                  "check_timeout_seconds": draw(cloud_numbers),
+                  "scene_gaussians": draw(st.integers(min_value=1, max_value=4096)),
+                  "image_pixels": draw(st.integers(min_value=1, max_value=4096)),
+                  "video_seconds": draw(cloud_numbers)},
         "image": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
         "upload_margin_minutes": draw(cloud_numbers),
         "poll_seconds": draw(cloud_numbers),
@@ -265,8 +287,9 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
 
 
 def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
-    """Every single-key corruption target in `mapping`, as (path, category). "whole" is vcpus (a
-    TOML integer); "table" is a sub-table (types, presets, smoke, image)."""
+    """Every single-key corruption target in `mapping`, as (path, category). "whole" is a TOML
+    integer (vcpus, and the smoke scene's Gaussian count and image size); "table" is a sub-table
+    (types, presets, smoke, image)."""
     targets: list[tuple[tuple[str, ...], str]] = [
         (("upload_margin_minutes",), "number"),
         (("poll_seconds",), "number"),
@@ -300,6 +323,12 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
             ((which, "expected_minutes"), "number"),
             ((which, "cap_minutes"), "number"),
         ]
+    targets += [
+        (("smoke", "check_timeout_seconds"), "number"),
+        (("smoke", "scene_gaussians"), "whole"),
+        (("smoke", "image_pixels"), "whole"),
+        (("smoke", "video_seconds"), "number"),
+    ]
     return targets
 
 

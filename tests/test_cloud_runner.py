@@ -17,6 +17,8 @@ with `steps`, `now` and `shutdown` injected (Req 10.11).
   reports are uploaded byte-for-byte, so a 12-digit run inside a report survives (Req 10.10).
 - `shutdown` runs exactly once, after the final authoritative sync (Req 10.5, 10.6).
 - A Spend_Line is written for each Step that ran and one for the machine's own time (Req 12.1, 12.2).
+- `main`, the command the User_Data runs, runs the Job, powers the machine off once and gives 0, or
+  1 with the Readable_Error for a failed Job, and refuses a bad Job_Id before it touches AWS.
 
 `cloud.runner.REPO_ROOT` is pointed at a temp repo so the archived lock hashes are controlled, and
 the machine's environment (the image's recorded hashes and the instance type) is set with
@@ -40,6 +42,7 @@ from hypothesis import strategies as st
 
 import cloud.runner
 import splatpipe.fake
+import splatpipe.run
 from splatpipe.config import load_config
 from splatpipe.jobs import job_folder, open_job, remove_tree
 from splatpipe.jsonio import read_json
@@ -272,6 +275,67 @@ def test_shutdown_is_called_once_after_the_final_sync(
     uploads = [i for i, op in enumerate(ops) if op == "s3_upload"]
     assert uploads, "the final sync uploaded the Job's files"
     assert ops.index("shutdown") > uploads[-1]  # after the final authoritative sync (Req 10.5)
+
+
+# The command the job machine's User_Data runs: python -m cloud.runner --job <id> (Req 10.1, 10.6)
+
+def patch_machine(monkeypatch: pytest.MonkeyPatch, aws: FakeAws) -> list[int]:
+    """Point cloud.runner.main at the Fake_AWS and the fake cloud config, give the Step_List one
+    required Fake_Step, and record each power-off in the list this returns, in place of poweroff."""
+    monkeypatch.setattr(cloud.runner, "job_machine_aws", lambda config: aws)
+    monkeypatch.setattr(cloud.runner, "load_cloud_config", cloud_config)
+    monkeypatch.setattr(splatpipe.run, "STEP_LIST", tuple(fake_steps(True)))
+    poweroffs: list[int] = []
+    monkeypatch.setattr(cloud.runner, "_poweroff", lambda: poweroffs.append(1))
+    return poweroffs
+
+
+def test_main_runs_the_job_and_powers_the_machine_off(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, new_job: Callable[..., str],
+        capsys: pytest.CaptureFixture[str]) -> None:
+    uv_hash, package_hash = fake_repo(tmp_path, monkeypatch)
+    set_machine_env(monkeypatch, uv_hash=uv_hash, package_hash=package_hash)
+    job_id = new_job()
+    aws = FakeAws()
+    poweroffs = patch_machine(monkeypatch, aws)
+
+    assert cloud.runner.main(["--job", job_id]) == 0
+
+    assert poweroffs == [1]  # run_cloud_job's finally powered the machine off, once
+    assert f"jobs/{job_id}/out/job.json" in aws.objects  # the results went up first
+    assert f"jobs/{job_id}/out/reports/fake_a.json" in aws.objects
+    assert capsys.readouterr().out == f"Job {job_id}: done\n"
+
+
+def test_main_gives_1_and_the_readable_error_when_the_job_fails(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, new_job: Callable[..., str],
+        set_fail: Callable[..., None], capsys: pytest.CaptureFixture[str]) -> None:
+    uv_hash, package_hash = fake_repo(tmp_path, monkeypatch)
+    set_machine_env(monkeypatch, uv_hash=uv_hash, package_hash=package_hash)
+    set_fail(fake_a="expected")
+    job_id = new_job()
+    aws = FakeAws()
+    poweroffs = patch_machine(monkeypatch, aws)
+
+    assert cloud.runner.main(["--job", job_id]) == 1
+
+    assert poweroffs == [1]
+    captured = capsys.readouterr()
+    assert captured.out == f"Job {job_id}: failed\n"
+    assert 'fail = "expected"' in captured.err  # the failed Step's Readable_Error
+    assert f"jobs/{job_id}/out/job.json" in aws.objects  # a failed job still uploads its results
+
+
+def test_main_refuses_a_bad_job_id_before_it_touches_aws(
+        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    aws = FakeAws()
+    poweroffs = patch_machine(monkeypatch, aws)
+
+    assert cloud.runner.main(["--job", "not-a-job-id"]) == 1
+
+    assert aws.calls == []
+    assert poweroffs == []  # nothing ran, so the User_Data's poweroff trap ends the machine
+    assert capsys.readouterr().err.strip()  # a Readable_Error, on stderr
 
 
 # Property 7: the Cloud_Runner resumes exactly where run_job does (Req 10.4, 16.3)

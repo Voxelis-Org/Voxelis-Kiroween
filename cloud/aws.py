@@ -11,13 +11,16 @@ our own resources (Req 1.8, 1.9, 5.5). Tests use the `FakeAws` in `tests/fake_aw
 implements the same protocol over in-memory dicts.
 
 `laptop_aws` names the region and a profile from `[aws]` for a laptop command; `machine_aws` names
-only the region, so the job machine uses its instance role. A cloud module may import `splatpipe`;
-`splatpipe` never imports `cloud`. This module imports no GPU package.
+only the region, so the job machine uses its instance role, and `job_machine_aws` builds that one
+with the region from `[aws]` and the Job_Bucket from the BUCKET the User_Data exports. A cloud
+module may import `splatpipe`; `splatpipe` never imports `cloud`. This module imports no GPU
+package.
 """
 
 from __future__ import annotations
 
 import base64
+import os
 import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -37,6 +40,8 @@ from cloud.redact import account_redaction
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.toml"
 # Service Quotas code for "Running On-Demand G and VT instances", the G-instance vCPU quota.
 GPU_QUOTA_CODE = "L-DB2E81BA"
+# The variable the User_Data exports with the Job_Bucket's name, which job_machine_aws reads.
+BUCKET_ENV = "BUCKET"
 # A launch ClientError with one of these codes means no On-Demand capacity, not a real failure.
 _CAPACITY_CODES = frozenset({"InsufficientInstanceCapacity", "Unsupported"})
 
@@ -126,6 +131,25 @@ def laptop_aws(config: Config, *, profile_key: str) -> BotoAws:
 def machine_aws(region: str) -> BotoAws:
     """A `BotoAws` whose Session names only the region, so the job machine uses its instance role."""
     return BotoAws(make_session(region, None), region=region)
+
+
+def job_machine_aws(config: Config, environ: Mapping[str, str] | None = None) -> BotoAws:
+    """The `BotoAws` a job or smoke machine runs on: its instance role, with the Job_Bucket set.
+
+    The region comes from `[aws].region` in `config`, as on a laptop (the aws-jobs skill), and no
+    profile is named, so the instance role is used. The machine can't read the Stack, so the
+    Job_Bucket comes from the BUCKET variable the User_Data exports. `environ` defaults to the real
+    environment; tests pass their own.
+    """
+    env = os.environ if environ is None else environ
+    bucket = env.get(BUCKET_ENV, "")
+    if not bucket:
+        raise CloudError(f"The {BUCKET_ENV} environment variable isn't set, so this machine doesn't "
+                         "know its job bucket. The machine's user data sets it; this command runs "
+                         "only there, started by cloud.start or cloud.smoke.")
+    aws = machine_aws(_required(_aws_table(config), "region"))
+    aws.bucket = bucket
+    return aws
 
 
 class BotoAws:
@@ -281,16 +305,13 @@ class BotoAws:
             Bucket=self._bucket(), Key=key, Body=text.encode("utf-8")))
 
     def s3_exists(self, key: str) -> bool:
-        try:
-            self._s3.head_object(Bucket=self._bucket(), Key=key)
-            return True
-        except ClientError as error:
-            code = str(error.response.get("Error", {}).get("Code", ""))
-            if code in ("404", "NoSuchKey", "NotFound"):
-                return False
-            raise CloudError(account_redaction(str(error))) from error
-        except BotoCoreError as error:
-            raise CloudError(account_redaction(str(error))) from error
+        # A list with the key as its prefix, not a HeadObject. S3 answers a HeadObject of a missing
+        # key with 404 only to a caller that may list the bucket, and the Job_Role may list only
+        # under jobs/ and work/, so on the machine it would answer 403. The key itself sorts first
+        # among the keys it prefixes, so one result is enough.
+        result = self._call(lambda: self._s3.list_objects_v2(
+            Bucket=self._bucket(), Prefix=key, MaxKeys=1))
+        return any(obj.get("Key") == key for obj in result.get("Contents", []))
 
     # CloudFormation
 

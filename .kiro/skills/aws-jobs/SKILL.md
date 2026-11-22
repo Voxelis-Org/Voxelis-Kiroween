@@ -152,7 +152,7 @@ work/<job id>/
 ```
 
 - It mirrors the job folder in `docs/pipeline.md`: `data/jobs/<job id>/work/` goes to `work/<job id>/`, and the rest of `data/jobs/<job id>/` goes to `jobs/<job id>/`.
-- Two more folders sit under `jobs/`, so the runner role may upload to them and the job role may read and write them. `jobs/_image/<image name>/` holds the five dependency manifests (`pyproject.toml`, `uv.lock`, `.python-version`, `package.json`, `package-lock.json`) that the image-build command uploads from HEAD before the launch, because `uv.lock` alone is over the 16 KB user data limit. The builder fetches them with the AWS CLI. `jobs/_smoke/<image id>.json` is the marker a passing smoke test writes.
+- Two more folders sit under `jobs/`, so the runner role may upload to them and the job role may read and write them. `jobs/_image/<image name>/` holds the five dependency manifests (`pyproject.toml`, `uv.lock`, `.python-version`, `package.json`, `package-lock.json`) that the image-build command uploads from HEAD before the launch, because `uv.lock` alone is over the 16 KB user data limit. The builder fetches them with the AWS CLI. `jobs/_smoke/<image id>.json` is the marker a passing smoke test writes, and `jobs/_smoke/<image id>.log` holds the smoke machine's check results, pass or fail.
 - Never put a finished result under `work/`, because the 60-day rule deletes everything there. S3 runs lifecycle rules once a day and rounds each date up to the next midnight UTC, so a work file can last a day or so past its 60 days, though its billing stops on the date ([AWS re:Post](https://repost.aws/knowledge-center/s3-lifecycle-rule-delay)).
 - An upload that's still unfinished 7 days after it started gets cancelled, anywhere in the bucket, and its parts deleted.
 - The bucket's name is the stack's `BucketName` output. The start command reads it by the stack's name, `[aws].stack_name`, and passes it to the machine in the user data.
@@ -166,7 +166,7 @@ work/<job id>/
 
 - Apart from the 60-day rule, only the admin login deletes files.
 - On the machine, every list names a prefix, like `work/<job id>/`. A list of the whole bucket is refused, and so is HeadBucket, which S3 checks as a list with no prefix. boto3's `upload_file` and `download_file` don't call HeadBucket, so they work (aws-setup design, "Risks and limits").
-- S3 answers a download of a missing file with `404` only when the caller may list the bucket, and with `403` otherwise ([GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)). The job role may list only with a prefix, so on the machine a missing file may show up as `403 Access Denied`.
+- S3 answers a download of a missing file with `404` only when the caller may list the bucket, and with `403` otherwise ([GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)). The job role may list only with a prefix, so on the machine a missing file may show up as `403 Access Denied`. That's why `BotoAws.s3_exists` asks with a list whose prefix is the key, not with a HeadObject.
 
 ## User data
 

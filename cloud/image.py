@@ -79,9 +79,13 @@ MANIFESTS = ("pyproject.toml", "uv.lock", ".python-version", "package.json", "pa
 # so the Runner_Role may upload them and the builder's Job_Role may read them, like the
 # Smoke_Markers under jobs/_smoke/.
 IMAGE_PREFIX = "jobs/_image/"
-# Where the image keeps the MoGe-2 weights. Nothing on the machine reads them yet: the depth-priors
-# spec decides how its step, and the Smoke_Test's GPU check, find this file.
+# Where the image keeps the MoGe-2 weights, and their pinned sha256, which the install checks after
+# the download and the smoke machine checks again. The depth-priors spec decides how its step finds
+# the file.
 MOGE_WEIGHTS = "/opt/models/moge-2-vitb-normal/model.pt"
+MOGE_SHA256 = "16b8110e86d5dc5a849db120ca96ef3a223fd30b0c9146d1d81db504073da5f6"
+# Where npm ci, run in JOB_ROOT, puts the splat-transform command.
+SPLAT_TRANSFORM = f"{JOB_ROOT}/node_modules/.bin/splat-transform"
 # The shape of a manifest prefix install_script accepts: IMAGE_PREFIX, one image name, a slash.
 _MANIFEST_PREFIX = re.compile(r"jobs/_image/[A-Za-z0-9][A-Za-z0-9._-]*/")
 # The non-terminated instance states, so running_vcpus counts every machine still on the G_Quota.
@@ -248,7 +252,7 @@ CUDA_HOME=/usr/local/cuda-12.8 TORCH_CUDA_ARCH_LIST="8.6;8.9" \\
 mkdir -p {moge_dir}
 curl -fsSL --retry 3 -o {MOGE_WEIGHTS} \\
   https://huggingface.co/Ruicheng/moge-2-vitb-normal/resolve/ca5f0e07ff01d3e5a364c1d954ed12ee1814b368/model.pt
-echo "16b8110e86d5dc5a849db120ca96ef3a223fd30b0c9146d1d81db504073da5f6  {MOGE_WEIGHTS}" | sha256sum -c -
+echo "{MOGE_SHA256}  {MOGE_WEIGHTS}" | sha256sum -c -
 
 # 8. Node 22 and splat-transform, installed with npm ci from the committed package-lock.json, so the
 #    version is reproducible.

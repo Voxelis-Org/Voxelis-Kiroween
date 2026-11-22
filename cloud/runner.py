@@ -18,10 +18,14 @@ Uploader both leave it alone to avoid clobbering the bucket's copy.
 
 Machine facts come from the environment the User_Data exports: the Machine_Image's recorded lock
 hashes (`UV_LOCK_HASH`, `PACKAGE_LOCK_HASH`), which a drift check compares with the extracted
-Code_Archive's own lock files (Req 10.9), and the instance type (`INSTANCE_TYPE`) the Spend_Lines
-price. The whole runner is testable with injected `steps`, `now` and `shutdown` and the Fake_AWS, so
-the Test_Suite exercises it on a CPU with no account, no network and no real `run_job` change
-(Req 10.11).
+Code_Archive's own lock files (Req 10.9), and the instance type (`INSTANCE_TYPE`, which the
+User_Data reads from the instance metadata) the Spend_Lines price. The whole runner is testable with
+injected `steps`, `now` and `shutdown` and the Fake_AWS, so the Test_Suite exercises it on a CPU
+with no account, no network and no real `run_job` change (Req 10.11).
+
+`main` is the command the job machine's User_Data runs, `python -m cloud.runner --job <id>`. It
+builds the machine's `Aws` from its instance role, with the region from `[aws].region` and the
+Job_Bucket from the BUCKET variable, and runs `run_cloud_job`. It isn't a laptop command.
 
 A cloud module may import `splatpipe` to call its public functions; `splatpipe` never imports
 `cloud`. This module imports no boto3 (it talks to AWS only through the `Aws` seam) and no GPU
@@ -30,11 +34,13 @@ package, so it loads on a laptop.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import logging
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -44,10 +50,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import splatpipe.run
-from splatpipe.jobs import job_folder, open_job
+from splatpipe.config import load_config
+from splatpipe.jobs import check_job_id, job_folder, open_job
 from splatpipe.jsonio import read_json
 
-from cloud.errors import CloudError
+from cloud.aws import job_machine_aws
+from cloud.config import load_cloud_config
+from cloud.errors import CloudError, run_cloud_cli
 from cloud.redact import account_redaction
 from cloud.spend_file import LABEL_MACHINE, append_spend_line, spend_line
 
@@ -244,6 +253,35 @@ def run_cloud_job(job_id: str, *, aws: Aws, config: Config, cloud_config: CloudC
         shutdown()                                                        # 9
 
 
+def main(argv: list[str] | None = None) -> int:
+    """The Cloud_Runner's command on the job machine: `python -m cloud.runner --job <id>`.
+
+    The User_Data runs it as its last line, from the extracted Code_Archive; it isn't a laptop
+    command. It loads that archive's config.toml, builds the machine's `Aws` with `job_machine_aws`
+    (the instance role, `[aws].region` and the BUCKET the User_Data exports) and runs
+    `run_cloud_job`, which powers the machine off in its `finally` (Req 10.6). Then, while the
+    machine shuts down, it prints `Job <id>: <status>` and gives 0 for done and done with warnings,
+    or prints the Readable_Error and gives 1 for failed. A refusal or an error prints its
+    Readable_Error, Account_Redacted, on stderr and gives 1, through `run_cloud_cli`; one that comes
+    before `run_cloud_job` starts leaves the power-off to the User_Data's trap (Req 10.8).
+    """
+    def body() -> int:
+        args = _parser().parse_args(argv)
+        job_id = check_job_id(args.job)
+        config = load_config()
+        aws = job_machine_aws(config)
+        # _poweroff is looked up here, at call time, so a test can put a recorder in its place.
+        summary = run_cloud_job(job_id, aws=aws, config=config, cloud_config=load_cloud_config(),
+                                shutdown=_poweroff)
+        print(f"Job {job_id}: {summary['status'].replace('_', ' ')}")
+        if summary["status"] == "failed":
+            print(account_redaction(str(summary["readable_error"])), file=sys.stderr)
+            return 1
+        return 0
+
+    return run_cloud_cli(body)
+
+
 # The lock-hash backstop (step 1)
 
 def _refuse_lock_drift(aws: Aws, job_id: str) -> None:
@@ -392,3 +430,19 @@ def _write_text(path: Path, text: str) -> None:
     """Write `text` to `path` as UTF-8 with LF line endings, making the parent folder if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _parser() -> argparse.ArgumentParser:
+    """The command line: --job, which is required. The machine's User_Data passes it."""
+    parser = argparse.ArgumentParser(
+        prog="python -m cloud.runner", allow_abbrev=False,
+        description="Run one job on this cloud machine: rebuild its folder from the job bucket, run "
+                    "its steps, upload the results and power the machine off. The machine's user "
+                    "data runs it; it isn't a laptop command.")
+    parser.add_argument("--job", required=True,
+                        help="the job id cloud.start launched this machine for")
+    return parser
+
+
+if __name__ == "__main__":
+    sys.exit(main())

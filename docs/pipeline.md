@@ -325,7 +325,7 @@ The laptop commands, each run as `uv run python -m cloud.<name>`:
 | `cloud.list` | Lists our machines that aren't terminated, with each one's type, state and launch time. Free; read profile. |
 | `cloud.stopall` | Terminates every one of our machines that isn't terminated, the last-resort way to end a run. Free; runner profile. |
 
-On the machine, the Cloud_Runner rebuilds the job folder from the bucket (the `input/`, plus any `out/` and `work/` from an earlier run of the same job), calls `run_job` without `--fresh` so it resumes from the first unfinished step exactly as a laptop run does, uploads each step's report, `work/` and `out/` as they appear with a final sync at the end, writes the spend lines, and powers the machine off when the job ends.
+On the machine, the Cloud_Runner rebuilds the job folder from the bucket (the `input/`, plus any `out/` and `work/` from an earlier run of the same job), calls `run_job` without `--fresh` so it resumes from the first unfinished step exactly as a laptop run does, uploads each step's report, `work/` and `out/` as they appear with a final sync at the end, writes the spend lines, and powers the machine off when the job ends. The machine's user data starts it as `python -m cloud.runner --job <id>`, from the code it extracted to `/opt/job`, once it has read the machine's own instance type from the instance metadata with an IMDSv2 token, for the spend lines. It isn't a laptop command.
 
 ### The cap deadline
 
@@ -344,6 +344,20 @@ Each step records the machine it needs in its own config section, per preset, as
 | Clean and export | 8 vCPUs, 8 GB RAM |
 
 Each step spec adds its own keys when it's built. There is no `[cloud.needs.*]` table; a step's needs live in the step's own section.
+
+### The smoke test
+
+`uv run python -m cloud.smoke` proves a new machine image works before any long job. It launches one machine of the `smoke_instance_type` (a g5.xlarge) from the newest image, and that machine's user data runs `python -m cloud.smoke_runner --job <id>`, which isn't a laptop command either. It runs these checks, a few seconds each, and a failed check doesn't stop the others:
+
+- torch sees the GPU.
+- gsplat renders a tiny synthetic scene, forwards and backwards.
+- fused-ssim runs forwards and backwards.
+- ffmpeg has the `zscale` and `tonemap` filters the frames step's tone map needs.
+- COLMAP, Node and splat-transform run.
+- The MoGe-2 weights match their pinned sha256.
+- The Cloud_Runner runs a tiny fake-step job end to end. The job is made from a test video under the smoke run's own job id, its `input/` goes up to the bucket, and `run_cloud_job` downloads it again, runs the fake step and uploads the results.
+
+The results go to `jobs/_smoke/<image id>.log` in the bucket, pass or fail, with the account id redacted. When every check passes, the machine writes the smoke marker, `jobs/_smoke/<image id>.json`, which records how long the machine took to be ready for work after it booted. `cloud.start` checks for that marker before it starts a job on the image. Then the machine powers itself off. The check timeout, the scene's size and the test video's length are in `[cloud.smoke]`. Each later spec that adds a GPU code path adds a check for it to `SMOKE_CHECKS` in `cloud/smoke_runner.py`, starting with training.
 
 ## Step: fake
 

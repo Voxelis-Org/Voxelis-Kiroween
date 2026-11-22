@@ -203,6 +203,14 @@ cap_minutes = 360
 expected_minutes = 10
 # The Time_Cap in minutes.
 cap_minutes = 30
+# Longest time each of the smoke machine's command checks (ffmpeg, COLMAP, Node, splat-transform) may take, in seconds.
+check_timeout_seconds = 60
+# Gaussians in the tiny synthetic scene the smoke machine renders with gsplat.
+scene_gaussians = 256
+# Width and height in pixels of the smoke machine's render, its SSIM images and its test video.
+image_pixels = 64
+# Length of the test video the smoke machine makes its fake-step job from, in seconds. At least [jobs].min_used_seconds.
+video_seconds = 4
 [cloud.image]
 # Expected run time in minutes, for the money quote.
 expected_minutes = 45
