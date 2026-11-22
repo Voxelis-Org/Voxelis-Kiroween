@@ -67,6 +67,8 @@ class FakeAws:
         self.no_capacity = set(no_capacity or ())
         self.unsupported = set(unsupported or ())
         self.launch_failures = set(launch_failures or ())
+        # Each wait_image_available call's (image_id, poll_seconds, max_minutes).
+        self.image_waits: list[tuple[str, float, float]] = []
         self._counter = 0
 
     def _record(self, op: str, key: str = "") -> None:
@@ -140,8 +142,10 @@ class FakeAws:
                                      creation_date="2026-11-20T00:00:00+00:00", tags=dict(tags)))
         return image_id
 
-    def wait_image_available(self, image_id: str) -> None:
+    def wait_image_available(self, image_id: str, *, poll_seconds: float,
+                             max_minutes: float) -> None:
         self._record("wait_image_available", image_id)
+        self.image_waits.append((image_id, poll_seconds, max_minutes))
 
     def terminate_instances(self, instance_ids: Sequence[str]) -> None:
         ids = list(instance_ids)

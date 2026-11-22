@@ -114,6 +114,34 @@ def test_job_machine_aws_refuses_without_the_bucket_variable(
     assert calls == []  # refused before any Session is built
 
 
+# BotoAws.wait_image_available waits as long as the caller says, not botocore's default 10 minutes
+
+class _WaiterEc2:
+    """A stand-in ec2 client whose waiters record the name they were asked for and their kwargs."""
+
+    def __init__(self) -> None:
+        self.waits: list[tuple[str, dict[str, Any]]] = []
+
+    def get_waiter(self, name: str) -> Any:
+        ec2 = self
+
+        class Waiter:
+            def wait(self, **kwargs: Any) -> None:
+                ec2.waits.append((name, dict(kwargs)))
+
+        return Waiter()
+
+
+def test_wait_image_available_polls_for_as_long_as_the_caller_says() -> None:
+    ec2 = _WaiterEc2()
+    bot = BotoAws(_FakeSessionFor(ec2), region=REGION)  # type: ignore[arg-type]
+    bot.wait_image_available("ami-0123456789abcdef0", poll_seconds=20, max_minutes=120)
+    # 120 minutes at one look every 20 seconds is 360 looks.
+    assert ec2.waits == [("image_available", {
+        "ImageIds": ["ami-0123456789abcdef0"],
+        "WaiterConfig": {"Delay": 20, "MaxAttempts": 360}})]
+
+
 # BotoAws.s3_exists asks with a list, which the Job_Role may make under jobs/ and work/
 
 class _ListS3:

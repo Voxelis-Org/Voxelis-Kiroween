@@ -443,8 +443,10 @@ def test_build_image_reads_ssm_stops_before_imaging_tags_waits_terminates_record
     # The builder is stopped through the API before create_image, and create_image before terminate,
     # so imaging runs on a stopped builder and the stop never triggers terminate-on-shutdown (Req 9.9).
     assert ops.index("stop_instance") < ops.index("create_image") < ops.index("terminate_instances")
-    # The image is waited to `available` after it is created (Req 9.9).
+    # The image is waited to `available` after it is created (Req 9.9), polling every poll_seconds
+    # for up to the Image_Build's Time_Cap, not botocore's default 10 minutes.
     assert ops.index("create_image") < ops.index("wait_image_available")
+    assert aws.image_waits == [(image_id, cc.poll_seconds, cc.image.cap_minutes)]
 
     # Exactly one image is made and returned, tagged with the Project_Tag and the two lock hashes in
     # the one call (the fake models that single tagging call; the real one tags the image and its

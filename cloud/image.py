@@ -358,7 +358,10 @@ def build_image(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs:
     #    until it is available (Req 9.7, 9.8).
     tags = {project_tag[0]: project_tag[1], "uv_lock_hash": uv_hash, "package_lock_hash": package_hash}
     image_id = aws.create_image(builder.id, name, tags)
-    aws.wait_image_available(image_id)
+    # Up to the Image_Build's Time_Cap, polling every poll_seconds: the first snapshots of a large
+    # root volume can take far longer than botocore's default 10 minutes.
+    aws.wait_image_available(image_id, poll_seconds=cc.poll_seconds,
+                             max_minutes=cc.image.cap_minutes)
 
     # 9. Terminate the builder and record what it cost, as an estimate, under data/ (Req 9.9, 12.2).
     aws.terminate_instances([builder.id])

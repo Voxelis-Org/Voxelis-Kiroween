@@ -20,6 +20,7 @@ package.
 from __future__ import annotations
 
 import base64
+import math
 import os
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -89,7 +90,8 @@ class Aws(Protocol):
     def stop_instance(self, instance_id: str) -> None: ...
     def wait_stopped(self, instance_id: str) -> None: ...
     def create_image(self, instance_id: str, name: str, tags: Mapping[str, str]) -> str: ...
-    def wait_image_available(self, image_id: str) -> None: ...
+    def wait_image_available(self, image_id: str, *, poll_seconds: float,
+                             max_minutes: float) -> None: ...
     def terminate_instances(self, instance_ids: Sequence[str]) -> None: ...
 
     # S3
@@ -264,8 +266,14 @@ class BotoAws:
         result = self._call(lambda: self._ec2.create_image(**kwargs))
         return str(result.get("ImageId", ""))
 
-    def wait_image_available(self, image_id: str) -> None:
-        self._call(lambda: self._ec2.get_waiter("image_available").wait(ImageIds=[image_id]))
+    def wait_image_available(self, image_id: str, *, poll_seconds: float,
+                             max_minutes: float) -> None:
+        # botocore's waiter gives up after 10 minutes unless told otherwise, but an image's first
+        # snapshots can take much longer (the aws-jobs skill), so the caller sets the poll and limit.
+        delay = max(1, round(poll_seconds))
+        attempts = max(1, math.ceil(max_minutes * 60 / delay))
+        self._call(lambda: self._ec2.get_waiter("image_available").wait(
+            ImageIds=[image_id], WaiterConfig={"Delay": delay, "MaxAttempts": attempts}))
 
     def terminate_instances(self, instance_ids: Sequence[str]) -> None:
         ids = list(instance_ids)
