@@ -35,6 +35,14 @@ Isolated_Filter uses. A part holds its unit tests first and its property tests a
   extreme_splats, whose centres, stored opacities and stored scales are any finite float32
   values. It also checks, on draws from rescaled_splats, that adding c to every stored scale and
   multiplying every centre by 2**m changes no answer (Req 2.11).
+- The Isolated_Filter, in isolated.py: a set of neighbours Gaussians, however far apart, is kept
+  whole, and a spy on cKDTree shows that no tree is built (Req 2.14). Coincident centres give a
+  Neighbour_Median of 0 and are kept, with no division by 0 (Req 2.15). One far Gaussian next to
+  a tight cluster is dropped (Req 2.12). Two even grids far apart, the sparse one's spacing 100
+  times the dense one's, keep every Gaussian, where the test shows that a global distance cutoff
+  would drop the whole sparse grid (A5). Property 5 checks isolated_keep against isolation_rule,
+  a brute-force reference in plain Python, on centres from reference_centres and settings from
+  valid_settings (Req 2.12 to 2.14, 2.21).
 
 The autouse fixture float_errors_raise runs every test here inside np.errstate(all="raise"), so
 an overflow, an invalid value, a division by 0 or an underflow anywhere in a filter fails the
@@ -43,6 +51,7 @@ passes (Req 2.11).
 """
 
 import math
+import statistics
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
@@ -54,11 +63,13 @@ from scipy.spatial import cKDTree
 from splatpipe.clean.broken import broken_keep
 from splatpipe.clean.faint import (FLOAT32_HALF_STEP, HUGE_DIVISIONS, cube_groups, faint_keep,
                                    log_opacity, log_paint)
+from splatpipe.clean.isolated import isolated_keep
 from splatpipe.clean.neighbours import nearest_others, positions
 from splatpipe.clean.settings import CleanSettings
 
-from splats import (Rescaled, centre_sets, clean_settings, extreme_splats, gaussians,
-                    reference_splats, rescaled_splats, splats, valid_settings)
+from splats import (Rescaled, centre_distances, centre_sets, clean_settings, extreme_splats,
+                    gaussians, reference_centres, reference_splats, rescaled_splats, splats,
+                    valid_settings)
 
 # The smallest float32 above 0, 2**-149, a subnormal.
 SMALLEST_SUBNORMAL = np.finfo(np.float32).smallest_subnormal
@@ -662,3 +673,146 @@ def test_shifting_every_stored_scale_and_scaling_every_centre_by_a_power_of_2_ch
     members = as_stored(drawn.data)
     assume(not near_a_share_threshold(members, clean_settings(**values)))
     assert faint_answer(as_stored(drawn.moved), **values) == faint_answer(members, **values)
+
+
+# The Isolated_Filter
+
+# The test settings' neighbours and isolation_ratio, 8 and 8.0.
+NEIGHBOURS = clean_settings().neighbours
+ISOLATION_RATIO = clean_settings().isolation_ratio
+
+
+def isolated_answer(points: Sequence[Sequence[float]]) -> list[bool]:
+    """isolated_keep's answer for the centres `points` at the test settings, as a list, with one
+    worker thread, as the test config's max_workers gives. Its answer must be a bool array with
+    one entry per Gaussian."""
+    keep = isolated_keep(np.array(points, dtype=np.float64), clean_settings(), workers=1)
+    assert keep.dtype == np.bool_ and keep.shape == (len(points),)
+    return keep.tolist()
+
+
+def neighbour_distances(points: Sequence[Sequence[float]]) -> list[float]:
+    """Each Gaussian's Neighbour_Distance among the centres `points`, worked out by brute force:
+    the mean of its NEIGHBOURS smallest Centre_Distances to the others.
+
+    Each row of sorted Centre_Distances starts with a 0 that's dropped, the Gaussian's own or
+    that of another Gaussian on its centre, which is the same number. Among others at one
+    distance it doesn't matter which count, because each adds that distance to the mean (A10).
+    """
+    distances = np.sort(centre_distances(np.array(points, dtype=np.float64)), axis=1)
+    return distances[:, 1:NEIGHBOURS + 1].mean(axis=1).tolist()
+
+
+def even_grid(side: int, spacing: float, x0: float = 0.0) -> list[tuple[float, float, float]]:
+    """The centres of an even grid of side x side x side Gaussians, `spacing` apart on each axis,
+    with its low corner at (x0, 0, 0)."""
+    return [(x0 + spacing * x, spacing * y, spacing * z)
+            for z in range(side) for y in range(side) for x in range(side)]
+
+
+def test_a_set_of_neighbours_gaussians_however_far_apart_is_kept_whole_with_no_tree(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    sizes: list[int] = []  # the number of points in each tree isolated.py builds, in order
+
+    def spy(points: np.ndarray) -> cKDTree:
+        sizes.append(len(points))
+        return cKDTree(points)
+
+    monkeypatch.setattr("splatpipe.clean.isolated.cKDTree", spy)
+    # neighbours - 1 Gaussians a millimetre apart, and one at the far end of float32's range.
+    points = [*((k * 1e-3, 0.0, 0.0) for k in range(NEIGHBOURS - 1)), (3e38, -3e38, 3e38)]
+    assert isolated_answer(points) == [True] * NEIGHBOURS
+    assert sizes == []
+    # With one Gaussian more, the spy sees the one tree. So the spy stands where isolated.py
+    # looks cKDTree up, and would have seen a tree above had one been built.
+    isolated_answer([*points, (0.0, 1e-3, 0.0)])
+    assert sizes == [NEIGHBOURS + 1]
+
+
+def test_coincident_centres_give_a_neighbour_median_of_0_and_are_kept_with_no_division_by_0(
+        ) -> None:
+    # neighbours + 1 Gaussians on one spot, so each has neighbours others at distance 0, and one
+    # more Gaussian 1 away from them.
+    points = [(0.0, 0.0, 0.0)] * (NEIGHBOURS + 1) + [(1.0, 0.0, 0.0)]
+    assert neighbour_distances(points) == [0.0] * (NEIGHBOURS + 1) + [1.0]
+    # So every Gaussian's Nearest_Neighbours are on the spot, whichever of them the tree picks,
+    # and every Neighbour_Median is 0. The Gaussian off the spot is kept too, though its
+    # Neighbour_Distance of 1 is above isolation_ratio times its median. float_errors_raise
+    # would turn a division by 0 anywhere into an error.
+    assert isolated_answer(points) == [True] * (NEIGHBOURS + 2)
+
+
+def test_one_far_gaussian_next_to_a_tight_cluster_is_dropped() -> None:
+    # 27 Gaussians a centimetre apart, and one 0.98 from the nearest of them. Each Gaussian of
+    # the cluster has its Nearest_Neighbours in it, and the far one's Neighbour_Distance is
+    # about 80 times its neighbours' median, ten times isolation_ratio.
+    cluster = even_grid(3, 0.01)
+    assert isolated_answer([*cluster, (1.0, 0.01, 0.01)]) == [True] * len(cluster) + [False]
+
+
+def test_two_even_grids_far_apart_one_100_times_sparser_keep_every_gaussian() -> None:
+    # A dense grid of 64 Gaussians 1 apart, and a sparse one of 27 Gaussians 100 apart, 10,000
+    # away on x, so each Gaussian's Nearest_Neighbours are in its own grid.
+    dense = even_grid(4, 1.0)
+    points = [*dense, *even_grid(3, 100.0, x0=10_000.0)]
+    # A global distance cutoff measures every Gaussian against one distance, like
+    # isolation_ratio times the median Neighbour_Distance of the whole set. The dense grid holds
+    # most of the set, so that median is one of the dense grid's, and every Gaussian of the
+    # sparse grid has a Neighbour_Distance above the cutoff, so it would drop the whole grid.
+    distances = neighbour_distances(points)
+    assert min(distances[len(dense):]) > ISOLATION_RATIO * np.median(distances)
+    # The Isolated_Filter measures each Gaussian against its own Nearest_Neighbours, which are
+    # spaced as it is, so it keeps both grids whole (A5).
+    assert isolated_answer(points) == [True] * len(points)
+
+
+def isolation_rule(centres: Sequence[Sequence[float]], s: CleanSettings) -> list[bool]:
+    """The reference for Property 5, which shares no code with isolated.py or neighbours.py:
+    which of `centres` the Isolated_Filter's rule keeps, worked out by brute force in plain
+    Python, on the whole set it's given.
+
+    A set of neighbours Gaussians or fewer is kept whole (Req 2.14). Otherwise each Gaussian's
+    Nearest_Neighbours are the neighbours others nearest to it by math.dist, never itself. Its
+    Neighbour_Distance is the mean of its Centre_Distances to them, and its Neighbour_Median is
+    the median of their Neighbour_Distances, from statistics.median, each worked out before any
+    Gaussian is dropped (Req 2.13). A Gaussian is kept when its Neighbour_Median is 0
+    (Req 2.15) or its Neighbour_Distance is at most isolation_ratio times its Neighbour_Median
+    (Req 2.12).
+
+    A draw is dropped with assume when a Neighbour_Distance is within a relative NEAR of
+    isolation_ratio times a Neighbour_Median above 0. math.dist can differ from the tree's
+    distances by a unit in the last place, numpy's mean and median round apart from these, and
+    isolated_keep divides where this multiplies, so nearer than that the two can round to
+    different answers.
+    """
+    n, k = len(centres), s.neighbours
+    if n <= k:
+        return [True] * n
+    distance = [[math.dist(p, q) for q in centres] for p in centres]
+    # Each Gaussian's Nearest_Neighbours, nearest first, never the Gaussian itself.
+    nearest = [sorted((b for b in range(n) if b != a), key=row.__getitem__)[:k]
+               for a, row in enumerate(distance)]
+    nd = [statistics.fmean(distance[a][b] for b in nearest[a]) for a in range(n)]
+    keep = []
+    for a in range(n):
+        median = statistics.median(nd[b] for b in nearest[a])
+        bar = s.isolation_ratio * median
+        assume(median == 0 or not math.isclose(nd[a], bar, rel_tol=NEAR))
+        keep.append(median == 0 or nd[a] <= bar)
+    return keep
+
+
+@settings(deadline=None)
+@given(reference_centres(), valid_settings)
+def test_the_isolated_filter_keeps_exactly_what_its_rule_keeps(
+        centres: np.ndarray, values: dict[str, object]) -> None:
+    """Feature: clean, Property 5: The Isolated_Filter keeps exactly what its rule keeps
+
+    **Validates: Requirements 2.12, 2.13, 2.14, 2.21**
+    """
+    s = clean_settings(**values)
+    expected = isolation_rule(centres.tolist(), s)
+    # The step's tree query runs on max(1, max_workers) threads, because scipy refuses 0.
+    keep = isolated_keep(centres, s, workers=max(1, s.max_workers))
+    assert keep.dtype == np.bool_ and keep.shape == (len(centres),)
+    assert keep.tolist() == expected

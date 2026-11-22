@@ -37,6 +37,10 @@ draw with tied Centre_Distances as splats does. The Settings strategy, valid_set
 valid values of the settings the filters and the limits read, as keyword arguments for
 clean_settings.
 
+The Splats for the references strategy for Property 5, in tests/test_clean_filters.py too, is
+reference_centres: it gives 1 to 60 finite centres for isolated_keep, as float32 values in a
+float64 array, and drops a draw with tied Centre_Distances as splats does.
+
 The Splats for the extremes strategies are for Property 8 in tests/test_clean_filters.py.
 extreme_splats gives Splat_Data of 0 to 60 Gaussians whose centres, stored opacities and stored
 scales are any finite float32 values, 3.4e38, -3.4e38 and the subnormals included. It keeps the
@@ -627,6 +631,43 @@ def reference_splats(draw: st.DrawFn) -> np.ndarray:
     for name in ("scale_0", "scale_1", "scale_2"):
         data[name] = draw(st.lists(plain_scales, min_size=n, max_size=n))
     return data
+
+
+# Splats for the references, for Property 5
+
+# The kinds of centre that one draw of reference_centres takes all its Gaussians from: those of
+# CLUSTERED_KINDS, so lattice points and far outliers sit beside clusters, whose Gaussians are
+# far nearer each other, and the Isolated_Filter drops some of them, or clusters alone, whose
+# Gaussians are spaced alike, so it often drops none. With CLUSTERED_KINDS in every draw, it
+# dropped a Gaussian in 91 of the 92 draws of more than neighbours Gaussians in a run of 100
+# examples. With this choice it drops one in about three in four, and none in the rest.
+# Hypothesis shrinks to the first.
+ISOLATION_KINDS = (CLUSTERED_KINDS, ("cluster",))
+
+
+@st.composite
+def reference_centres(draw: st.DrawFn) -> np.ndarray:
+    """1 to MOST_GAUSSIANS finite centres for Property 5, as an (n, 3) float64 array of float32
+    values, the way positions gives isolated_keep the centres of Splat_Data.
+
+    Centres are lattice points, clusters and far outliers up to 3e38 and -3e38, each moved by
+    its index-based jitter and stored as float32, as reference_splats draws them. In half the
+    draws they're mixed as CLUSTERED_KINDS weights them, and in the other half every one is in a
+    cluster, as ISOLATION_KINDS says.
+
+    A draw is dropped with assume when a Gaussian has two others at the same Centre_Distance
+    (Req 10.13).
+    """
+    n = draw(st.integers(min_value=1, max_value=MOST_GAUSSIANS))
+    clusters = draw(st.lists(lattice_points, min_size=1, max_size=MOST_CLUSTERS))
+    kinds = draw(st.sampled_from(ISOLATION_KINDS))
+    points, factors = zip(*draw(st.lists(centre_bases(clusters, kinds),
+                                         min_size=n, max_size=n)))
+    stored = (np.array(factors)[:, None]
+              * (np.array(points, dtype=np.float64) + JITTERS[:n])).astype(np.float32)
+    centres = stored.astype(np.float64)
+    assume(not has_tied_distances(centres))
+    return centres
 
 
 # Settings
