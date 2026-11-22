@@ -239,7 +239,7 @@ def _base_cloud_mapping() -> dict[str, Any]:
         "presets": presets,
         "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
                   "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4},
-        "image": {"expected_minutes": 45, "cap_minutes": 120},
+        "image": {"expected_minutes": 75, "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
         "ipv4_usd_per_hour": 0.005,

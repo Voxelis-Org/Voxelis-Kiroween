@@ -49,7 +49,7 @@ QUALITY_FALLBACK = ("g6e.4xlarge", "g6e.2xlarge")
 # The Q2 minutes as (expected, cap), settled in Q2 (Req 2.5, 2.6).
 PRESET_MINUTES = {"fast": (30, 120), "default": (60, 180), "quality": (120, 360)}
 SMOKE_MINUTES = (10, 30)
-IMAGE_MINUTES = (45, 120)
+IMAGE_MINUTES = (75, 120)
 
 
 @pytest.fixture

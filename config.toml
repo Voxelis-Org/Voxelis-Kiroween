@@ -213,7 +213,7 @@ image_pixels = 64
 video_seconds = 4
 [cloud.image]
 # Expected run time in minutes, for the money quote.
-expected_minutes = 45
+expected_minutes = 75
 # The Time_Cap in minutes.
 cap_minutes = 120
 [frames]
