@@ -288,7 +288,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/frame-picking`: `git add splatpipe/frames/mask.py splatpipe/frames/files.py tests/test_frames_mask.py tests/test_frames_files.py`, then commit those files with the message "Frames: sample buffer, mask and work folder files".
     - _Requirements: 13.3, 13.11_
 
-- [ ] 6. ffprobe and the ffmpeg decode, without the Tone_Map
+- [x] 6. ffprobe and the ffmpeg decode, without the Tone_Map
   - Files: `splatpipe/frames/ffmpeg.py` and `tests/test_frames_ffmpeg.py`, both new.
   - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.12, 1.13, 1.14, 2.1, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.9, 13.11_
 
@@ -302,13 +302,13 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Each failure is an `ExpectedFailure` with no traceback: a missing tool, which says to install ffmpeg, a timeout naming `ffmpeg_timeout_seconds` or `ffprobe_timeout_seconds` in `[frames]`, a non-zero exit with the tool's last stderr line (`DecodeFailed` for ffmpeg), ffprobe output that isn't the JSON asked for, a stream with no picture size, and a frame without a showinfo time or output ending inside a frame, which says ffmpeg's output couldn't be read and to install ffmpeg 5.1 or newer.
     - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.12, 1.13, 1.14, 2.1_
 
-  - [-] 6.2 Write unit tests for the pure parts in `tests/test_frames_ffmpeg.py`
+  - [x] 6.2 Write unit tests for the pure parts in `tests/test_frames_ffmpeg.py`
     - `parse_stream` on sample ffprobe JSON: cover art is skipped, `rotation: -90` in `side_data_list` and `tags.rotate = "90"` swap the edges, and `180` doesn't. A `sample_aspect_ratio` of `4:3` widens the picture and `0:1` doesn't. A missing `color_transfer` gives `None`, and `arib-std-b67` comes through as it is. A stream without a size is refused.
     - `parse_frame_time` reads showinfo lines from ffmpeg 5.1, 6, 7 and 9 (the laptops have 9.0.2), gives `None` for a `NOPTS` line, and gives `NOT_A_FRAME` for side data and config lines.
     - `decode_command` for a video named `-clip.mp4` is a list that starts with `ffmpeg -nostdin`, ends with `pipe:1`, and holds `file:` with the absolute path, `-fps_mode passthrough` and `-map 0:<index>`. A grey plan and a colour plan differ only in the size and the format.
     - _Requirements: 1.3, 1.5, 1.7, 2.1, 13.1_
 
-  - [~] 6.3 Write unit tests with fake processes in `tests/test_frames_ffmpeg.py`
+  - [x] 6.3 Write unit tests with fake processes in `tests/test_frames_ffmpeg.py`
     - Replace `subprocess.run` and `subprocess.Popen` as `splatpipe.frames.ffmpeg` sees them, with `monkeypatch`.
     - A missing ffprobe and a missing ffmpeg each name the tool and say to install ffmpeg, which includes ffprobe.
     - An exit of 1 gives the tool's last stderr line, also when it holds bytes that aren't UTF-8. ffprobe output that isn't JSON is refused.
@@ -318,37 +318,37 @@ Some files grow over several tasks, so each piece comes with the first task that
     - No message holds "Traceback".
     - _Requirements: 1.8, 1.9, 1.10, 1.12, 1.14, 13.6, 13.9_
 
-  - [~] 6.4 Write the property test for Property 3 in `tests/test_frames_ffmpeg.py`, with Hypothesis
+  - [x] 6.4 Write the property test for Property 3 in `tests/test_frames_ffmpeg.py`, with Hypothesis
     - **Property 3: The Frame_Gate keeps exactly the Used_Part, in order**
     - **Validates: Requirements 1.4, 1.6**
     - Draw a Used_Part `start < end` and a sequence of reported times from `st.none() | st.floats(-10, 700)`, mixed with `start`, `end` and repeats of earlier draws, in any order.
     - The oracle takes exactly the times that aren't `None`, are at or after `start`, are before `end`, and are greater than every time taken before them.
     - _Requirements: 1.4, 1.6, 13.2_
 
-  - [~] 6.5 Write the property test for Property 4 in `tests/test_frames_ffmpeg.py`, with Hypothesis
+  - [x] 6.5 Write the property test for Property 4 in `tests/test_frames_ffmpeg.py`, with Hypothesis
     - **Property 4: The seek text holds the Used_Part**
     - **Validates: Requirements 1.4**
     - Draw finite floats from 0 to 1e6.
     - Check that both texts are digits with one `.` and exactly six decimals, never an exponent. Read back as `Fraction`, the start text is at most x and the end text at least x, each within 1e-6 of x.
     - _Requirements: 1.4, 13.2_
 
-  - [~] 6.6 Write the real ffmpeg tests in `tests/test_frames_ffmpeg.py`
+  - [x] 6.6 Write the real ffmpeg tests in `tests/test_frames_ffmpeg.py`
     - Skip them with the reason "ffmpeg and ffprobe aren't installed" when either tool is missing. Make each clip in `tmp_path` with ffmpeg, as an argument list with `timeout=60`.
     - A 3 s `testsrc` clip at 10 fps, decoded with a Used_Part of 1.0 to 2.0, gives exactly the 10 frames from 1.0 to 1.9.
     - A clip whose frames are 0.1 s apart and then 0.3 s apart gives those times within 1 ms, with no frame repeated or dropped.
     - `probe_stream` on a clip gives its width and height.
     - _Requirements: 1.4, 1.5, 1.6, 13.4, 13.5, 13.11_
 
-  - [~] 6.7 Run the tests and commit
+  - [x] 6.7 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. The real ffmpeg tests run where ffmpeg is installed and are skipped, with their reason, where it isn't.
     - On `feat/frame-picking`: `git add splatpipe/frames/ffmpeg.py tests/test_frames_ffmpeg.py`, then commit those files with the message "Frames: ffprobe and the ffmpeg decode".
     - _Requirements: 13.3, 13.11_
 
-- [ ] 7. The step and its CLI
+- [x] 7. The step and its CLI
   - Files: `splatpipe/frames/__main__.py` and `tests/test_frames_step.py` (new). `splatpipe/frames/__init__.py` and `tests/conftest.py` (changed).
   - _Requirements: 1.1, 1.7, 1.8, 1.11, 1.12, 1.13, 3.6, 5.2, 5.3, 5.4, 6.9, 6.10, 7.1, 7.4, 7.5, 7.8, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 9.4, 9.6, 9.7, 10.1, 10.2, 10.3, 10.4, 10.6, 11.1, 11.2, 11.10, 11.11, 13.1, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8, 13.9, 13.11_
 
-  - [~] 7.1 Write the step in `splatpipe/frames/__init__.py`
+  - [x] 7.1 Write the step in `splatpipe/frames/__init__.py`
     - `Tools` with `probe` and `decode`, `TOOLS`, `run()` and `work()`, as in the design's "The step's flow" section, for clips that aren't HDR. Task 8 adds `has_filters`, `HDR_TRANSFERS` and the Tone_Map choice. `run` calls `run_step("frames", "splatpipe.frames", ...)`, like the Fake_Step.
     - `work` reads `TOOLS` when it's called, so a test's `monkeypatch` reaches it through `run_step` and the CLI. It runs the design's order: the settings, the probe, the Score_Pass, choosing and the Mask, the Pick_Pass, `mask.png` when it's used, and `frames.json` last. The parts run inside `step.timed("probe")`, `"score_pass"`, `"choose"` and `"pick_pass"`.
     - Both passes take the Used_Part from the Job_Record's `start_seconds` and `end_seconds`, and the same video, stream and filters but for the size and the format.
@@ -360,18 +360,18 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The step writes nothing before the Pick_Pass and nothing to `out/`, and relies on the Step_Runner emptying `work/frames/` before it runs.
     - _Requirements: 1.1, 1.7, 1.11, 1.12, 1.13, 3.6, 5.2, 5.3, 5.4, 6.9, 6.10, 7.1, 7.4, 7.5, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 9.4, 10.1, 10.2, 10.3, 10.4, 10.6, 11.1, 11.10, 11.11_
 
-  - [~] 7.2 Write `splatpipe/frames/__main__.py`
+  - [x] 7.2 Write `splatpipe/frames/__main__.py`
     - `main(argv)` calls `step_main("frames", "splatpipe.frames", argv)`, and the file ends with `if __name__ == "__main__": sys.exit(main())`.
     - _Requirements: 11.1, 11.2_
 
-  - [~] 7.3 Add `FakeTools` to `tests/conftest.py`
+  - [x] 7.3 Add `FakeTools` to `tests/conftest.py`
     - `FakeTools`, as in the design's "Stand-ins" section, is a `Tools` built from a `VideoInfo` and a list of synthetic `(time, frame)` pairs. It can also be built from a count and a function that makes pair k on demand, so a test can feed a long stream without holding it.
     - Its `decode` gives only the pairs inside the plan's Used_Part, through `FrameGate`, as `decode` does. It gives grey frames at the plan's size for a grey plan, and colour frames for a colour plan, made from the same pair so a test can tell which frame became which Pick.
     - It records every plan, and it can be set to give fewer frames in the Pick_Pass or to raise a chosen error.
     - A fixture installs it with `monkeypatch.setattr("splatpipe.frames.TOOLS", ...)`.
     - _Requirements: 13.6, 13.7_
 
-  - [~] 7.4 Write unit tests for a done run in `tests/test_frames_step.py`
+  - [x] 7.4 Write unit tests for a done run in `tests/test_frames_step.py`
     - Run the step through `splatpipe.frames.run` with `FakeTools`, so the Step_Runner and the real report are part of each test. Use `set_frames` to make `score_width` and `long_edge` small, so every frame stays tiny.
     - The Work_Folder holds exactly `images/`, `grey/` and `frames.json`, plus `mask.png` when the frames have a corner that never changes. The names in `images/` and `grey/` match, from `000000.jpg`, and each Grey_Copy has its Colour_Pick's size. The Mask is an 8-bit PNG of 0 and 255 at the Pick_Size.
     - Each Colour_Pick's colour shows that it came from the frame its `frames.json` entry names.
@@ -381,7 +381,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - After the run, nothing new is in `out/` but the report. A second run on the same Job leaves only its own files.
     - _Requirements: 1.1, 1.7, 3.6, 5.2, 5.3, 5.4, 7.4, 7.5, 7.8, 8.2, 8.3, 8.4, 8.5, 8.6, 8.8, 10.1, 10.2, 10.4, 10.6, 11.11, 13.1_
 
-  - [~] 7.5 Write unit tests for failed runs and the CLI in `tests/test_frames_step.py`
+  - [x] 7.5 Write unit tests for failed runs and the CLI in `tests/test_frames_step.py`
     - Too few Picks: the Readable_Error gives both numbers and what to film differently, `FakeTools` recorded no Pick_Pass plan, `work/frames/` is empty, and the report holds the counts worked out so far and no `pick_pass` timing.
     - No frames in the Used_Part gives the Req 1.11 message. A Pick_Pass that gives fewer Picks gives the Req 8.9 message and leaves no `frames.json`.
     - A `Path.write_bytes` that raises `OSError(errno.ENOSPC, ...)` fails the step, naming the file and "No space left on device".
@@ -390,35 +390,35 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `splatpipe.frames.__main__.main(["--job", job_id])` prints `frames: done` and returns 0 for a done run, and prints the Readable_Error on stderr and returns 1 for a failed one.
     - _Requirements: 1.8, 1.11, 6.9, 6.10, 8.7, 8.9, 8.10, 9.6, 9.7, 10.3, 11.1, 11.2, 11.10, 13.8, 13.9_
 
-  - [~] 7.6 Write the real ffmpeg step test in `tests/test_frames_step.py`
+  - [x] 7.6 Write the real ffmpeg step test in `tests/test_frames_step.py`
     - Skip it the same way as task 6's real tests. Make a 64 × 48 clip in `tmp_path`.
     - Make the Job with `new_job`, then copy the clip over its `input/video.mp4`. The test config's `max_video_bytes` (1024) and `min_used_seconds` (3) would refuse a real clip in `make_job`, and the step reads only `video_path` and the Job_Record's Trim.
     - Run `splatpipe.frames.run` with the real `TOOLS`. The step is done, the Picks are 64 × 48, and the Work_Folder has the design's layout.
     - _Requirements: 8.1, 8.4, 8.5, 13.4, 13.5, 13.11_
 
-  - [~] 7.7 Write the step's memory test in `tests/test_frames_step.py`
+  - [x] 7.7 Write the step's memory test in `tests/test_frames_step.py`
     - Build `FakeTools` from a count of 5,000 and a function that makes each tiny frame on demand, and set `mask_samples` to 3 with `set_frames`. Run the step through `splatpipe.frames.run`.
     - The test keeps only a `weakref` to each frame the Score_Pass is given. After every frame, at most 8 of them are alive: the frame before, the current frame and the buffer's 6.
     - None of them is alive any more when the Pick_Pass starts, because the `SampleBuffer` is freed before it.
     - _Requirements: 1.12, 1.13, 13.7_
 
-  - [~] 7.8 Run the tests and commit
+  - [x] 7.8 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/frame-picking`: `git add splatpipe/frames/__init__.py splatpipe/frames/__main__.py tests/conftest.py tests/test_frames_step.py`, then commit those files with the message "Frames: the step and its CLI".
     - _Requirements: 13.3, 13.11_
 
-- [ ] 8. HDR tone map with its fallback
+- [x] 8. HDR tone map with its fallback
   - Files: `splatpipe/frames/ffmpeg.py`, `splatpipe/frames/__init__.py`, `tests/conftest.py`, `tests/test_frames_ffmpeg.py`, `tests/test_frames_step.py` and `.kiro/specs/frames/requirements.md` (changed). `docs/third-party-licences.md` and `tests/test_docs.py` change only with Samarth's OK on O1.
   - _Requirements: 1.7, 1.8, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 9.4, 10.5, 12.7, 13.1, 13.3, 13.5, 13.6, 13.11_
 
-  - [~] 8.1 Add the Tone_Map to `splatpipe/frames/ffmpeg.py`
+  - [x] 8.1 Add the Tone_Map to `splatpipe/frames/ffmpeg.py`
     - The Fixed_Constant `TONE_MAP`, the design's filter text from `zscale=t=linear:npl={npl}` to `format=yuv420p`, with `tonemap=tonemap=hable:desat={desat}` and the BT.709 names. Only `{npl}` and `{desat}` are left open.
     - `ToneMap(npl, desat)` holds `tonemap_npl` and `tonemap_desat`. `tone_map_filter(tone_map)` fills `TONE_MAP`'s two numbers in, each written as `repr(float(value))`, like `100.0` or `0.25`, and leaves the rest of the text as it is.
     - `DecodePlan` gains `tone_map: ToneMap | None`. `decode_command` puts `tone_map_filter(plan.tone_map)` after `scale=W:H,setsar=1` and before `format=`, only when `tone_map` isn't `None`, in both kinds of plan.
     - `parse_filters()` and `has_filters()`. `has_filters` runs `["ffmpeg", "-hide_banner", "-nostdin", "-filters"]` with the same `subprocess.run` options and the given limit. A missing ffmpeg is the Req 1.8 failure. A timeout or a non-zero exit gives `False`.
     - _Requirements: 1.7, 1.8, 2.2_
 
-  - [~] 8.2 Add the HDR choice to the step
+  - [x] 8.2 Add the HDR choice to the step
     - In `splatpipe/frames/__init__.py`: `HDR_TRANSFERS = ("arib-std-b67", "smpte2084")`, and `Tools` and `TOOLS` gain `has_filters`.
     - Inside `step.timed("probe")`, an HDR_Clip runs `TOOLS.has_filters(("zscale", "tonemap"), ffprobe_timeout_seconds)`. With both filters, `tone_map` is `ToneMap(tonemap_npl, tonemap_desat)` from the settings. Without both, `tone_map` is `None`, both passes run without the Tone_Map, and the Req 2.4 warning names the transfer. Any other clip, one with no reported transfer included, gets no filter check and a `tone_map` of `None`.
     - When the Score_Pass with the Tone_Map raises `DecodeFailed`, the step adds the Req 2.5 warning with ffmpeg's last line, sets `tone_map` to `None`, and runs the pass again with a new `Scorer` and a new `SampleBuffer`, so nothing from the failed pass is kept. Any other `DecodeFailed` fails the step as before.
@@ -426,7 +426,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - In `tests/conftest.py`, `FakeTools` gains `has_filters`, a setting to report no filters, and a setting to fail the first pass that has the Tone_Map after a few frames, with a chosen last line.
     - _Requirements: 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 9.4, 10.5_
 
-  - [~] 8.3 Write unit tests for the Tone_Map text, the command and the filter check in `tests/test_frames_ffmpeg.py`
+  - [x] 8.3 Write unit tests for the Tone_Map text, the command and the filter check in `tests/test_frames_ffmpeg.py`
     - `tone_map_filter(ToneMap(100.0, 0.0))` gives exactly the design's text, `zscale=t=linear:npl=100.0,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0.0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p`.
     - `ToneMap(203.5, 0.25)` gives the same text with `npl=203.5` and `desat=0.25`, so only the two numbers change, and `hable` and the BT.709 parts stay fixed.
     - `decode_command` with a `ToneMap` has its filter text between `setsar=1` and `format=`, in a grey and a colour plan alike. Without one, no `zscale` or `tonemap` appears.
@@ -434,7 +434,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - With fake processes, `has_filters` is true with both filters listed and false with one missing. It's false on a timeout and on an exit of 1, and raises the Req 1.8 failure when ffmpeg is missing.
     - _Requirements: 1.8, 2.2, 2.3, 13.1, 13.6_
 
-  - [~] 8.4 Write the HDR step tests in `tests/test_frames_step.py`
+  - [x] 8.4 Write the HDR step tests in `tests/test_frames_step.py`
     - An `arib-std-b67` stand-in and a `smpte2084` one, with both filters, run both passes with a `ToneMap`, and `frames.json` has `tone_mapped: true` and the transfer.
     - With `set_frames(tonemap_npl=203.5, tonemap_desat=0.25)`, both recorded plans hold `ToneMap(203.5, 0.25)`, and each plan's `decode_command` holds `npl=203.5` and `desat=0.25` with the `hable` and BT.709 parts unchanged.
     - Without the filters, neither pass has the Tone_Map. The warning names the transfer, says the Picks' colours may look flat, and says an ffmpeg with zscale fixes them. The step is done.
@@ -442,28 +442,28 @@ Some files grow over several tasks, so each piece comes with the first task that
     - A `bt709` clip and a clip with no reported transfer make no `has_filters` call and have no Tone_Map. `frames.json` records `"bt709"` or `null`.
     - _Requirements: 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 9.4, 10.5, 13.1, 13.6_
 
-  - [~] 8.5 Write the real Tone_Map test in `tests/test_frames_ffmpeg.py`
+  - [x] 8.5 Write the real Tone_Map test in `tests/test_frames_ffmpeg.py`
     - Skip it when ffmpeg or ffprobe is missing, and also, with the reason "this ffmpeg has no zscale or tonemap filter", when `has_filters(("zscale", "tonemap"), 30)` is false.
     - A tiny clip tagged HLG (`arib-std-b67`), made in `tmp_path` with `timeout=60`, decodes with `ToneMap(100.0, 0.0)` and gives its frames at the plan's size.
     - _Requirements: 2.2, 13.5, 13.11_
 
-  - [~] 8.6 Stop for Samarth's OK on zimg (O1)
+  - [x] 8.6 Stop for Samarth's OK on zimg (O1)
     - Before writing anything about zimg, ask in the chat whether the Tone_Map may rely on zimg (libzimg), which ffmpeg's `zscale` needs and which is under the WTFPL, a licence that isn't on the list in `.kiro/steering/rules.md`. Wait for Samarth's answer. Skip the question only when the review has already given his OK.
     - With his OK: add a zimg row to `docs/third-party-licences.md`. It gives the WTFPL, says ffmpeg's `zscale` uses it inside the ffmpeg command line tool on our private machine image, never vendored or linked, and says "Not yet" for Installed. Add a test in `tests/test_docs.py` that the row names the WTFPL and `zscale`.
     - Without his OK: add no zimg row. The code stays as it is, because an ffmpeg without `zscale` already takes the warning path that 8.4 tests, and the step is still done.
     - Either way, write his answer under O1 in `.kiro/specs/frames/requirements.md`.
     - _Requirements: 12.7_
 
-  - [~] 8.7 Run the tests and commit
+  - [x] 8.7 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. The real Tone_Map test runs or is skipped with its reason.
     - On `feat/frame-picking`: `git add splatpipe/frames/ffmpeg.py splatpipe/frames/__init__.py tests/conftest.py tests/test_frames_ffmpeg.py tests/test_frames_step.py .kiro/specs/frames/requirements.md`, plus `docs/third-party-licences.md tests/test_docs.py` only when 8.6 changed them. Commit those files with the message "Frames: HDR tone map with its fallback".
     - _Requirements: 13.3, 13.11_
 
-- [ ] 9. The frames section of the pipeline doc
+- [x] 9. The frames section of the pipeline doc
   - Files: `docs/pipeline.md` and `tests/test_docs.py`, both changed.
   - _Requirements: 7.10, 9.10, 12.1, 12.2, 12.3, 12.4, 12.8, 13.3, 13.11_
 
-  - [~] 9.1 Write `## Step: frames` in `docs/pipeline.md`
+  - [x] 9.1 Write `## Step: frames` in `docs/pipeline.md`
     - Put it after `## Step: fake`, with the Fake_Step section's parts: `### What it reads`, `### What it writes`, `### Config section`, `### Step report fields` and `### Files in out/`. Give the CLI, `uv run python -m splatpipe.frames --job <id> [--preset P]`, and `splatpipe.frames.run(job_id, preset=None)`.
     - What it reads: `step.job.video_path`, the Job_Record's `start_seconds` and `end_seconds`, and ffmpeg and ffprobe 5.1 or newer as command line tools. It says the Job's machine image needs ffmpeg and ffprobe 5.1 or newer, because the step uses ffmpeg's `-fps_mode` option, and that Ubuntu 24.04's packaged ffmpeg, version 6.1, is new enough.
     - What it writes: the Work_Folder's layout and the Frames_Record's fields, as the contract the Camera_Solve_Step reads. `frames.json` is written last, so a Work_Folder without it is unfinished. Only matching uses the Grey_Copies. COLMAP takes the Mask as `--ImageReader.camera_mask_path` and the training loss reads the same file, and black means ignore.
@@ -472,7 +472,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Files in out/: the step writes no files to `out/` but its report, which the Step_Runner writes.
     - _Requirements: 7.10, 9.10, 12.1, 12.2, 12.3, 12.4, 12.8_
 
-  - [~] 9.2 Write the doc tests for the frames section in `tests/test_docs.py`
+  - [x] 9.2 Write the doc tests for the frames section in `tests/test_docs.py`
     - `## Step: frames` exists after the Skeleton's headings, with its five `###` parts.
     - "Files in out/" says the step writes no files there but its report.
     - "What it reads" says the machine image needs ffmpeg and ffprobe 5.1 or newer, names `-fps_mode`, and says Ubuntu 24.04's packaged ffmpeg is 6.1.
@@ -481,47 +481,47 @@ Some files grow over several tasks, so each piece comes with the first task that
     - "Step report fields" names every count of Req 10.1 and the four timings.
     - _Requirements: 7.10, 9.10, 12.1, 12.2, 12.3, 12.4, 12.8_
 
-  - [~] 9.3 Run the tests and commit
+  - [x] 9.3 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/frame-picking`: `git add docs/pipeline.md tests/test_docs.py`, then commit those files with the message "Frames: pipeline doc section".
     - _Requirements: 13.3, 13.11_
 
-- [ ] 10. The frames step joins the step list
+- [x] 10. The frames step joins the step list
   - Files: `splatpipe/run.py`, `tests/test_run.py`, `tests/test_imports.py`, `tests/test_docs.py`, `tests/test_frames_step.py`, `docs/pipeline.md` and `.kiro/specs/pipeline-core/requirements.md`, all changed.
   - _Requirements: 8.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 12.5, 13.3, 13.4, 13.5, 13.11_
 
-  - [~] 10.1 Change the Step_List in `splatpipe/run.py`
+  - [x] 10.1 Change the Step_List in `splatpipe/run.py`
     - `STEP_LIST = (StepEntry("frames", "splatpipe.frames", True),)`. The comment above it says the Frames_Step is the first entry, each later step spec adds its own entry after it, in order, and the Fake_Step stays out.
     - `_NO_STEPS` and the refusal of an empty list that a caller gives stay as they are.
     - _Requirements: 11.3, 11.4, 11.5_
 
-  - [~] 10.2 Update `tests/test_run.py`
+  - [x] 10.2 Update `tests/test_run.py`
     - `test_the_step_list_starts_empty_and_is_the_default_list` gets a name for the new list, like `test_the_step_list_holds_the_frames_step_and_is_the_default_list`, and asserts the list of 10.1.
     - `test_an_empty_step_list_is_refused_before_out_changes`, which passes `steps=None` as well as `[]`, and `test_main_with_the_empty_default_list_gives_1_and_says_no_steps_are_set_up` set `splatpipe.run.STEP_LIST` to `()` with `monkeypatch`. So does any other test that the test run shows relying on an empty default list.
     - `test_python_m_with_a_bad_job_id_exits_with_1_from_the_repo_root` expects "That isn't a job id." for `splatpipe.run` too, and its docstring no longer says the list is empty.
     - _Requirements: 11.5, 11.6_
 
-  - [~] 10.3 Update `tests/test_imports.py`
+  - [x] 10.3 Update `tests/test_imports.py`
     - The module docstring and the docstring of `test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section` no longer say the list starts empty.
     - The check now loads `[frames]` from the real config for each of the three Presets.
     - _Requirements: 11.7_
 
-  - [~] 10.4 Rewrite "The step list" in `docs/pipeline.md`
+  - [x] 10.4 Rewrite "The step list" in `docs/pipeline.md`
     - In place of the paragraph that says the list starts empty: the Step_List holds the Frames_Step as its first, required entry, each later step spec adds its own entry after it, and a Job is done after the Frames_Step alone until the camera solve spec adds its entry. Keep the list of planned steps.
     - In `tests/test_docs.py`, a test checks those three points, and that "The list starts empty" and "No steps are set up yet" are gone from the section. The existing Step_List check now finds `## Step: frames`.
     - _Requirements: 11.8, 12.5_
 
-  - [~] 10.5 Add the note to pipeline-core's requirements
+  - [x] 10.5 Add the note to pipeline-core's requirements
     - Under Requirement 8, criterion 2 of `.kiro/specs/pipeline-core/requirements.md`, add a note saying that the frames spec added the first Step_List entry, `StepEntry("frames", "splatpipe.frames", True)`. Leave the criterion's own words as they are.
     - _Requirements: 11.9_
 
-  - [~] 10.6 Write the end-to-end test with real ffmpeg in `tests/test_frames_step.py`
+  - [x] 10.6 Write the end-to-end test with real ffmpeg in `tests/test_frames_step.py`
     - Skip it the same way as task 6's real tests. Make a 2 s clip in `tmp_path` whose frame k has brightness 16 + 10k, and the Job as in 7.6.
     - `run_job(job_id)` with the real Step_List gives the Job_Status `done`, and `work/frames/` has the design's layout.
     - Each Colour_Pick's mean grey is within 4 of the brightness of the frame that its `frames.json` entry names.
     - _Requirements: 8.2, 11.4, 13.4, 13.5, 13.11_
 
-  - [~] 10.7 Run the tests and commit
+  - [x] 10.7 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/frame-picking`: `git add splatpipe/run.py tests/test_run.py tests/test_imports.py tests/test_docs.py tests/test_frames_step.py docs/pipeline.md .kiro/specs/pipeline-core/requirements.md`, then commit those files with the message "Frames: first entry in the step list".
     - _Requirements: 13.3, 13.11_

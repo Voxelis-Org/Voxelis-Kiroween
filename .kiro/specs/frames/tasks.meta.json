@@ -39,6 +39,14 @@
     "5.6 Write the property test for Property 12 in `tests/test_frames_mask.py`, with Hypothesis": {
       "status": "passed",
       "lastRunTimestamp": 1795281701614
+    },
+    "6.4 Write the property test for Property 3 in `tests/test_frames_ffmpeg.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795288456401
+    },
+    "6.5 Write the property test for Property 4 in `tests/test_frames_ffmpeg.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795288449622
     }
   },
   "executionHistory": {
@@ -613,6 +621,11 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795284873221
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795285832623
       }
     ],
     "6.3 Write unit tests with fake processes in `tests/test_frames_ffmpeg.py`": [
@@ -620,6 +633,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244098
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795285840491
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795287037228
       }
     ],
     "6.4 Write the property test for Property 3 in `tests/test_frames_ffmpeg.py`, with Hypothesis": [
@@ -627,6 +650,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244136
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795287042359
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795287484054
       }
     ],
     "6.5 Write the property test for Property 4 in `tests/test_frames_ffmpeg.py`, with Hypothesis": [
@@ -634,6 +667,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244182
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795287490839
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795287692749
       }
     ],
     "6.6 Write the real ffmpeg tests in `tests/test_frames_ffmpeg.py`": [
@@ -641,6 +684,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244218
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795287699183
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288261991
       }
     ],
     "6.7 Run the tests and commit": [
@@ -648,6 +701,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244253
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288268410
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288495940
       }
     ],
     "7.1 Write the step in `splatpipe/frames/__init__.py`": [
@@ -655,6 +718,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244292
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288519486
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795289269838
       }
     ],
     "7.2 Write `splatpipe/frames/__main__.py`": [
@@ -662,6 +735,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244327
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288519727
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795289270637
       }
     ],
     "7.3 Add `FakeTools` to `tests/conftest.py`": [
@@ -669,6 +752,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244369
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288519854
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795290573249
       }
     ],
     "7.4 Write unit tests for a done run in `tests/test_frames_step.py`": [
@@ -676,6 +769,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244417
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795290579524
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795291736553
       }
     ],
     "7.5 Write unit tests for failed runs and the CLI in `tests/test_frames_step.py`": [
@@ -683,6 +786,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244468
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795291742829
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795292351489
       }
     ],
     "7.6 Write the real ffmpeg step test in `tests/test_frames_step.py`": [
@@ -690,6 +803,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244503
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795292357964
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795292768010
       }
     ],
     "7.7 Write the step's memory test in `tests/test_frames_step.py`": [
@@ -697,6 +820,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244536
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795292774460
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293277557
       }
     ],
     "7.8 Run the tests and commit": [
@@ -704,6 +837,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244574
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293284578
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293534220
       }
     ],
     "8.1 Add the Tone_Map to `splatpipe/frames/ffmpeg.py`": [
@@ -711,6 +854,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244616
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293541733
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293867181
       }
     ],
     "8.2 Add the HDR choice to the step": [
@@ -718,6 +871,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244653
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293875492
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795294629974
       }
     ],
     "8.3 Write unit tests for the Tone_Map text, the command and the filter check in `tests/test_frames_ffmpeg.py`": [
@@ -725,6 +888,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244692
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293875919
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795294631316
       }
     ],
     "8.4 Write the HDR step tests in `tests/test_frames_step.py`": [
@@ -732,6 +905,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244733
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795294640271
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295228336
       }
     ],
     "8.5 Write the real Tone_Map test in `tests/test_frames_ffmpeg.py`": [
@@ -739,6 +922,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244776
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795294640591
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295228437
       }
     ],
     "8.6 Stop for Samarth's OK on zimg (O1)": [
@@ -746,6 +939,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244814
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295235106
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295439060
       }
     ],
     "8.7 Run the tests and commit": [
@@ -753,6 +956,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244850
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295446225
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295633252
       }
     ],
     "9.1 Write `## Step: frames` in `docs/pipeline.md`": [
@@ -760,6 +973,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244891
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295646428
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296441305
       }
     ],
     "9.2 Write the doc tests for the frames section in `tests/test_docs.py`": [
@@ -767,6 +990,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244932
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296448115
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296870962
       }
     ],
     "9.3 Run the tests and commit": [
@@ -774,6 +1007,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271244966
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296878150
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296975619
       }
     ],
     "10.1 Change the Step_List in `splatpipe/run.py`": [
@@ -781,6 +1024,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245003
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296985763
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297216057
       }
     ],
     "10.2 Update `tests/test_run.py`": [
@@ -788,6 +1041,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245038
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297225834
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297749267
       }
     ],
     "10.3 Update `tests/test_imports.py`": [
@@ -795,6 +1058,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245075
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297226803
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297749921
       }
     ],
     "10.4 Rewrite \"The step list\" in `docs/pipeline.md`": [
@@ -802,6 +1075,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245116
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296986319
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297217251
       }
     ],
     "10.5 Add the note to pipeline-core's requirements": [
@@ -809,6 +1092,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245154
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296987160
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297218030
       }
     ],
     "10.6 Write the end-to-end test with real ffmpeg in `tests/test_frames_step.py`": [
@@ -816,6 +1109,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245201
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297227543
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297750904
       }
     ],
     "10.7 Run the tests and commit": [
@@ -823,6 +1126,16 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795271245236
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297761620
+      },
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297885115
       }
     ],
     "1. Dependencies, settings and the test config": [
@@ -858,6 +1171,41 @@
         "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
         "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
         "timestamp": 1795282300368
+      }
+    ],
+    "6. ffprobe and the ffmpeg decode, without the Tone_Map": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795288495989
+      }
+    ],
+    "7. The step and its CLI": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795293534306
+      }
+    ],
+    "8. HDR tone map with its fallback": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795295633403
+      }
+    ],
+    "9. The frames section of the pipeline doc": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795296975680
+      }
+    ],
+    "10. The frames step joins the step list": [
+      {
+        "executionId": "8faf42b0-9b25-4f9f-ab7d-ccf4574f1363",
+        "chatSessionId": "sess_1923dea3-5810-435d-8040-0e34ef012ca4",
+        "timestamp": 1795297885182
       }
     ]
   }
