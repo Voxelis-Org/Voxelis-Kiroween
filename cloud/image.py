@@ -217,11 +217,12 @@ make install
 
 # 5. COLMAP 4.2.1 from source. CUDA, OpenGL and the GUI off keep SiftGPU (non-commercial) out, CGAL
 #    off keeps out GPL code and LSD off AGPL code, so SIFT runs on the CPU. ONNX off leaves out the
-#    learned features and the ONNX Runtime binaries they'd download. SIFT stays.
+#    learned features and the ONNX Runtime binaries they'd download. SIFT stays. Downloads off too:
+#    we only use SIFT and sequential matching without loop detection, so COLMAP never needs one.
 git clone --branch 4.2.1 --depth 1 https://github.com/colmap/colmap.git /tmp/colmap
 cmake -S /tmp/colmap -B /tmp/colmap/build -GNinja -DCMAKE_BUILD_TYPE=Release \\
   -DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF \\
-  -DONNX_ENABLED=OFF -DBLA_VENDOR=OpenBLAS
+  -DONNX_ENABLED=OFF -DDOWNLOAD_ENABLED=OFF -DBLA_VENDOR=OpenBLAS
 cmake --build /tmp/colmap/build --target install
 ldconfig
 

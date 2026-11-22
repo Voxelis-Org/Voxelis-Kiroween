@@ -69,9 +69,11 @@ from test_cloud_launch import FORBIDDEN_KEYS, PROJECT_TAG_DICT, _tags_for
 # The COLMAP build flags that keep SiftGPU (non-commercial), CGAL (GPL) and LSD (AGPL) out, as one
 # string, so both the install_script and the COLMAP Licence_List row are checked for it verbatim.
 OFF_FLAGS = "-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF"
-# The two more COLMAP flags: ONNX off leaves out the learned features and ONNX Runtime (SIFT stays),
-# and OpenBLAS stands in for Intel's MKL.
-EXTRA_FLAGS = "-DONNX_ENABLED=OFF -DBLA_VENDOR=OpenBLAS"
+# The three more COLMAP flags: ONNX off leaves out the learned features and ONNX Runtime (SIFT
+# stays), downloads off leaves out the download support we never need (SIFT and sequential matching
+# without loop detection download nothing), and OpenBLAS stands in for Intel's MKL.
+EXTRA_FLAGS = "-DONNX_ENABLED=OFF -DDOWNLOAD_ENABLED=OFF -DBLA_VENDOR=OpenBLAS"
+TECH_STEERING = Path(__file__).resolve().parents[1] / ".kiro" / "steering" / "tech.md"
 
 # COLMAP 4.2.1's documented Ubuntu packages (doc/install.rst at the 4.2.1 tag) that the image keeps,
 # and the ones it leaves out: the GUI's Qt packages, CGAL, and Intel's MKL, whose licence isn't on
@@ -393,11 +395,25 @@ def test_install_script_builds_ffmpeg_with_zimg_and_colmap_with_its_flags() -> N
     assert (_index(script, "make install") < _index(script, "ldconfig")
             < _index(script, "--enable-libzimg"))
     assert "./configure --prefix=/usr/local --enable-gpl --enable-libzimg" in script
-    # COLMAP 4.2.1 with SiftGPU, CGAL and LSD out, the ONNX learned features off and OpenBLAS.
+    # COLMAP 4.2.1 with SiftGPU, CGAL and LSD out, the ONNX learned features and the downloads off,
+    # and OpenBLAS.
     assert "git clone --branch 4.2.1 --depth 1 https://github.com/colmap/colmap.git" in script
     configure = _command(script, "cmake -S /tmp/colmap")
     assert OFF_FLAGS in configure
     assert EXTRA_FLAGS in configure
+
+
+def test_tech_steering_names_every_colmap_flag_the_image_builds_with() -> None:
+    # tech.md is where the team reads COLMAP's flags, so its COLMAP line names each flag the
+    # install script's cmake line sets, apart from the build type.
+    configure = _command(_script(), "cmake -S /tmp/colmap")
+    flags = [word for word in configure.split()
+             if word.startswith("-D") and not word.startswith("-DCMAKE_")]
+    line = next(line for line in TECH_STEERING.read_text(encoding="utf-8").splitlines()
+                if line.startswith("- COLMAP 4.2.1"))
+    assert "-DDOWNLOAD_ENABLED=OFF" in flags
+    missing = [flag for flag in flags if f"`{flag}`" not in line and flag not in line]
+    assert missing == [], f"tech.md's COLMAP line should name {missing}"
 
 
 def test_install_script_cleans_cloud_init_before_imaging() -> None:
@@ -584,7 +600,8 @@ def test_colmap_licence_row_names_its_flags() -> None:
     # two more the image builds with.
     row = _row_with_name("COLMAP")
     assert OFF_FLAGS in row
-    assert "-DONNX_ENABLED=OFF" in row and "-DBLA_VENDOR=OpenBLAS" in row
+    for flag in EXTRA_FLAGS.split():
+        assert flag in row
 
 
 def test_cuda_toolkit_licence_row_names_nvidias_eula_and_where_it_lives() -> None:
