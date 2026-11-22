@@ -22,7 +22,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - Tests run on the CPU with no network and no GPU, on tiny synthetic splats that the tests build as bytes, in `tmp_path` or a `tempfile.TemporaryDirectory()`. No splat file goes in git, and no test writes into the real `data/` (Req 10.1, 10.3). A test that needs the real `config.toml` reads it by path, as `REPO_ROOT / "config.toml"`, because `tests/conftest.py` points `CONFIG_PATH` at a test config.
 - Every filter test runs inside `np.errstate(all="raise")`, so an overflow, an invalid value or a division by 0 fails it (Req 2.11).
 - Subprocess tests pass a timeout, set `PYTHONIOENCODING=utf-8` in the child's environment and read its output as UTF-8 (Req 10.7).
-- Property tests use Hypothesis with at least 100 examples (the default) and `@settings(deadline=None)`. Each docstring says `Feature: clean, Property N: <title>` and `**Validates: Requirements ...**`, as pipeline-core's do. The strategies live in `tests/splats.py`, as the design's "Strategies" section gives them. Every strategy but the dense grid's and Property 3's drops draws with tied Centre_Distances. Property 3's draws coincident pairs and drops only a draw with a tie at a Gaussian's `k`-th nearest (Req 10.13).
+- Property tests use Hypothesis with at least 100 examples (the default) and `@settings(deadline=None)`. Each docstring says `Feature: clean, Property N: <title>` and `**Validates: Requirements ...**`, as pipeline-core's do. The strategies live in `tests/splats.py`, as the design's "Strategies" section gives them. Every strategy for a property whose result depends on the Isolated_Filter's neighbour search, but the dense grid's and Property 3's, drops draws with tied Centre_Distances. A strategy for the Broken_Filter or the Faint_Filter alone may keep them, as Property 8's first half does. Property 3's draws coincident pairs and drops only a draw with a tie at a Gaussian's `k`-th nearest (Req 10.13).
 - Every test sub-task is required (Req 10.2).
 - Nothing here costs money. No task touches AWS, sets `APPROVED_SPEND` or runs anything paid.
 - The `splat-files` skill has the PLY layout and splat-transform 3.8.0's options. Install and run splat-transform the way this spec says, though: `npm ci` at the repo root, then `node node_modules/@playcanvas/splat-transform/bin/cli.mjs`. Never use the skill's `npm install -g` or `npx`, because the step downloads nothing at run time (Req 5.2, A8).
@@ -32,7 +32,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
 ## Tasks
 
-- [ ] 1. Settings and the `[clean]` config
+- [x] 1. Settings and the `[clean]` config
   - Files: `splatpipe/clean/__init__.py`, `splatpipe/clean/settings.py`, `tests/splats.py`, `tests/test_clean_limits.py` and `tests/test_clean_repo.py` (new), `config.toml` and `tests/conftest.py` (changed).
   - _Requirements: 1.12, 4.7, 5.15, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.14, 6.15, 6.16, 6.17, 6.18, 8.5, 8.8, 10.1, 10.2, 10.4_
 
@@ -68,7 +68,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every refusal but the missing setting's is an `ExpectedFailure`, and no message holds "Traceback".
     - _Requirements: 6.6, 6.7, 6.8, 6.9, 6.10, 8.8, 10.4_
 
-  - [ ] 1.5 Write the property test for Property 10 in `tests/test_clean_limits.py`, with Hypothesis
+  - [x] 1.5 Write the property test for Property 10 in `tests/test_clean_limits.py`, with Hypothesis
     - **Property 10: The file-name checks accept exactly the plain, distinct names**
     - **Validates: Requirements 1.12, 4.7, 5.15, 6.9, 6.10**
     - Add the design's "Names" strategy to `tests/splats.py`: `st.text()`; good names with `/`, `\`, `:`, `.`, `\x00`, `\n`, `\u2215` or `\uff0f` put in at a random place; `..`, `C:clean.ply`, `/abs.ply`, `clean.ply:x` and `clean.PLY`; and for the second half, good names with their case variants, so clashes turn up often.
@@ -85,22 +85,22 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Read the files with `ast`, the way `tests/test_imports.py` does, and leave that file as it is. A failure lists the file and the line.
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.14, 6.15, 6.17, 6.18, 8.5_
 
-  - [ ] 1.7 Run the tests and commit
+  - [x] 1.7 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included, and so does the comment check in `tests/test_config.py`, which now reads `[clean]` too.
     - On `feat/clean`: `git add splatpipe/clean/__init__.py splatpipe/clean/settings.py config.toml tests/conftest.py tests/splats.py tests/test_clean_limits.py tests/test_clean_repo.py`, then commit those files with the title "Clean step: settings and the [clean] config" and the body "Adds the clean step's eighteen settings to config.toml, each with a comment above it, and the same section to the test config. settings.py checks every kind, range and file name before the step opens, writes or removes anything, so a bad setting can't reach a path outside out/ or overwrite the trained splat."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 2. PLY reader and writer, with numpy and scipy
+- [x] 2. PLY reader and writer, with numpy and scipy
   - Files: `splatpipe/clean/ply_read.py`, `splatpipe/clean/ply_write.py` and `tests/test_clean_ply.py` (new), `pyproject.toml`, `uv.lock`, `docs/third-party-licences.md`, `tests/splats.py` and `tests/test_clean_repo.py` (changed).
   - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 4.1, 4.2, 4.3, 4.4, 4.6, 5.14, 6.5, 6.11, 8.8, 9.7, 10.1, 10.2, 10.3, 10.4, 10.5, 10.12_
 
-  - [ ] 2.1 Add numpy and scipy, and mark them installed in `docs/third-party-licences.md`
+  - [x] 2.1 Add numpy and scipy, and mark them installed in `docs/third-party-licences.md`
     - Run `uv add numpy scipy`, which puts both in `[project].dependencies` with the lower bounds uv writes, and updates `uv.lock`. scipy is for task 3's neighbour search.
     - Keep the comment above `dependencies` that keeps the GPU packages out. Add no other package.
     - In `docs/third-party-licences.md`, change the numpy and scipy rows' Installed cell from "Not yet" to "Yes". Keep the rest of both rows as it is, their bundled-library notes included.
     - _Requirements: 6.11, 9.7_
 
-  - [ ] 2.2 Write `splatpipe/clean/ply_read.py`
+  - [x] 2.2 Write `splatpipe/clean/ply_read.py`
     - The Format_Constants `PLY_TYPES`, `REQUIRED` and `SH_BANDS`, then `PlyProperty`, `PlyHeader` with its packed `dtype(byte_order)`, `read_header()` and `read_splat()`, as in the design's "ply_read.py" section.
     - `read_header` opens the file with `open(path, "rb")` and never with a write mode. It reads the header with `readline()`, decodes each line as Latin-1, and strips one `\n` and then one `\r`. It keeps every `comment` and `obj_info` line verbatim, in order, and finds every property by name, never by position.
     - It refuses each of these with an `ExpectedFailure` that names the file: a first line that isn't `ply`; `ascii`, saying splat-transform can't read an ascii PLY either; a header line it can't read, with its line number and the line; a `property` line before any `element`; a bad count; an unknown type; a property named twice in one element; a list property in `vertex` or in an element before it, naming it; no `vertex` element; missing Required_Properties, naming each; a count of 0; an `f_rest_*` count that isn't 0, 9, 24 or 45, naming the count and the four allowed; and a file shorter than `data_offset + count × row size`, saying it's cut short or still being written.
@@ -108,18 +108,18 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `read_splat` reads with `np.fromfile(..., count=header.count, offset=header.data_offset)`, refuses a short result as cut short, and turns a big-endian array little-endian in place with `byteswap(inplace=True)` and a `view`, so every value keeps its bits.
     - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 6.5, 8.8_
 
-  - [ ] 2.3 Write `splatpipe/clean/ply_write.py`
+  - [x] 2.3 Write `splatpipe/clean/ply_write.py`
     - `header_bytes()` and `write_splat()`, as in the design's "ply_write.py" section.
     - `header_bytes` writes `format binary_little_endian 1.0`, every kept comment in its order, `element vertex <count>`, and each property with its declared type in the source's order, encoded as Latin-1.
     - `write_splat` makes the one copy `data[rows]`, opens the file with mode `"xb"`, writes the header and then `kept.tofile(handle)`, and returns the file's size for `clean_ply_bytes`. An `OSError` while opening or writing removes the partial file and raises an `ExpectedFailure` naming the file and `error.strerror`.
     - _Requirements: 4.1, 4.2, 4.3, 4.6, 5.14, 8.8_
 
-  - [ ] 2.4 Add the PLY builder to `tests/splats.py`
+  - [x] 2.4 Add the PLY builder to `tests/splats.py`
     - `ply_bytes(fields, rows, *, byte_order="<", comments=(), before=(), after=(), eol=b"\n")` writes the header by hand and packs the rows with `struct`, from its own table of PLY types to `struct` codes. It shares no code with `ply_read.py` or `ply_write.py`. A bulk path packs with numpy, for task 8's test of 20,000 Gaussians.
     - `standard_fields(sh_count=45, normals=True)` gives A1's layout, and `gaussians(n, ...)` fills plain values: unit quaternions, Real_Opacities above `min_opacity`, stored scales from -8 to 3 and centres on a jittered lattice.
     - _Requirements: 10.1, 10.3_
 
-  - [ ] 2.5 Write unit tests for the reader and the writer in `tests/test_clean_ply.py`
+  - [x] 2.5 Write unit tests for the reader and the writer in `tests/test_clean_ply.py`
     - Both byte orders, `\r\n` header lines, an element before and one after `vertex`, and every type in `PLY_TYPES` read back right. Reading leaves the file's bytes the same.
     - `f_rest_*` counts of 0, 9, 24 and 45 give 0 to 3 SH_Bands, and 1, 8, 44 and 46 are refused, naming the count (Req 1.5).
     - A missing file is refused, naming the file and the training step (Req 1.6). A folder in its place gives the OS's reason.
@@ -129,40 +129,40 @@ Some files grow over several tasks, so each piece comes with the first task that
     - No message holds "Traceback".
     - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 4.1, 4.2, 4.3, 4.6, 10.4, 10.12_
 
-  - [ ] 2.6 Write the property test for Property 9 in `tests/test_clean_ply.py`, with Hypothesis
+  - [x] 2.6 Write the property test for Property 9 in `tests/test_clean_ply.py`, with Hypothesis
     - **Property 9: A Clean_Splat reads back bit for bit**
     - **Validates: Requirements 1.2, 1.3, 1.4, 4.1, 4.2, 4.3, 4.4**
     - This is the bit-for-bit PLY round trip. Add the design's "Layouts" and "Values" strategies to `tests/splats.py`: A1's layout shuffled, extra properties with any type in `PLY_TYPES`, either byte order, an `f_rest_*` count of 0, 9, 24 or 45, Latin-1 comments that sometimes hold `SplatRenderMode: mip` or `postshot.anti_aliasing=1`, an optional `element meta 2` before or after `vertex`, and values from `st.from_dtype`. The subset of rows is any increasing one that isn't empty, because the reader refuses a count of 0.
     - Build the bytes with `ply_bytes`, read them, write the subset and read it back, in a `tempfile.TemporaryDirectory()` the test makes itself. Check the names, their order and types, the comments, `binary_little_endian`, the count, and every field's raw bytes, compared as unsigned integers so NaN payloads, infinities and -0.0 count.
     - _Requirements: 1.2, 1.3, 1.4, 4.1, 4.2, 4.3, 4.4, 10.5_
 
-  - [ ] 2.7 Add the dependency and licence-row checks to `tests/test_clean_repo.py`
+  - [x] 2.7 Add the dependency and licence-row checks to `tests/test_clean_repo.py`
     - `pyproject.toml`'s `[project].dependencies` name numpy and scipy, and neither they nor the dev group name a GPU package: torch, torchvision, gsplat, cupy, pycuda, triton, or a name that starts with `nvidia-` or `cuda-`.
     - `uv.lock` holds no package with one of those names, so `uv sync` on a laptop installs none.
     - Read `docs/third-party-licences.md` by path and find a row by its Name cell, the way `licence_row` in `tests/test_docs.py` does, and leave that file as it is. The numpy and scipy rows each start their Installed cell with "Yes" (Req 9.7).
     - _Requirements: 6.11, 9.7_
 
-  - [ ] 2.8 Run the tests and commit
+  - [x] 2.8 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. Check that `uv.lock` is under 1 MB.
     - On `feat/clean`: `git add pyproject.toml uv.lock docs/third-party-licences.md splatpipe/clean/ply_read.py splatpipe/clean/ply_write.py tests/splats.py tests/test_clean_ply.py tests/test_clean_repo.py`, then commit those files with the title "Clean step: PLY reader and writer, with numpy and scipy" and the body "Adds numpy and scipy as runtime dependencies, with their licence-list rows marked installed, and ply_read.py and ply_write.py, which read a binary 3DGS PLY in either byte order by property name and write the kept rows back little-endian with every property and comment carried through. The round-trip property checks that every value comes back bit for bit, NaN payloads included."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 3. Broken filter and the neighbour search
+- [x] 3. Broken filter and the neighbour search
   - Files: `splatpipe/clean/neighbours.py`, `splatpipe/clean/broken.py` and `tests/test_clean_filters.py` (new), `tests/splats.py` (changed).
   - _Requirements: 2.2, 2.3, 2.11, 2.16, 2.19, 8.9, 10.1, 10.2, 10.3, 10.5, 10.13_
 
-  - [ ] 3.1 Write `splatpipe/clean/neighbours.py`
+  - [x] 3.1 Write `splatpipe/clean/neighbours.py`
     - `positions()` and `nearest_others()`, as in the design's "neighbours.py" section.
     - `positions` fills a new C-ordered `(len(rows), 3)` float64 array column by column from `x`, `y` and `z` at `rows`.
     - `nearest_others` queries with `k=list(range(1, k + 2))`, so scipy always keeps the second axis, and passes `workers` on. It drops each point from its own row wherever it is, and a row that doesn't hold the point loses its last column. It turns the self mask into the mask of the others in place, and frees the raw arrays one at a time, as the design's "Memory" section counts them.
     - _Requirements: 2.16, 8.9_
 
-  - [ ] 3.2 Write `splatpipe/clean/broken.py`
+  - [x] 3.2 Write `splatpipe/clean/broken.py`
     - `broken_keep()`, as in the design's "broken.py" section: `np.isfinite` on every field in `REQUIRED`, and a quaternion that isn't four zeros, tested with `== 0` on each component and no squares.
     - It reads no field outside `REQUIRED`.
     - _Requirements: 2.2, 2.3, 2.19_
 
-  - [ ] 3.3 Write unit tests for the Broken_Filter and the neighbour search in `tests/test_clean_filters.py`
+  - [x] 3.3 Write unit tests for the Broken_Filter and the neighbour search in `tests/test_clean_filters.py`
     - `broken_keep` drops a Gaussian with NaN, +infinity or -infinity in each Required_Property in turn, and one with the quaternion `(0, -0.0, 0, 0)`. It keeps one whose only NaN is in a colour property, and one whose quaternion is the smallest subnormal float32 in one component and 0 in the rest (Req 2.2, 2.3).
     - Quaternion components of ±3e38 raise nothing (Req 2.11).
     - `positions` gives the float32 centres exactly, as float64.
@@ -170,30 +170,30 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every test here runs inside `np.errstate(all="raise")`.
     - _Requirements: 2.2, 2.3, 2.11, 2.16, 10.1_
 
-  - [ ] 3.4 Write the property test for Property 2 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 3.4 Write the property test for Property 2 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 2: The Broken_Filter keeps exactly the Gaussians that can be drawn**
     - **Validates: Requirements 2.2, 2.3, 2.19**
     - Add the design's "Splats" strategy to `tests/splats.py`, which Properties 1 and 7 use too: 1 to 60 Gaussians; centres from lattice points, clusters and far outliers up to ±3e38, with the index-based jitter; stored opacities and scales mostly in their plain ranges, plus the extremes and the exact logit of `min_opacity`; quaternions mostly unit, plus all-zero ones; and NaNs and infinities in Required_Properties, up to every Gaussian, and in Carried_Properties. Add the brute-force tie check that drops, with `assume`, a draw in which a Gaussian has two equal Centre_Distances to others (Req 10.13).
     - The oracle looks at each Gaussian with `math.isfinite` and `==`, one value at a time. Running `broken_keep` again on what it kept keeps every one.
     - _Requirements: 2.2, 2.3, 2.19, 10.5, 10.13_
 
-  - [ ] 3.5 Write the property test for Property 3 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 3.5 Write the property test for Property 3 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 3: No Gaussian is its own neighbour**
     - **Validates: Requirements 2.16**
     - Draw sets of more than `k` centres, coincident pairs included, and keep only those that meet the rule of Req 10.13 for that set and its `k`, with `assume`.
     - Each Gaussian gets `k` tree indices, none its own and none twice. They're exactly its `k` nearest others found by brute force, with the brute-force Centre_Distances.
     - _Requirements: 2.16, 10.13_
 
-  - [ ] 3.6 Run the tests and commit
+  - [x] 3.6 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/clean`: `git add splatpipe/clean/neighbours.py splatpipe/clean/broken.py tests/splats.py tests/test_clean_filters.py`, then commit those files with the title "Clean step: broken filter and neighbour search" and the body "Adds broken.py, which drops the Gaussians nothing can draw, those with a NaN or infinity in a required property or a zero-length rotation, and leaves a bad colour as it is. neighbours.py finds each Gaussian's nearest other Gaussians with a KD-tree and never counts a Gaussian as its own neighbour, even when centres coincide."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 4. Faint filter
+- [x] 4. Faint filter
   - Files: `splatpipe/clean/faint.py` (new), `tests/splats.py` and `tests/test_clean_filters.py` (changed).
   - _Requirements: 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 2.20, 6.5, 8.9, 10.1, 10.2, 10.3, 10.5_
 
-  - [ ] 4.1 Write `splatpipe/clean/faint.py`
+  - [x] 4.1 Write `splatpipe/clean/faint.py`
     - The Format_Constants `LOG_PI`, `FLOAT32_HALF_STEP` and `HUGE_DIVISIONS`, then `log_opacity()`, `log_paint()`, `cube_groups()` and `faint_keep()`, as in the design's "faint.py" section. The Faint_Filter builds no tree and searches for no neighbours.
     - `log_opacity` is `-np.logaddexp(0.0, -stored)`, and `log_paint` is `log_alpha + LOG_PI + top_two`, so no `exp` of a stored scale is ever taken.
     - `cube_groups` follows the design's six steps: the Trimmed_Box from `np.percentile`, one axis at a time; the Extent as `max(0.0, longest side)`; one Cube when the Extent is 0; the Cube_Edge, with the centre path when the edge is at most `FLOAT32_HALF_STEP` or the divisions are `HUGE_DIVISIONS` or more; the Cube coordinates, made in place with `np.subtract` and `np.floor_divide` in one `(3, n)` float64 array and never cast to an integer; and the groups, from `np.lexsort` and a scan for changes.
@@ -201,7 +201,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Only the underflow each step allows runs inside `np.errstate(under="ignore")`. Free the arrays as the design's "Memory" section counts them.
     - _Requirements: 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 6.5, 8.9_
 
-  - [ ] 4.2 Write unit tests for the Faint_Filter in `tests/test_clean_filters.py`
+  - [x] 4.2 Write unit tests for the Faint_Filter in `tests/test_clean_filters.py`
     - `log_opacity` of 0, ±1, ±40, ±1000 and ±3.4e38 is finite and at most 0, and `log_paint` with stored scales of ±3.4e38 is finite (Req 2.11).
     - The cube rule: a Cube of `faint_min_per_cube` Faint_Gaussians that paint more than `faint_min_paint_share` of it keeps them all, one with a stored opacity of -1000 included. The same Cube with one Faint_Gaussian fewer, or a little less Faint_Paint, drops them all. A Gaussian at or above `min_opacity` beside them is always kept (Req 2.4, 2.5, 2.9).
     - `min_opacity` at 0 makes no Faint_Gaussian, and at 1 makes every Gaussian one, a stored opacity of 3.4e38 included. A `faint_min_paint_share` of 0 keeps a Cube whose Faint_Paint underflows next to a bright Gaussian.
@@ -212,7 +212,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every test here runs inside `np.errstate(all="raise")`.
     - _Requirements: 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 2.11, 10.1_
 
-  - [ ] 4.3 Write the property test for Property 4 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 4.3 Write the property test for Property 4 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 4: The Faint_Filter keeps exactly what the cube rule keeps**
     - **Validates: Requirements 2.4, 2.5, 2.6, 2.7, 2.9, 2.10, 2.20**
     - Add the design's "Splats for the references" strategy for this property, and its "Settings" strategy, to `tests/splats.py`: 0 to 60 Gaussians, so the empty set is drawn too, with finite Required_Properties, stored opacities from -12 to 12 and stored scales from -8 to 3.
@@ -220,7 +220,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Drop with `assume` a draw with a Real_Opacity within a relative 1e-9 of `min_opacity`, one with a Cube whose Faint_Paint is within a relative 1e-9 of `faint_min_paint_share` times its Cube_Paint, and one whose Cube_Edge is above 0 but at most `FLOAT32_HALF_STEP`.
     - _Requirements: 2.4, 2.5, 2.6, 2.7, 2.9, 2.10, 2.20, 10.5_
 
-  - [ ] 4.4 Write the property test for Property 8 in `tests/test_clean_filters.py`, with Hypothesis
+  - [x] 4.4 Write the property test for Property 8 in `tests/test_clean_filters.py`, with Hypothesis
     - **Property 8: Large stored values change nothing and raise no floating-point error**
     - **Validates: Requirements 2.11**
     - Add the design's "Splats for the extremes" strategies to `tests/splats.py`.
@@ -228,7 +228,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Second half: adding a constant `c` of up to ±10⁶ to every stored scale, and multiplying every centre by `2**m` with `m` from -20 to 20, leaves `faint_keep`'s answer the same. The strategy draws the values so that every one stays exact in float32. Drop with `assume` a draw whose share test is within a relative 10⁻⁶ of its threshold.
     - _Requirements: 2.11_
 
-  - [ ] 4.5 Run the tests and commit
+  - [x] 4.5 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/clean`: `git add splatpipe/clean/faint.py tests/splats.py tests/test_clean_filters.py`, then commit those files with the title "Clean step: faint filter" and the body "Adds faint.py, which judges every faint Gaussian with the rest of its cube, so a faint sheet that paints a visible surface stays and scattered faint specks go, with no opacity floor. It works in the log domain and never casts a cube to an integer, so no finite stored value can overflow it, and the properties check it against a plain-Python reference."
     - _Requirements: 10.1, 10.2_
