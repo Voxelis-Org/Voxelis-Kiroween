@@ -14,8 +14,14 @@ the repo root, and none runs the step.
   found with rglob, imports a GPU package (Req 6.15), and every *.py in splatpipe/clean/ imports
   only the standard library, numpy, scipy and splatpipe, so nothing from cloud/ (Req 8.5). Each
   failure lists the file and the line of every import it found.
+- The dependencies (Req 6.11), read with tomllib: pyproject.toml's [project].dependencies name
+  numpy and scipy, neither they nor its dev group name a GPU package, and uv.lock holds none, so
+  uv sync on a laptop installs none. Package names are compared as PEP 503 normalises them.
+- The Licence_List (Req 9.7), read by tests/test_docs.py's own licence_row, which finds a row by
+  its Name cell: the numpy and scipy rows each start their Installed cell with Yes.
 """
 
+import re
 import sys
 import tomllib
 from typing import Any
@@ -26,12 +32,16 @@ from splatpipe.clean.settings import check_settings
 from splatpipe.config import REPO_ROOT, load_config
 
 from test_config import is_comment_line, split_statements
+from test_docs import licence_row
 from test_imports import imports_of, top
 
 SPLATPIPE = REPO_ROOT / "splatpipe"
 CLEAN = SPLATPIPE / "clean"
 # The real config, read by path, because conftest.py points CONFIG_PATH at a test config.
 REAL_CONFIG = REPO_ROOT / "config.toml"
+# What uv sync installs from, read by path with tomllib (Req 6.11).
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+UV_LOCK = REPO_ROOT / "uv.lock"
 
 # The sixteen Shared_Settings of Req 6.2 with the values Req 6.4 gives them, written out here
 # rather than taken from the code under test or the test config.
@@ -67,6 +77,10 @@ GPU_NAMES = frozenset({"torch", "torchvision", "gsplat", "cupy", "pycuda", "trit
                        "cuda"})
 # What a file in splatpipe/clean/ may import, by top-level name (Req 8.5). cloud isn't one.
 CLEAN_MAY_IMPORT = sys.stdlib_module_names | {"numpy", "scipy", "splatpipe"}
+# The GPU packages that neither pyproject.toml nor uv.lock may name (Req 6.11): these names, and
+# any name that starts with nvidia- or cuda-, like the CUDA packages torch's CUDA wheels pull in.
+GPU_PACKAGES = frozenset({"torch", "torchvision", "gsplat", "cupy", "pycuda", "triton"})
+GPU_PREFIXES = ("nvidia-", "cuda-")
 
 
 def real_clean_section() -> dict[str, Any]:
@@ -93,6 +107,24 @@ def uncommented_clean_keys(text: str) -> list[tuple[int, str]]:
                 above is not None and is_comment_line(above)):
             missing.append((statement.line, next(iter(statement.parsed))))
     return missing
+
+
+def package_name(requirement: str) -> str:
+    """The package name a PEP 508 requirement starts with, normalised as PEP 503 says: lower case,
+    with each run of -, _ and . as one -. NVIDIA_cudnn_cu12>=9 gives nvidia-cudnn-cu12."""
+    name = re.split(r"[^A-Za-z0-9._-]", requirement.strip(), maxsplit=1)[0]
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def is_gpu_package(requirement: str) -> bool:
+    """Whether a requirement, or a bare package name, names a GPU package (Req 6.11)."""
+    name = package_name(requirement)
+    return name in GPU_PACKAGES or name.startswith(GPU_PREFIXES)
+
+
+def read_pyproject() -> dict[str, Any]:
+    """The real pyproject.toml, read by path, as tomllib reads it."""
+    return tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
 
 
 # The real config.toml
@@ -155,3 +187,33 @@ def test_splatpipe_clean_imports_only_the_standard_library_numpy_scipy_and_splat
     found = [(where, name) for path in sorted(CLEAN.rglob("*.py"))
              for where, name in imports_of(path) if top(name) not in CLEAN_MAY_IMPORT]
     assert found == []
+
+
+# The dependencies
+
+def test_the_runtime_dependencies_name_numpy_and_scipy() -> None:
+    """Req 6.11."""
+    dependencies = read_pyproject()["project"]["dependencies"]
+    assert {"numpy", "scipy"} <= {package_name(requirement) for requirement in dependencies}
+
+
+def test_neither_the_runtime_dependencies_nor_the_dev_group_name_a_gpu_package() -> None:
+    """Req 6.11."""
+    pyproject = read_pyproject()
+    requirements = [*pyproject["project"]["dependencies"], *pyproject["dependency-groups"]["dev"]]
+    assert [requirement for requirement in requirements if is_gpu_package(requirement)] == []
+
+
+def test_uv_lock_holds_no_gpu_package() -> None:
+    """Req 6.11. uv sync installs only the packages in uv.lock, so a laptop gets no GPU package."""
+    lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
+    names = [package["name"] for package in lock["package"]]
+    assert [name for name in names if is_gpu_package(name)] == []
+
+
+# The Licence_List
+
+@pytest.mark.parametrize("name", ["numpy", "scipy"])
+def test_the_numpy_and_scipy_licence_rows_start_their_installed_cell_with_yes(name: str) -> None:
+    """Req 9.7. The row is found by its Name cell, with tests/test_docs.py's own licence_row."""
+    assert licence_row(name)["Installed"].startswith("Yes")
