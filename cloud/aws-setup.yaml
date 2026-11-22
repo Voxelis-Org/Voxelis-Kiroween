@@ -425,11 +425,11 @@ Resources:
               StringEquals:
                 ssm:resourceTag/aws:ssmmessages:session-id: "${aws:userid}"
 
-  # The role that our start, smoke-test and stop-all commands use, through each person's runner
-  # profile. Its trust policy names the account's root principal, because an IAM group can't be a
-  # principal, so only principals in this account whose own policies allow sts:AssumeRole on this
-  # role can assume it. It asks for no MFA, because the start command can't type a code.
-  # MaxSessionDuration stays at its default of one hour.
+  # The role that our start, image-build, smoke-test and stop-all commands use, through each
+  # person's runner profile. Its trust policy names the account's root principal, because an IAM
+  # group can't be a principal, so only principals in this account whose own policies allow
+  # sts:AssumeRole on this role can assume it. It asks for no MFA, because the start command can't
+  # type a code. MaxSessionDuration stays at its default of one hour.
   RunnerRole:
     Type: AWS::IAM::Role
     Properties:

@@ -54,7 +54,7 @@ These apply to Kiro and to everyone on the team.
 - Kiro and the team still need an OK for every run they start by hand.
 - It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- Once the person in the chat says yes to a paid run, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- Once the person in the chat says yes to a paid run, Kiro runs our start, image-build or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
 - The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
@@ -62,7 +62,7 @@ These apply to Kiro and to everyone on the team.
 ## AWS access
 
 - Everything runs in us-east-1.
-- Kiro uses the read-only profile `kiroween-read`. It uses the runner profile `kiroween-runner` only inside our start, smoke-test and stop-all commands, and never any other AWS profile.
+- Kiro uses the read-only profile `kiroween-read`. It uses the runner profile `kiroween-runner` only inside our start, image-build, smoke-test and stop-all commands, and never any other AWS profile.
 - Never rely on `AWS_PROFILE`. AWS keys saved in environment variables beat it, so `AWS_PROFILE=kiroween-read` can run as another account. Only a profile named in the command or in the code beats them.
 - In aws commands, always pass `--profile kiroween-read`.
 - In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
