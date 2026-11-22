@@ -19,14 +19,28 @@ PLY layout, vertex_values fills its vertex element with values from from_dtype, 
 payloads, infinities and -0.0 included, and row_subsets picks the rows to write. layouts draws
 the extra properties' types from ply_read.py's PLY_TYPES, so every type the reader takes turns
 up, but vertex_values types the values with the builder's own STRUCT_CODES.
+
+The Splats strategy is for Properties 1, 2 and 7 in tests/test_clean_filters.py and
+tests/test_clean_limits.py: splats gives Splat_Data of 1 to 60 Gaussians, with NaNs and
+infinities in any property. has_tied_distances is the brute-force tie check, which splats uses
+to drop a draw in which a Gaussian has two others at the same Centre_Distance (Req 10.13).
+
+The Centre sets strategy is for Property 3 in tests/test_clean_filters.py: centre_sets gives a k
+and a set of more than k centres for nearest_others to search, coincident pairs included.
+twin_candidates says where a pair can go without making a tie at a Gaussian's k-th nearest, and
+has_tie_at_kth_nearest is the brute-force check that drops a draw with one (Req 10.13).
 """
 
 import functools
+import itertools
+import math
 import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 import numpy as np
+from hypothesis import assume
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import from_dtype
 
@@ -296,3 +310,256 @@ def row_subsets(count: int) -> st.SearchStrategy[np.ndarray]:
     none twice, and never none, because the reader refuses a vertex count of 0."""
     return st.sets(st.integers(min_value=0, max_value=count - 1), min_size=1).map(
         lambda chosen: np.array(sorted(chosen), dtype=np.intp))
+
+
+# Splats, for Properties 1, 2 and 7
+
+T = TypeVar("T")
+
+
+def mostly(plain: st.SearchStrategy[T], *others: T, one_in: int = 4) -> st.SearchStrategy[T]:
+    """Values from `plain`, except one time in `one_in`, when it's one of `others`, which
+    Hypothesis shrinks back to a value from `plain`. By default that's three times in four, and
+    one of `others` the fourth time.
+
+    st.one_of(plain, plain, plain, ...) wouldn't weight them, because one_of keeps each strategy
+    it's given only once.
+    """
+    sometimes = st.sampled_from(others)
+    return st.integers(min_value=0, max_value=one_in - 1).flatmap(
+        lambda k: plain if k < one_in - 1 else sometimes)
+
+
+# The most Gaussians splats gives. Few, so the brute-force tie check and oracles stay quick.
+MOST_GAUSSIANS = 60
+# A lattice point's coordinates are whole numbers from -LATTICE_REACH to LATTICE_REACH.
+LATTICE_REACH = 3
+# The most clusters one splat has. A cluster is a lattice point that many Gaussians share, so
+# they sit within the jitter of each other, and one Cube can hold enough Faint_Gaussians to keep
+# them.
+MOST_CLUSTERS = 3
+# Where a Gaussian's centre is before its jitter: a lattice point four times in nine, a cluster
+# four times in nine, and a far outlier the ninth time. Hypothesis shrinks to the first.
+CENTRE_KINDS = ("lattice",) * 4 + ("cluster",) * 4 + ("outlier",)
+# The index-based jitter: Gaussian i's centre moves by JITTERS[i], a fixed table of random values
+# from 0 to 0.01 on each axis, so Gaussians that share a lattice point or a cluster don't share a
+# centre. A far outlier's jitter is scaled by its factor, as FAR_FACTORS says. The design's
+# (i * 0.618033...) % 1 often takes the same step from Gaussian i - 1 to i as from i to i + 1,
+# which leaves i with two others at the same distance. On these splats without far outliers, it
+# put a tie in half to two thirds of the draws, and this table in none of 1,200.
+JITTERS = 0.01 * np.random.default_rng(1).random((MOST_GAUSSIANS, 3))
+# What pushes a far outlier out from a lattice point other than the origin: a factor from 10 to
+# 10**6, and 1e38 one time in 64, so the outliers' coordinates reach 3e38 and -3e38. The factor
+# multiplies the lattice point after its jitter is added, so the jitter grows with it. Added
+# after the factor, a jitter of at most 0.01 is lost to float32's rounding at coordinates from
+# about 10**5 up, which left two far outliers on one centre, or two at one distance from a third,
+# in about 13% of the draws. From a factor of about 1e15 on, float64 can't keep apart the distances from
+# such an outlier to the Gaussians near the lattice, so a draw with such an outlier and two other
+# Gaussians near the lattice has a tie and is dropped. That's why 1e38 is the only factor that
+# large, and why it's rare. One time in four, it put a tie in 40 to 50% of the draws, and none of
+# 300 draws that passed held a 1e38 outlier.
+FAR_FACTORS = mostly(st.floats(min_value=10.0, max_value=1e6), 1e38, one_in=64)
+# Stored opacities and scales beyond their plain ranges, near float32's largest value, about
+# 3.4028e38.
+HUGE = (3.4e38, -3.4e38)
+# Unit quaternions that float32 holds exactly: 1 or -1 in one component and 0 in the rest, or 0.5
+# or -0.5 in all four, so each component is sometimes the only one that isn't 0.
+UNIT_QUATERNIONS = (*(tuple(sign if k == axis else 0.0 for k in range(4))
+                      for axis in range(4) for sign in (1.0, -1.0)),
+                    *itertools.product((0.5, -0.5), repeat=4))
+# The quaternions of zero length: four zeros, each of them 0.0 or -0.0.
+ZERO_QUATERNIONS = tuple(itertools.product((0.0, -0.0), repeat=4))
+# The eleven Required_Properties, written out here rather than taken from ply_read.py's REQUIRED,
+# and the other properties of standard_fields(), the Carried_Properties.
+REQUIRED_NAMES = ("x", "y", "z", "opacity", "scale_0", "scale_1", "scale_2",
+                  "rot_0", "rot_1", "rot_2", "rot_3")
+CARRIED_NAMES = tuple(name for name, _ in standard_fields() if name not in REQUIRED_NAMES)
+# The values that splats puts in a property to break it, or to show that it's carried.
+NOT_FINITE = (math.nan, math.inf, -math.inf)
+
+lattice_points = st.tuples(*[st.integers(min_value=-LATTICE_REACH, max_value=LATTICE_REACH)] * 3)
+# A far outlier, as a lattice point other than the origin and the factor that pushes it out.
+far_outliers = st.tuples(lattice_points.filter(any), FAR_FACTORS)
+stored_scales = mostly(st.floats(min_value=-8, max_value=3, width=32), *HUGE)
+quaternions = mostly(st.sampled_from(UNIT_QUATERNIONS), *ZERO_QUATERNIONS)
+# What to put in one Gaussian: a NaN or an infinity in one of its Required_Properties, or in one
+# of its Carried_Properties, or None for nothing.
+required_faults = st.none() | st.tuples(st.sampled_from(REQUIRED_NAMES),
+                                        st.sampled_from(NOT_FINITE))
+carried_faults = st.none() | st.tuples(st.sampled_from(CARRIED_NAMES),
+                                       st.sampled_from(NOT_FINITE))
+
+
+@st.composite
+def centre_bases(draw: st.DrawFn,
+                 clusters: Sequence[tuple[int, int, int]]) -> tuple[tuple[int, int, int], float]:
+    """Where one Gaussian's centre is before its jitter, as a lattice point and the factor that
+    multiplies it once the jitter is added: a lattice point or one of `clusters`, with a factor
+    of 1, or a far outlier, as CENTRE_KINDS weights them."""
+    kind = draw(st.sampled_from(CENTRE_KINDS))
+    if kind == "lattice":
+        return draw(lattice_points), 1.0
+    if kind == "cluster":
+        return draw(st.sampled_from(clusters)), 1.0
+    return draw(far_outliers)
+
+
+def splats(*, min_opacity: float = clean_settings().min_opacity) -> st.SearchStrategy[np.ndarray]:
+    """Splat_Data of 1 to MOST_GAUSSIANS Gaussians, for Properties 1, 2 and 7: a structured array
+    with a float32 field for each property of standard_fields(), as gaussians gives.
+
+    - Centres are lattice points, clusters and far outliers up to 3e38 and -3e38, each moved by
+      its index-based jitter, which a far outlier's factor scales too.
+    - Stored opacities are mostly from -12 to 12, so Faint_Gaussians and the rest both turn up,
+      and otherwise 3.4e38, -3.4e38 or the exact logit of `min_opacity`, when that's finite.
+      `min_opacity` is the test settings' unless given.
+    - Stored scales are mostly from -8 to 3, and otherwise 3.4e38 or -3.4e38.
+    - Quaternions are mostly unit ones, and otherwise four zeros.
+    - Any Gaussian, up to every one, can have a NaN or an infinity in one Required_Property, and
+      any can have one in a Carried_Property. The other Carried_Properties keep the plain values
+      gaussians gives them.
+
+    A draw is dropped with assume when a Gaussian has two others at the same Centre_Distance
+    (Req 10.13). That's checked on the centres before any NaN or infinity goes in, when they're
+    all finite. A Gaussian that then gets a NaN or an infinity in its centre leaves only a subset
+    of the rest for a filter to search, and a subset has no ties if the whole set has none.
+    """
+    logit = (math.log(min_opacity / (1 - min_opacity)),) if 0 < min_opacity < 1 else ()
+    return splat_data(mostly(st.floats(min_value=-12, max_value=12, width=32), *logit, *HUGE))
+
+
+@st.composite
+def splat_data(draw: st.DrawFn, opacities: st.SearchStrategy[float]) -> np.ndarray:
+    """The draw that splats describes, with its stored opacities from `opacities`."""
+    n = draw(st.integers(min_value=1, max_value=MOST_GAUSSIANS))
+    clusters = draw(st.lists(lattice_points, min_size=1, max_size=MOST_CLUSTERS))
+
+    def one_each(values: st.SearchStrategy[T]) -> list[T]:
+        return draw(st.lists(values, min_size=n, max_size=n))
+
+    data = gaussians(n)
+    points, factors = zip(*one_each(centre_bases(clusters)))
+    centres = (np.array(factors)[:, None]
+               * (np.array(points, dtype=np.float64) + JITTERS[:n]))
+    for axis, name in enumerate(("x", "y", "z")):
+        data[name] = centres[:, axis]
+    # Checked here, before anything else is drawn, so a dropped draw costs little.
+    assume(not has_tied_distances(np.column_stack(
+        [data[name].astype(np.float64) for name in ("x", "y", "z")])))
+    data["opacity"] = one_each(opacities)
+    for name in ("scale_0", "scale_1", "scale_2"):
+        data[name] = one_each(stored_scales)
+    rotations = np.array(one_each(quaternions), dtype=np.float64)
+    for axis, name in enumerate(("rot_0", "rot_1", "rot_2", "rot_3")):
+        data[name] = rotations[:, axis]
+    for faults in (required_faults, carried_faults):
+        for row, fault in enumerate(one_each(faults)):
+            if fault is not None:
+                name, value = fault
+                data[name][row] = value
+    return data
+
+
+def has_tied_distances(centres: np.ndarray) -> bool:
+    """Whether one of `centres`, an (m, 3) float64 array of finite centres, has two others at the
+    same Centre_Distance, found by brute force (Req 10.13).
+
+    Each Centre_Distance is sqrt(dx*dx + dy*dy + dz*dz), summed in float64 in that order, which is
+    how the tree works it out, so a tie here is a tie in the tree. The centres are float32 values,
+    so no difference between two of them overflows or underflows when it's squared in float64.
+    Each centre's distances, sorted, start with its own 0, which is dropped. Two centres in one
+    place are at distance 0 from each other, so a third is at the same distance from both.
+    """
+    d = centres[:, None, :] - centres[None, :, :]
+    distances = np.sqrt(d[..., 0] * d[..., 0] + d[..., 1] * d[..., 1] + d[..., 2] * d[..., 2])
+    others = np.sort(distances, axis=1)[:, 1:]
+    return bool((others[:, 1:] == others[:, :-1]).any())
+
+
+# Centre sets, for Property 3
+
+# The largest k that centre_sets gives nearest_others: the top of the range the design's
+# settings strategy gives neighbours.
+MOST_NEIGHBOURS = 10
+# The most twins centre_sets puts in one set. A twin is a Gaussian on the centre of one already
+# there, so it makes a coincident pair, or a coincident triple when two twins share a centre.
+MOST_TWINS = 3
+
+
+@st.composite
+def centre_sets(draw: st.DrawFn) -> tuple[np.ndarray, int]:
+    """A k from 1 to MOST_NEIGHBOURS and a set of more than k centres for nearest_others to
+    search, coincident pairs included, for Property 3. The centres are an (m, 3) float64 array
+    of float32 values, as positions gives them.
+
+    - First come k + 1 to MOST_GAUSSIANS lattice points, clusters and far outliers, each moved
+      by its index-based jitter and stored as float32, as splats draws them.
+    - Then up to MOST_TWINS twins go on the end, each on a centre that twin_candidates allows,
+      so a twin never makes a tie at a Gaussian's k-th nearest.
+
+    A draw is dropped with assume when a Gaussian's k-th and (k + 1)-th nearest others are at
+    the same Centre_Distance, the rule of Req 10.13 for this set and its k, because then its k
+    nearest others are no single set. Every other tie stays, like the one a pair makes for each
+    other Gaussian, which has the two at one distance.
+
+    Put on a centre drawn at random, a twin made a tie at a Gaussian's k-th nearest in 78% of the
+    1,498 draws that had one, because the Gaussian it copies is often another's k-th nearest.
+    With twin_candidates, about 7 draws in 10 hold a pair and 4 in 100 a triple. In every draw
+    with a pair, the tree puts another Gaussian at distance 0 ahead of one in its own row, the
+    case nearest_others has to find the Gaussian in. The only draws dropped hold a far outlier
+    at 1e38, which is at one distance from every Gaussian near the lattice. That's about 4 draws
+    in 100, and up to 15 in one run of 100 examples.
+    """
+    k = draw(st.integers(min_value=1, max_value=MOST_NEIGHBOURS))
+    n = draw(st.integers(min_value=k + 1, max_value=MOST_GAUSSIANS))
+    clusters = draw(st.lists(lattice_points, min_size=1, max_size=MOST_CLUSTERS))
+    points, factors = zip(*draw(st.lists(centre_bases(clusters), min_size=n, max_size=n)))
+    stored = (np.array(factors)[:, None]
+              * (np.array(points, dtype=np.float64) + JITTERS[:n])).astype(np.float32)
+    centres = stored.astype(np.float64)
+    for _ in range(draw(st.integers(min_value=0, max_value=MOST_TWINS))):
+        candidates = twin_candidates(centres, k)
+        if not candidates:
+            break
+        centres = np.vstack([centres, centres[draw(st.sampled_from(candidates))]])
+    assume(not has_tie_at_kth_nearest(centres, k))
+    return centres, k
+
+
+def twin_candidates(centres: np.ndarray, k: int) -> list[int]:
+    """The rows of `centres`, an (m, 3) float64 array of more than k finite centres, whose centre
+    can take a twin without making a tie at a Gaussian's k-th nearest that wasn't there.
+
+    A twin of Gaussian a gives every other Gaussian c one more distance to the others, its
+    distance to a, and gives a a 0, its distance to the twin. That's the column of a in
+    centre_distances, whose own entry is 0. With s_k the distance of c's k-th nearest other, the
+    new distance makes a tie at c's k-th nearest exactly when it's s_k, or when it's below s_k
+    and c's (k - 1)-th nearest is at s_k too, which moves that tie up to the k-th and (k + 1)-th.
+    The twin's distances to the others are a's new ones, so it gets a tie exactly when a does.
+    """
+    distances = centre_distances(centres)
+    others = np.sort(distances, axis=1)[:, 1:]  # each one's distances to the others, nearest first
+    kth = others[:, k - 1 : k]  # s_k, as a column
+    moves_up = others[:, k - 2 : k - 1] == kth if k > 1 else np.zeros_like(kth, dtype=bool)
+    # ties[c, a] says a twin of a would make a tie at c's k-th nearest.
+    ties = (distances == kth) | ((distances < kth) & moves_up)
+    return np.flatnonzero(~ties.any(axis=0)).tolist()
+
+
+def has_tie_at_kth_nearest(centres: np.ndarray, k: int) -> bool:
+    """Whether one of `centres`, an (m, 3) float64 array of finite centres, has its k-th and
+    (k + 1)-th nearest others at the same Centre_Distance, found by brute force (Req 10.13).
+
+    Then its k nearest others are no single set, and the tree's order picks which count (A10). A
+    tie nearer in leaves them one set, so it doesn't count here. Nor can a set of k + 1 centres
+    have one, because each of them has only k others.
+    """
+    others = np.sort(centre_distances(centres), axis=1)[:, 1:]
+    return others.shape[1] > k and bool((others[:, k - 1] == others[:, k]).any())
+
+
+def centre_distances(centres: np.ndarray) -> np.ndarray:
+    """Every Centre_Distance between two of `centres`, an (m, 3) float64 array of finite centres,
+    as an (m, m) array, worked out as has_tied_distances does, which is how the tree does it."""
+    d = centres[:, None, :] - centres[None, :, :]
+    return np.sqrt(d[..., 0] * d[..., 0] + d[..., 1] * d[..., 1] + d[..., 2] * d[..., 2])
