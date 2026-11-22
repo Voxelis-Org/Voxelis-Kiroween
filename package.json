@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "name": "voxelis-kiroween-tools",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@playcanvas/splat-transform": "3.8.0"
+  }
+}

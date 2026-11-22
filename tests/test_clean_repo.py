@@ -17,13 +17,20 @@ the repo root, and none runs the step.
 - The dependencies (Req 6.11), read with tomllib: pyproject.toml's [project].dependencies name
   numpy and scipy, neither they nor its dev group name a GPU package, and uv.lock holds none, so
   uv sync on a laptop installs none. Package names are compared as PEP 503 normalises them.
+- The npm files (Req 6.12, 6.13), read with json: package.json pins @playcanvas/splat-transform
+  at exactly 3.8.0, package-lock.json resolves it to 3.8.0, and the name of every package in
+  package-lock.json but the root entry appears in the Licence_List, written as code.
 - The Licence_List (Req 9.7), read by tests/test_docs.py's own licence_row, which finds a row by
-  its Name cell: the numpy and scipy rows each start their Installed cell with Yes.
+  its Name cell: the numpy and scipy rows each start their Installed cell with Yes, and so do the
+  Node.js, splat-transform 3.8.0 and npm rows. The Node.js row says Node is never vendored,
+  linked or shipped.
 """
 
+import json
 import re
 import sys
 import tomllib
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -32,7 +39,7 @@ from splatpipe.clean.settings import check_settings
 from splatpipe.config import REPO_ROOT, load_config
 
 from test_config import is_comment_line, split_statements
-from test_docs import licence_row
+from test_docs import LICENCE_LIST, licence_row
 from test_imports import imports_of, top
 
 SPLATPIPE = REPO_ROOT / "splatpipe"
@@ -81,6 +88,17 @@ CLEAN_MAY_IMPORT = sys.stdlib_module_names | {"numpy", "scipy", "splatpipe"}
 # any name that starts with nvidia- or cuda-, like the CUDA packages torch's CUDA wheels pull in.
 GPU_PACKAGES = frozenset({"torch", "torchvision", "gsplat", "cupy", "pycuda", "triton"})
 GPU_PREFIXES = ("nvidia-", "cuda-")
+# What npm ci installs splat-transform from, read by path with json (Req 6.12, 6.13).
+PACKAGE_JSON = REPO_ROOT / "package.json"
+PACKAGE_LOCK = REPO_ROOT / "package-lock.json"
+# splat-transform's npm name and the one version both npm files pin it at (Req 6.12).
+SPLAT_TRANSFORM = "@playcanvas/splat-transform"
+SPLAT_TRANSFORM_VERSION = "3.8.0"
+# The Licence_List rows that Req 9.7 marks installed, by their Name cells. The splat-transform
+# row's holds the pinned version, so a row for another version isn't found.
+NODE_ROW = "Node.js"
+SPLAT_TRANSFORM_ROW = "PlayCanvas splat-transform 3.8.0 (`@playcanvas/splat-transform`)"
+NPM_ROW = "npm"
 
 
 def real_clean_section() -> dict[str, Any]:
@@ -125,6 +143,20 @@ def is_gpu_package(requirement: str) -> bool:
 def read_pyproject() -> dict[str, Any]:
     """The real pyproject.toml, read by path, as tomllib reads it."""
     return tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+
+
+def read_json(path: Path) -> Any:
+    """One of the repo's real JSON files, read by path."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def lockfile_package_names() -> list[str]:
+    """The name of every package in package-lock.json, sorted and each once, from its key under
+    packages, which is its folder: the name is what follows the last node_modules/, so
+    node_modules/@adobe/spz gives @adobe/spz. The root entry's key is "", because it's the repo
+    itself, so it isn't one (Req 6.13)."""
+    return sorted({key.rpartition("node_modules/")[2]
+                   for key in read_json(PACKAGE_LOCK)["packages"] if key})
 
 
 # The real config.toml
@@ -211,9 +243,56 @@ def test_uv_lock_holds_no_gpu_package() -> None:
     assert [name for name in names if is_gpu_package(name)] == []
 
 
+# The npm files
+
+def test_package_json_pins_splat_transform_at_exactly_3_8_0() -> None:
+    """Req 6.12. The exact string, so no ^, ~ or range lets npm pick another version."""
+    pin = read_json(PACKAGE_JSON).get("dependencies", {}).get(SPLAT_TRANSFORM)
+    assert pin == SPLAT_TRANSFORM_VERSION, (
+        f"package.json should pin {SPLAT_TRANSFORM} at exactly {SPLAT_TRANSFORM_VERSION}, "
+        f"not {pin!r}")
+
+
+def test_package_lock_json_resolves_splat_transform_to_3_8_0() -> None:
+    """Req 6.12. npm ci installs exactly what the lockfile resolves."""
+    entry = read_json(PACKAGE_LOCK)["packages"].get(f"node_modules/{SPLAT_TRANSFORM}", {})
+    version = entry.get("version")
+    assert version == SPLAT_TRANSFORM_VERSION, (
+        f"package-lock.json should resolve {SPLAT_TRANSFORM} to {SPLAT_TRANSFORM_VERSION}, "
+        f"not {version!r}")
+
+
+def test_the_licence_list_names_every_package_in_package_lock_json() -> None:
+    """Req 6.13. A name counts when it's written as code, like `ms`, because a bare ms is inside
+    words like terms and would always be found."""
+    text = LICENCE_LIST.read_text(encoding="utf-8")
+    missing = [name for name in lockfile_package_names() if f"`{name}`" not in text]
+    assert missing == [], (
+        f"the Licence_List should name these packages from package-lock.json: {missing}")
+
+
 # The Licence_List
 
 @pytest.mark.parametrize("name", ["numpy", "scipy"])
 def test_the_numpy_and_scipy_licence_rows_start_their_installed_cell_with_yes(name: str) -> None:
     """Req 9.7. The row is found by its Name cell, with tests/test_docs.py's own licence_row."""
     assert licence_row(name)["Installed"].startswith("Yes")
+
+
+@pytest.mark.parametrize("name", [NODE_ROW, SPLAT_TRANSFORM_ROW, NPM_ROW],
+                         ids=["Node.js", "splat-transform", "npm"])
+def test_the_node_splat_transform_and_npm_licence_rows_start_their_installed_cell_with_yes(
+        name: str) -> None:
+    """Req 9.7. Each row is found by its Name cell, with tests/test_docs.py's own licence_row."""
+    installed = licence_row(name)["Installed"]
+    assert installed.startswith("Yes"), (
+        f"the Licence_List's {name!r} row should start its Installed cell with Yes, "
+        f"not {installed!r}")
+
+
+def test_the_node_licence_row_says_node_is_never_vendored_linked_or_shipped() -> None:
+    """Req 9.7. Worded like the rows of the other command line tools, such as git and npm."""
+    how = licence_row(NODE_ROW)["How we use it"]
+    assert "never vendored, linked or shipped" in how.lower(), (
+        f"the Licence_List's {NODE_ROW!r} row should say Node is never vendored, linked or "
+        f"shipped, not {how!r}")
