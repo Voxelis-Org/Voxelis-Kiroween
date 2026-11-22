@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from splatpipe.clean.settings import check_plain_name, check_settings
@@ -29,11 +29,20 @@ PRESET_NAMES = ("fast", "default", "quality")
 
 def refusal(**values: object) -> str:
     """The message of the ExpectedFailure that check_settings raises for the test config's
-    settings with `values` changed, as clean_settings builds them. It must hold no traceback."""
+    settings with `values` changed, as clean_settings builds them. It must hold no traceback.
+
+    A refusal can echo the values, and Property 10 can draw a name like Traceback.ply, so the
+    check reads only the words the code wrote itself: the message with each value taken out, as
+    its repr and as its str. The longest go first, so a short name can't split a longer one.
+    """
     with pytest.raises(ExpectedFailure) as caught:
         clean_settings(**values)
     message = str(caught.value)
-    assert "Traceback" not in message
+    own_words = message
+    shown = [text for value in values.values() for text in (repr(value), str(value))]
+    for text in sorted(shown, key=len, reverse=True):
+        own_words = own_words.replace(text, "")
+    assert "Traceback" not in own_words
     return message
 
 
@@ -238,6 +247,11 @@ def is_plain_name(name: str, ending: str | None) -> bool:
 
 @settings(deadline=None)
 @given(names, st.sampled_from(NAME_SETTINGS), three_names())
+# A clash whose refusal echoes the word Traceback in both names, which the no-traceback check
+# must not take for a traceback.
+@example(name="Traceback.ply", key="train_ply",
+         three={"train_ply": "Traceback.ply", "clean_ply": "traceback.ply",
+                "clean_sog": "clean.sog"})
 def test_the_file_name_checks_accept_exactly_the_plain_distinct_names(
         name: str, key: str, three: dict[str, str]) -> None:
     """Feature: clean, Property 10: The file-name checks accept exactly the plain, distinct names
