@@ -22,7 +22,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - `splatpipe/train/__init__.py`: task 1 makes it with only the package docstring, and task 7 writes the step.
 - `tests/conftest.py`: task 1 adds `TRAIN`, `TRAIN_PRESETS`, `train_text`, `config_text`'s `train` argument, `set_train` and `no_cap_deadline`, and task 7 adds `FakeGpu` and `fake_gpu`.
 - `tests/camera_files.py`: task 3 writes `write_model`, and task 6 adds `write_camera_solve_output`.
-- `tests/test_imports.py`: task 1 adds the train import check and `fused-ssim`, task 8 adds `gpu.py`'s source checks and the fresh-process import, and task 10 changes the Step_List check's docstring.
+- `tests/test_imports.py`: task 1 adds the train import check and `fused-ssim`, task 8 adds `gpu.py`'s source checks and the fresh-process import, and task 10 changes three docstrings: the Step_List check's, and the two that say the clean spec can decide scipy.
 - `tests/test_train_settings.py`: task 1 writes it, and task 10 adds the Fallback_List test.
 - `config.toml`: task 1 adds `[train]`, and task 9 adds the seven `[cloud.smoke]` keys.
 - `docs/pipeline.md` and `tests/test_docs.py`: task 9 changes and tests the smoke test part, and task 10 adds and tests `## Step: train` and four other parts. Before them, task 6 changes the `opencv-python-headless` row of `docs/third-party-licences.md` and its test in `tests/test_docs.py`.
@@ -30,7 +30,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 ## Working rules for every task
 
 - Work on the existing `feat/splat-training` branch, never on `main`. Others commit to it too, so build on it as it is, with no rebase, reset or force push.
-- The only step folder this spec makes is `splatpipe/train/`. Of the Skeleton, only the Step_List in `splatpipe/run.py` changes, in task 10. Outside `splatpipe/train/`, only the files in the design's "Changes outside `splatpipe/train/`" table change. The clean-export spec's files and the cloud-jobs and frames requirements files stay as they are (D4, A14).
+- The only step folder this spec makes is `splatpipe/train/`. Of the Skeleton, only the Step_List in `splatpipe/run.py` changes, in task 10. Outside `splatpipe/train/`, only the files in the design's "Changes outside `splatpipe/train/`" table change. The clean spec's files and the cloud-jobs and frames requirements files stay as they are, and the Clean_Step stays out of `STEP_LIST` (D5, A14).
 - No new Python package (A1). `pyproject.toml` and `uv.lock` don't change and nothing new is installed, so the Licence_List gains no line.
 - torch, gsplat and fused-ssim are imported only by `splatpipe/train/gpu.py`. Every other file in `splatpipe/train/` imports only the standard library, numpy, cv2 and `splatpipe`, and nothing in `splatpipe/` imports `cloud/` or boto3. The step reaches `gpu.py` only through its `GPU` hook, when it runs.
 - No laptop test imports `splatpipe/train/gpu.py`, except to read its source as text. The tests run the step's GPU calls through `FakeGpu`, and reach `load_gpu`'s import only with `splatpipe.train.gpu_api.importlib` replaced by a stand-in.
@@ -188,7 +188,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
 - [ ] 4. The scene and the start splats
   - Files: `splatpipe/train/scene.py`, `splatpipe/train/splats.py`, `tests/test_train_scene.py` and `tests/test_train_splats.py`, all new.
-  - _Requirements: 1.18, 1.19, 1.20, 3.1, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14, 3.15, 3.16, 5.10, 6.4, 6.5, 6.6, 6.8, 14.1, 14.2, 14.3, 14.6, 14.12_
+  - _Requirements: 1.18, 1.19, 1.20, 3.1, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14, 3.15, 3.16, 5.10, 6.4, 6.5, 6.6, 6.8, 8.9, 14.1, 14.2, 14.3, 14.6, 14.12_
 
   - [ ] 4.1 Write `splatpipe/train/scene.py`
     - Load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before writing code.
@@ -201,12 +201,13 @@ Some files grow over several tasks, so each piece comes with the first task that
 
   - [ ] 4.2 Write `splatpipe/train/splats.py`
     - Load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before writing code, for SH_C0 and the colour, opacity and scale conventions.
-    - `SH_C0`, `SH_REST`, `Splats`, `choose_points()`, `need_points()`, `log_start_distances()`, `start_log_scales()`, `start_splats()`, `mean_exposure()` and `bake_exposure()`, as in the design's "splats.py (pure)" section. The module imports only the standard library, numpy and `splatpipe`.
+    - `SH_C0`, `SH_REST`, `Splats` with its `__len__`, `choose_points()`, `need_points()`, `log_start_distances()`, `start_log_scales()`, `start_splats()`, `mean_exposure()`, `bake_exposure()` and `drop_non_finite()`, as in the design's "splats.py (pure)" section. The module imports only the standard library, numpy and `splatpipe`.
     - `choose_points` keeps the subset in file order with `np.sort`. `need_points` refuses a count below `neighbours` + 1 with the Req 1.18 message.
     - `log_start_distances` never forms the root mean square: each row's log is log m + ½ · log(mean((d / m)²)), with m the row's largest distance. A row with m = 0 takes the smallest log of the other rows, and an all-zero array is refused with the Req 3.15 message. `start_log_scales` adds `log(factor)` and gives three equal columns.
     - `start_splats` gives float32 arrays as Req 3.12 says, with `sh_rest` of shape (N, 15, 3).
     - `mean_exposure` and `bake_exposure` work in float64, and the bake changes only the colours.
-    - _Requirements: 1.18, 3.11, 3.12, 3.13, 3.14, 3.15, 6.4, 6.5, 6.6_
+    - `len(splats)` is N, `means.shape[0]`. `drop_non_finite` rounds each of the six arrays to float32 inside `np.errstate(over="ignore")`, the rounding the PLY_Writer does, and reduces `np.isfinite` over every axis but the first into one `keep` of length N. It gives back each array's `[keep]`, with the input's own values and dtypes, and the number dropped as an `int`. With nothing dropped, it gives back the `Splats` it was given, with no copy.
+    - _Requirements: 1.18, 3.11, 3.12, 3.13, 3.14, 3.15, 6.4, 6.5, 6.6, 8.9_
 
   - [ ] 4.3 Write unit tests for the scene in `tests/test_train_scene.py`
     - `training_size` with a `long_edge` of 1600 gives 1600 × 900 for 3840 × 2160 and for 2001 × 1125, and 900 × 1600 for 2160 × 3840, and keeps 1600 × 900 and 64 × 48 as they are.
@@ -225,7 +226,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `log_start_distances` refuses an all-zero array with the Req 3.15 message.
     - `start_splats` for one splat gives the colour, the zero `sh_rest`, the logit of 0.5, the identity rotation and the log scale worked out by hand.
     - `mean_exposure` of two fixes is their element-wise mean.
-    - _Requirements: 1.18, 3.11, 3.12, 3.15, 6.4, 14.1, 14.6_
+    - `drop_non_finite`: splats with no non-finite value all come back unchanged, with a count of 0. One NaN in one field, tried in each of the 59 fields in turn, drops that splat alone, and +inf and −inf drop theirs. A baked float64 value too big for float32 drops its splat. When every splat holds a non-finite value, `len()` of the kept splats is 0 and the count is all of them. The splats kept stay in their order.
+    - _Requirements: 1.18, 3.11, 3.12, 3.15, 6.4, 8.9, 14.1, 14.6_
 
   - [ ] 4.5 Write the property test for Property 2 in `tests/test_train_splats.py`, with Hypothesis
     - **Property 2: Every Start_Splat gets a finite log scale, the same on all three axes**
@@ -254,7 +256,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Load `skill::gsplat-training` and `skill::splat-files` with `load_resource` before writing code. The Splat_Layout is the splat-files skill's standard 3DGS PLY, the layout the gsplat-training skill says `export_splats(format="ply")` writes, but the PLY_Writer is our own numpy code and never calls `export_splats()`.
     - `FIELDS`, `RECORD_BYTES`, `splat_header()`, `splat_records()`, `write_ply()`, `read_ply()` and `check_ply()`, as in the design's "ply.py" section and "The Splat_Layout (`out/train.ply`)". The module imports only the standard library, numpy and `splatpipe`.
     - `splat_records` fills one `np.empty((N, 59), "<f4")` by columns, with `sh_rest.transpose(0, 2, 1).reshape(N, 45)`, so `f_rest_k` holds channel k // 15's coefficient k % 15. Opacities stay logits, scales stay logs and quaternions go out w first. A float32 input is copied bit for bit, and a float64 one is rounded inside `np.errstate(over="ignore")`, so a value too big for float32 becomes an infinity that the check reports.
-    - `write_ply` writes the header, then the records' own buffer through `memoryview`, with every splat it's given. An `OSError` is the Req 8.10 `ExpectedFailure`, naming the file and `error.strerror`.
+    - `write_ply` writes the header, then the records' own buffer through `memoryview`, with every splat it's given, 0 included. An `OSError` is the Req 8.10 `ExpectedFailure`, naming the file and `error.strerror`.
     - The header parse that the reader and the check share reads a bounded prefix, `len(splat_header(max(1, size // RECORD_BYTES)))` bytes, and checks every line, the field names in order, any other line with its number, and the file's size.
     - `read_ply` gives one float32 array per field, for 0 splats too. `check_ply` refuses 0 splats and any value that isn't finite, giving how many splats hold one and each field with its count, and gives back N.
     - _Requirements: 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.9, 8.10, 8.13_
@@ -357,7 +359,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `GPU: Callable[[], Gpu] = load_gpu`, `run()` and `work()`, as in the design's "The step's flow (`__init__.py`)" section. `run` calls `run_step("train", "splatpipe.train", ...)`, like the Fake_Step. `work` reads `GPU` when it runs, so a test's `monkeypatch` reaches it through `run`, `run_step`, the CLI and `run_job`, and `import splatpipe.train` imports no GPU package.
     - `work` follows the design's 11 numbered steps in the order of A9: remove `out/train.ply`, the settings, the Cap_Deadline and the Stop_Time, `check_inputs`, then `GPU()`, the probe and `check_gpu`. Only then come the load, the training, the write, the check, the move and the Train_Record, inside `step.timed("load")`, `"train"`, `"write_ply"` and `"check_ply"` as the design places them.
     - Each count is added with `int(...)` as soon as it's known, at the point the design's Train_Report table gives, so a failed report holds exactly what the step had worked out.
-    - `_out_of_memory(preset, cfg)` wraps both GPU calls and turns `GpuOutOfMemory` into `out_of_memory_failure`. With 0 Iterations run, the step fails with the Req 7.9 message, and with fewer than `steps`, it adds the Req 7.8 warning. The Req 3.11 and Req 7.8 warnings are worded as the design gives them.
+    - `_out_of_memory(preset, cfg)` wraps both GPU calls and turns `GpuOutOfMemory` into `out_of_memory_failure`. With 0 Iterations run, the step fails with the Req 7.9 message, and with fewer than `steps`, it adds the Req 7.8 warning.
+    - In the write block, `drop_non_finite` runs on the baked splats, after `bake_exposure` and before `write_ply`. When it dropped any, the step adds the Req 8.9 warning with the count. `splats` is added as `len(kept)`, the splats written. When it dropped every splat, `write_ply` writes 0 splats and the PLY_Check's "holds no splats" fails the run, with no new refusal. The Req 3.11, 7.8 and 8.9 warnings are worded as the design gives them.
     - The step writes only `work/train/train.ply`, `work/train/train.json` and `out/train.ply`, and relies on the Step_Runner emptying `work/train/` first. It imports only the standard library, numpy, `splatpipe.errors`, `splatpipe.step` and the CPU modules of `splatpipe/train/`.
     - _Requirements: 1.1, 1.2, 1.19, 2.1, 2.12, 3.11, 6.7, 7.1, 7.3, 7.7, 7.8, 7.9, 8.1, 8.2, 8.6, 8.7, 8.8, 8.9, 8.11, 8.12, 9.12, 10.1, 10.2, 10.3, 10.4, 10.5, 10.7, 11.1, 11.3, 11.6, 11.7, 11.8_
 
@@ -368,7 +371,7 @@ Some files grow over several tasks, so each piece comes with the first task that
   - [ ] 7.3 Add `FakeGpu` and `fake_gpu` to `tests/conftest.py`
     - `FakeGpu`, the GPU_Stand_In, as the design's "Stand-ins" section describes it. It's built with a `GpuInfo`, by default CUDA, gsplat `"1.5.3"` and 24,146,608,128 bytes, and records every call and the scene and Start_Splats it's given.
     - `nearest_distances` is brute force in numpy. `train` counts Iterations up to `settings.steps`, stopping when the real `should_stop(utc_now(), stop)` says so or at its own `stop_after`. It gives back the Start_Splats as float32, an `[I | 0]` Exposure_Fix per view or one the test sets, the Iterations it counted and their last SH_Degree from the real `sh_degree`.
-    - It can be set to raise from either GPU call, like `GpuOutOfMemory(812)` or `NonFiniteLoss`, or to give back one splat with a NaN opacity. `peak_memory_bytes()` gives a number the test sets.
+    - It can be set to raise from either GPU call, like `GpuOutOfMemory(812)` or `NonFiniteLoss`, or to give back one splat with a NaN opacity, or every splat with one. `peak_memory_bytes()` gives a number the test sets.
     - The `fake_gpu` fixture installs each `FakeGpu` it builds with `monkeypatch.setattr("splatpipe.train.GPU", lambda: gpu)`, as `fake_tools` installs `TOOLS`. Like `FakeTools`, `FakeGpu` imports what it needs from `splatpipe.train` inside its methods and the fixture, so conftest imports no step package at module level.
     - _Requirements: 11.6, 14.4_
 
@@ -382,16 +385,17 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The scene `FakeGpu` was given holds every image in file order with the model's poses, and its Start_Splats sit at the model's points.
     - More points than `max_splats`, with `set_train(max_splats={"fast": 5})`, gives the Req 3.11 warning and 5 Start_Splats.
     - A stop after 3 Iterations still writes and checks the splat and adds the Req 7.8 warning. A second run on the same Job leaves only its own files.
-    - _Requirements: 1.19, 1.20, 3.11, 6.7, 7.7, 7.8, 8.2, 8.6, 8.8, 8.11, 8.12, 10.1, 10.2, 10.4, 10.5, 10.6, 10.7, 11.8, 14.4, 14.5_
+    - A NaN splat from the stand-in is dropped: the report holds the Req 8.9 warning with a count of 1, and the run is done with a checked `out/train.ply` one splat shorter than the Start_Splats, which `counts.splats` gives.
+    - _Requirements: 1.19, 1.20, 3.11, 6.7, 7.7, 7.8, 8.2, 8.6, 8.8, 8.9, 8.11, 8.12, 10.1, 10.2, 10.4, 10.5, 10.6, 10.7, 11.8, 14.4, 14.5_
 
   - [ ] 7.5 Write unit tests for failed runs and the CLI in `tests/test_train_step.py`
     - The order of A9: a bad setting with a bad deadline gives the setting's message, a bad deadline with no `work/cameras/` gives the deadline's, a missing `work/cameras/` gives the camera solve message with no probe call, and a refusing probe with a corrupt `points3D.bin` gives the GPU message.
     - Each Expected_Failure that needs no GPU, through `run`, has `expected: true`, a `readable` that names what its requirement says, and no "Traceback": a bad setting, `max_splats` below `start_scale_neighbours` + 1, a missing `[train]` key, a bad deadline, each missing input path, no CUDA, gsplat 1.5.2, a small GPU, a missing torch with `splatpipe.train.gpu_api.importlib` replaced as in 6.5, a corrupt model file, a missing image, a bad mask, too few points, cameras that didn't move, no point in front of any camera, and points that all sit on one spot.
     - A deadline already past fails with the Req 7.9 message. `GpuOutOfMemory` from the 3-NN search and from training gives the Req 2.12 message and the report holds the counts worked out so far.
     - `NonFiniteLoss` gives `expected: false`, the general bug message as `readable`, and the Iteration and the Loss_Terms in `technical`.
-    - A NaN splat from the stand-in fails the PLY_Check, naming `opacity`, and leaves no `out/train.ply`. A failed run removes an `out/train.ply` left by an earlier run.
+    - With every splat NaN, the run fails with the PLY_Check's "holds no splats" message, the failed report holds the Req 8.9 warning with the count, and there's no `out/train.ply`. A failed run removes an `out/train.ply` left by an earlier run.
     - `splatpipe.train.__main__.main(["--job", job_id])` prints `train: done` and returns 0 for a done run, and prints the Readable_Error on stderr with no traceback and returns 1 for a failed one.
-    - _Requirements: 1.2, 2.1, 2.2, 2.12, 4.16, 7.1, 7.3, 7.9, 8.1, 8.7, 8.9, 9.6, 9.7, 9.8, 10.3, 11.2, 11.3, 11.7, 14.4, 14.6_
+    - _Requirements: 1.2, 2.1, 2.2, 2.12, 4.16, 7.1, 7.3, 7.9, 8.1, 8.7, 8.9, 9.6, 9.7, 9.8, 10.3, 10.5, 11.2, 11.3, 11.7, 14.4, 14.6_
 
   - [ ] 7.6 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
@@ -440,7 +444,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `smoke_settings` takes `[jobs].default_preset`'s `[train]` settings, replaces `steps`, `max_splats`, `refine_start_step`, `refine_every` and `sh_degree_interval` with the sizes, and checks the result with `read_settings`.
     - `smoke_scene` draws everything from one generator seeded with `[train]`'s `seed`: the PINHOLE camera, the cameras on the unit circle looking at the origin, the points in the cube of half-side 0.25, the images, and a keep mask on image 0 that leaves out its left half.
     - `run_smoke_training(config, sizes, scratch, gpu)` runs `check_gpu` on `gpu.probe()`, then the step's own `need_points`, `training_size`, `build_scene`, `choose_points`, `nearest_distances`, `start_splats` and `train`. A `GpuOutOfMemory` from either GPU call becomes `out_of_memory_failure`, as in the step.
-    - It refuses a run of fewer Iterations than `steps` with a `PipelineError` saying how many ran, bakes the Mean_Exposure, writes `scratch/train.ply` with `write_ply`, runs `check_ply`, and gives back the design's log line with the numbers filled in, the refines counted with `refine_iterations`.
+    - It refuses a run of fewer Iterations than `steps` with a `PipelineError` saying how many ran, bakes the Mean_Exposure, writes every splat the Trainer gave back to `scratch/train.ply` with `write_ply`, runs `check_ply`, and gives back the design's log line with the numbers filled in, the refines counted with `refine_iterations`.
+    - It calls no `drop_non_finite`, so a splat with a NaN or an infinity fails its PLY_Check, because the Smoke_Scene should never make one.
     - _Requirements: 12.2, 12.3, 12.7, 12.8, 12.9_
 
   - [ ] 9.2 Add the seven `[cloud.smoke]` keys to the configs
@@ -464,7 +469,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `smoke_scene` with the A11 numbers from the real config passes the step's own checks on the CPU: `need_points`, and `build_scene` with a Scene_Extent of 1.1 and every point between 0.64 and 1.36 in front of every camera. One image has a mask that keeps pixels, and the same seed gives the same scene.
     - `smoke_settings` takes `fast`, the default Preset, with the five values replaced and every other `[train]` value as the config has it.
     - With the real config and the A11 numbers, the Schedules turn `erank` on at Iteration 7, reach SH_Degree 3 at Iteration 15, and refine at Iteration 20 only.
-    - `run_smoke_training` with a `FakeGpu` writes and checks `train.ply` in the scratch folder and gives the log line with its numbers. It fails with a readable message when the stand-in runs fewer Iterations, runs out of memory, gives a NaN splat or reports gsplat 1.5.2.
+    - `run_smoke_training` with a `FakeGpu` writes and checks `train.ply` in the scratch folder and gives the log line with its numbers. It fails with a readable message when the stand-in runs fewer Iterations, runs out of memory, gives a NaN splat or reports gsplat 1.5.2. The NaN splat is written, not dropped, so the check fails at its PLY_Check.
     - _Requirements: 12.2, 12.3, 12.6, 12.7, 12.8, 12.9, 14.10_
 
   - [ ] 9.6 Write unit tests for the smoke keys and the smoke runner's check
@@ -490,38 +495,38 @@ Some files grow over several tasks, so each piece comes with the first task that
     - What it reads: the Camera_Solve_Output as the contract the camera solve spec writes, the masks matched by stem, where a value below 128 counts as black, so the camera solve step should write only 0 and 255, what the step refuses, `SPLATPIPE_CAP_DEADLINE` and the settings.
     - What it writes: the Splat_Layout's 59 fields, `work/train/` and the Train_Record's fields.
     - Config section: every key of `[train]` and its Preset tables with its table, value and meaning, and the Step_Needs: 4 vCPUs, 32 GB of memory, and a 24 GB GPU for `fast` and `default` or a 48 GB one for `quality`, of which the step checks only the GPU's memory, against the GPU_Need.
-    - Step report fields: each count as `counts.<name>`, each timing as `timings.<name>`, the two warnings, the kinds of Expected_Failure, and that a loss that stops being finite is a bug, with the Iteration and the Loss_Terms in `technical`.
-    - Files in out/: the step removes `out/train.ply` when it starts and writes it whole once the PLY_Check passes, the Clean_Export_Step reads it from there, it's the Job's result when that step fails, and the largest Splat_Budget is 3,000,000 splats. Then D4's list of the four points the clean-export spec has to change before it's built: `source_ply` becomes `train.ply`, `STEP_LIST` isn't empty any more, its no-torch test leaves out the GPU_Module, and `max_source_splats` must be at least 3,000,000. This records them and fixes none: the clean-export spec's files stay as they are.
+    - Step report fields: each count as `counts.<name>`, each timing as `timings.<name>`, the three warnings, the kinds of Expected_Failure, and that a loss that stops being finite is a bug, with the Iteration and the Loss_Terms in `technical`. The Req 8.9 warning gives how many splats with a NaN or an infinity were left out of `out/train.ply`, `counts.splats` counts the splats written, and a run that leaves out every splat fails at the PLY_Check's "holds no splats", with the warning in its report.
+    - Files in out/: the step removes `out/train.ply` when it starts and writes it whole once the PLY_Check passes. The Clean_Step reads it from there, and it's the Job's result when the Clean_Step fails or doesn't run. The largest Splat_Budget, 3,000,000 splats, is within the 8,000,000 splats the Clean_Step takes, its `max_source_splats` (D4).
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7_
 
   - [ ] 10.2 Change the four other parts of `docs/pipeline.md`
-    - "The step list": the three new sentences of the design's table, "The list holds the frames step and then the train step, both required" with both entries, "The camera solve spec puts its entry between the two, so the order becomes frames, cameras, train, clean_export" and "Until then, a job runs the frames step and then fails at the train step, because the camera solve output is missing", in place of the three old ones. The list of planned steps stays.
+    - "The step list": the three new sentences of the design's table, "The list holds the frames step and then the train step, both required" with both entries, "The camera solve spec puts its entry between the two, and a later spec adds the clean step's optional entry after the train step's, so the order becomes frames, cameras, train, clean" and "Until then, a job runs the frames step and then fails at the train step, because the camera solve output is missing", in place of the three old ones. The planned steps' line "Optional steps: depth priors and clean and export." becomes "Optional steps: depth priors and clean."
     - "The cap deadline": "The train step reads it and stops training early, so that `out/train.ply` is written and checked `clean_reserve_minutes` before the cap deadline", in place of "No current step reads it; the training spec will."
-    - "What each step asks the machine for": the Training row becomes "4 vCPUs, 32 GB RAM and a GPU with 24 GB (fast and default) or 48 GB (quality)".
+    - "What each step asks the machine for": the Training row becomes "4 vCPUs, 32 GB RAM and a GPU with 24 GB (fast and default) or 48 GB (quality)", and the row "Clean and export | 8 vCPUs, 8 GB RAM" becomes "Clean | 8 vCPUs, 8 GB RAM".
     - The frames section's "What it writes": "the camera solve step passes it on to training as one mask per image in `work/cameras/masks/`", in place of "the training loss reads the same file" (A13).
     - _Requirements: 13.8, 13.9, 13.10, 13.12_
 
-  - [ ] 10.3 Change the gsplat-training skill's clean-export line
-    - In `.kiro/skills/gsplat-training/SKILL.md`, the line that says the clean-export step reads `out/splat.ply` names `out/train.ply`, which the Train_Step writes. Nothing else in the skill changes.
+  - [ ] 10.3 Change the gsplat-training skill's line on the clean step
+    - In `.kiro/skills/gsplat-training/SKILL.md`, the bullet on the step that reads the trained splat, which names `out/splat.ply`, becomes the design's sentence: "The clean step reads `out/train.ply`, which the training step writes, as a binary PLY in the usual 3DGS layout (its requirements, A1), and `export_splats(format="ply")` writes that layout. An MCMC splat has at most `cap_max` Gaussians, and the clean step refuses one with more than its `max_source_splats`, 8,000,000, so keep the cap at or under that setting." Nothing else in the skill changes.
     - _Requirements: 13.13_
 
   - [ ] 10.4 Change the Step_List in `splatpipe/run.py`
-    - `STEP_LIST = (StepEntry("frames", "splatpipe.frames", True), StepEntry("train", "splatpipe.train", True))`. The comment above it says the camera solve spec puts its entry between the two, so the order becomes frames, cameras, train, clean_export, and that the Fake_Step stays out.
+    - `STEP_LIST = (StepEntry("frames", "splatpipe.frames", True), StepEntry("train", "splatpipe.train", True))`. The comment above it says the camera solve spec puts its entry between the two and a later spec adds the Clean_Step's optional entry after the Train_Step's, so the order becomes frames, cameras, train, clean. It also says the Clean_Step stays out of the list for now (D5) and the Fake_Step stays out.
     - `_NO_STEPS` and the refusal of an empty list that a caller gives stay as they are.
     - _Requirements: 11.4, 11.5_
 
   - [ ] 10.5 Update the tests that depend on the Step_List
     - In `tests/test_run.py`, `test_the_step_list_holds_the_frames_step_and_is_the_default_list` becomes `test_the_step_list_holds_the_frames_and_train_steps_and_is_the_default_list` and asserts the list of 10.4.
     - In `tests/test_frames_step.py`, the real-ffmpeg `run_job` test passes `steps=(StepEntry("frames", "splatpipe.frames", True),)`, so it still expects `done`, and its comments and the module docstring no longer say the frames step is the list's only entry. A new test runs `run_job` with the real Step_List, `fake_tools` and the `walk()` frames: the Job ends `failed` at `train`, the frames step is `done`, and the Job_Summary's `readable_error` is the Req 1.2 message naming `work/cameras/images`. Any other test that the run shows relying on the frames-only list gets the frames entry alone, the same way.
-    - In `tests/test_imports.py`, the Step_List check's docstring names the Train_Step, whose `[train]` it now loads from the real config for each Preset.
+    - In `tests/test_imports.py`, the Step_List check's docstring names the Train_Step, whose `[train]` it now loads from the real config for each Preset. The two docstrings that say which spec can decide scipy, the module's and `test_pyproject_and_uv_lock_hold_numpy_and_headless_opencv_and_no_gpu_or_plain_opencv`'s, say "the clean spec".
     - In `tests/test_train_settings.py`, the Fallback_List test: with the real Config and the real Step_List, `select_candidates` keeps every type on each Preset's Fallback_List, with the needs from the Start_Command's own `step_needs_over`.
     - _Requirements: 9.9, 11.5, 11.9, 11.10, 11.11, 14.9_
 
   - [ ] 10.6 Write the doc tests in `tests/test_docs.py` and `tests/test_cloud_docs.py`
     - In `tests/test_docs.py`, the step list test looks for the three new sentences and checks that the three old ones are gone. The frames test looks for the new mask words in place of "the training loss reads the same file".
-    - New train tests: `## Step: train` comes after `## Step: frames`, with its five parts. Its Config section names every key of the real `[train]`, read by path, its tables, and "4 vCPUs", "32 GB", "24 GB" and "48 GB". Its Step report fields part names `counts.<name>` for each of the 13 counts and `timings.<name>` for each of the 4 timings. Its Files in out/ part names `out/train.ply`, "3,000,000 splats", `source_ply` and `max_source_splats`.
+    - New train tests: `## Step: train` comes after `## Step: frames`, with its five parts. Its Config section names every key of the real `[train]`, read by path, its tables, and "4 vCPUs", "32 GB", "24 GB" and "48 GB". Its Step report fields part names `counts.<name>` for each of the 13 counts and `timings.<name>` for each of the 4 timings. Its Files in out/ part names `out/train.ply`, "3,000,000 splats", "8,000,000 splats" and `max_source_splats`.
     - The cap deadline part names `clean_reserve_minutes` and no longer says "No current step reads it". The gsplat-training skill names `out/train.ply` and no longer `out/splat.ply`.
-    - In `tests/test_cloud_docs.py`, `STEP_NEEDS_PLAN["Training"]` becomes `("4 vCPUs", "32 GB RAM", "24 GB", "48 GB")`.
+    - In `tests/test_cloud_docs.py`, `STEP_NEEDS_PLAN["Training"]` becomes `("4 vCPUs", "32 GB RAM", "24 GB", "48 GB")`, and the key `"Clean and export"` becomes `"Clean"`, with its `("8 vCPUs", "8 GB RAM")` unchanged.
     - _Requirements: 13.1, 13.7, 13.8, 13.9, 13.10, 13.12, 13.13, 13.14, 13.15_
 
   - [ ] 10.7 Run the whole suite one last time and commit
@@ -534,7 +539,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
 - Every test sub-task is required, as `.kiro/steering/rules.md` asks. None is marked optional, so no `*` appears anywhere.
 - The last sub-task of each task is its checkpoint: the whole suite, then the commit by name. So the plan has no separate checkpoint tasks and stays at the design's 10, and 10.7 is the final full-suite run.
-- Every acceptance criterion in `requirements.md` is named by at least one task. Each of the design's 9 correctness properties has its own property test sub-task, with Hypothesis: Property 1 in 3.4, Properties 3 and 4 in 2.4 and 2.5, Properties 2 and 5 in 4.5 and 4.6, and Properties 6 to 9 in 5.3 to 5.6.
+- Every acceptance criterion in `requirements.md` is named by at least one task. Each of the design's 9 correctness properties has its own property test sub-task, with Hypothesis: Property 1 in 3.4, Properties 3 and 4 in 2.4 and 2.5, Properties 2 and 5 in 4.5 and 4.6, and Properties 6 to 9 in 5.3 to 5.6. The drop of non-finite splats (D6) has unit tests and no property, as the design keeps it: 4.4 tests `drop_non_finite`, and 7.4 and 7.5 test the step's drop and its warning.
 - Task 8's code runs only on the GPU, so its tests read its source and check the imports. The Trainer first runs in the Smoke_Test's `training` check, and Req 12.11, the check's time on the g5.xlarge, shows only in that run's log.
 - No laptop test imports `gpu.py`. 6.5, 7.5 and 9.6 replace `splatpipe.train.gpu_api.importlib` instead, which gives the same Req 2.2 message on any machine, with torch installed or not, and 6.5 and 8.2 check that `load_gpu` asks for the module whose file the source checks read. The review kept this and changed the design's build order to match.
 - No task runs anything paid. After the spec is built, the Smoke_Test re-run of 9.7 is a separate paid run, started only after the person's yes.
