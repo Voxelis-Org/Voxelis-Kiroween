@@ -426,7 +426,7 @@ def check_spend(*, machine: str, expected_time: str, rough_cost: str,
 - the Presets and the Config layout (`[jobs]`, `[<Step_Name>]` and its three Preset tables, a comment on every key)
 - the Step_List, with the planned Steps:
   - Required_Steps: picking frames, solving cameras and training
-  - Optional_Steps: clean and export, depth priors and plain walls
+  - Optional_Steps: clean and export and depth priors
 - the Job_Runner, the Job_Summary and the Job_Log
 - a part headed "Running a job again" (Req 13.8), which says:
   - Without `--fresh`, the Job_Runner skips the Finished_Steps at the start of the Step_List: each Step whose report says done, and each Optional_Step whose report says failed. It runs every Step from the first unfinished one on, a Finished_Step after that one included.

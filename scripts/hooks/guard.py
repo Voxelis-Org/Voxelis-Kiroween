@@ -30,8 +30,9 @@ AWS_VALUE_OPTIONS = {
 # Pathspecs that stage everything.
 ADD_EVERYTHING = {".", "./", ".\\", "*", ":/"}
 
-PAID = ("guard: blocked `aws {}`, which starts something paid. Paid runs only go through our start "
-        "or smoke-test command, after the user says yes to the machine, the time and the cost.")
+PAID = ("guard: blocked `aws {}`, which starts something paid. Paid runs only go through our "
+        "start, image-build or smoke-test command, after the user says yes to the machine, the "
+        "time and the cost.")
 FORCE = ("guard: blocked a force push. Push without --force, -f or a + refspec, and if the push is "
          "rejected, tell the user instead.")
 MAIN = "guard: blocked a push to {}. Push your feature branch instead and open a pull request."

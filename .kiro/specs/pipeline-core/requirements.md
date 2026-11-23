@@ -4,7 +4,7 @@
 
 The Pipeline (`splatpipe/`) turns a phone video (MP4 or MOV, up to 10 minutes) into a clean 3D Gaussian splat (`.ply`) plus a small copy for the web viewer (`.sog`). This spec builds only the Skeleton that the steps plug into: making a job from a video, the job folder, the settings and presets in `config.toml`, the step reports, running one step or a whole job, picking a job up where it stopped, a Fake_Step for the tests, the Spend_Guard for the cloud code, and `docs/pipeline.md`.
 
-Each real step gets its own spec after this one: picking frames, solving cameras, running it in the cloud, training, cleaning and export, then depth priors and plain walls.
+Each real step gets its own spec after this one: picking frames, solving cameras, running it in the cloud, training, cleaning and export, then depth priors.
 
 Out of scope:
 
@@ -29,7 +29,7 @@ The user didn't ask for these in the first request. At review, the user confirme
 - **Step_Name**: a Step's short name in lowercase ASCII letters, digits and underscores, starting with a letter, like `fake`. It names the Step's Config sections, its Step_Report and its Work_Folder. A real Step's module is `splatpipe.<Step_Name>`.
 - **Reserved_Name**: a name a Step can't take: the name of a Skeleton module (like `run` or `config`), the Skeleton's own Config section, or one of `git`, `aws`, `paid` and `devlog`.
 - **Required_Step**: a Step whose failure fails the Job. Picking frames, solving cameras and training will be Required_Steps once their specs add them.
-- **Optional_Step**: a Step the Job can do without. Depth priors, plain walls, and clean and export will be Optional_Steps once their specs add them.
+- **Optional_Step**: a Step the Job can do without. Depth priors and clean and export will be Optional_Steps once their specs add them.
 - **Step_List**: the ordered list, in code, of the Steps the Job_Runner runs.
 - **Job**: one video going through the Pipeline, with its own Job_Id and Job_Folder.
 - **Job_Id**: a Job's id, made by the Job_Maker from the UTC date and time and a random part, like `20261119-142530-7f3a9c`: 8 digits, a hyphen, 6 digits, a hyphen and 6 lowercase hex characters.
