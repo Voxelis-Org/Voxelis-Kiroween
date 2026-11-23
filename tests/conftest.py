@@ -1,9 +1,10 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
-new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_frames and set_cameras, which change its [frames] and [cameras] settings, colmap_options,
-which gives the COLMAP options of the camera solve's options.md, work_calls, which records whose
-Fake_Step work runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's
-ffprobe and ffmpeg.
+new_job, which make Jobs without ffprobe, cameras_job, which makes a Job with a tiny valid
+work/frames/ for the Cameras_Step, set_fail, which sets `fail` in the test config, set_frames
+and set_cameras, which change its [frames] and [cameras] settings, colmap_options, which gives
+the COLMAP options of the camera solve's options.md, work_calls, which records whose Fake_Step
+work runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and
+ffmpeg.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
@@ -20,6 +21,12 @@ with this file's own code, never with splatpipe/cameras/settings.py, and sorts e
 way the cameras design does: a Fixed_Constant, a path, --SequentialMatching.overlap, or an
 Option_Key with the key that O11's naming rule gives it. It's the oracle of the settings test
 and of Property 1.
+
+cameras_job makes a Job with new_job and writes into its work/frames/ what the Frames_Step
+leaves there: a JPEG per Pick in images/ and its Grey_Copy in grey/, mask.png when the Job uses
+the Mask, and a frames.json with every field of the Frames_Record, under the names in
+splatpipe/frames/files.py. So the Cameras_Step's tests start from a finished Frames_Step without
+running it or ffmpeg (cameras spec, Req 16.5).
 
 FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
 one on demand, and records what the step asked for. It can also report that ffmpeg has no
@@ -43,11 +50,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+import cv2
 import numpy as np
 import pytest
 
 import splatpipe.config
-from splatpipe.config import PRESETS, REPO_ROOT
+from splatpipe.config import PRESETS, REPO_ROOT, load_config
+from splatpipe.jobs import open_job
+from splatpipe.jsonio import write_json
 from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
@@ -452,6 +462,77 @@ def new_job(tmp_path: Path) -> Callable[..., str]:
         video = tmp_path / "clip.mp4"
         video.write_bytes(b"a few bytes")
         return make_job(video, probe=FakeProbe(), new_id=lambda: FIXED_ID, **options)
+
+    return make
+
+
+@pytest.fixture
+def cameras_job(new_job: Callable[..., str]) -> Callable[..., str]:
+    """Give cameras_job(picks=8, mask_used=False, width=16, height=12), which makes a Job with
+    new_job, writes a tiny valid work/frames/ into it, as the Frames_Step leaves it, and returns
+    its Job_Id (cameras spec, Req 16.5). Like new_job, it can make one Job per test, because
+    each Job gets FIXED_ID.
+
+    images/ gets a JPEG of seeded noise at width × height for each of the `picks` Picks, named
+    pick_name(0) onwards, and grey/ gets each one's Grey_Copy, from grey_copy, under the same
+    name, both at the test config's jpeg_quality. With mask_used, mask.png is a grey PNG at the
+    same size, 0 in the top left corner's height // 4 rows and width // 4 columns, at least one
+    of each, and 255 elsewhere. frames.json comes last and holds every field of the
+    Frames_Record, in frames_record's order: the Picks spread evenly over the Job's Used_Part,
+    which is kept whole, each its own Score_Frame, target_picks equal to `picks`, and
+    mask_coverage the Mask's share of 0s, or 0.0 with no Mask. With picks=0, images/, grey/ and
+    `picks` are empty.
+
+    The names come from splatpipe/frames/files.py, the contract between the two steps. It's
+    imported here, so only the tests that use this fixture import splatpipe.frames.
+    """
+    from splatpipe.frames.files import GREY, IMAGES, MASK, RECORD, grey_copy, pick_name
+
+    def write_image(path: Path, image: np.ndarray, *params: int) -> None:
+        """Encode `image` with cv2.imencode in the format of `path`'s suffix, then write it."""
+        ok, data = cv2.imencode(path.suffix, image, list(params))
+        assert ok, f"cv2.imencode couldn't encode {path}"
+        path.write_bytes(data.tobytes())
+
+    def write_picks(frames: Path, picks: int, width: int, height: int) -> None:
+        """Write each Pick's JPEG to images/ and its Grey_Copy's to grey/ in `frames`."""
+        quality = (cv2.IMWRITE_JPEG_QUALITY, FRAMES["jpeg_quality"])
+        for name in (IMAGES, GREY):
+            (frames / name).mkdir(parents=True)
+        for number in range(picks):
+            pick = np.random.default_rng(number).integers(0, 256, (height, width, 3),
+                                                          dtype=np.uint8)
+            write_image(frames / IMAGES / pick_name(number), pick, *quality)
+            write_image(frames / GREY / pick_name(number), grey_copy(pick), *quality)
+
+    def write_mask(path: Path, width: int, height: int) -> float:
+        """Write the Mask to `path` and give its Mask_Coverage, its share of 0s."""
+        mask = np.full((height, width), 255, dtype=np.uint8)
+        mask[:max(1, height // 4), :max(1, width // 4)] = 0
+        write_image(path, mask)
+        return float(np.mean(mask == 0))
+
+    def make(*, picks: int = 8, mask_used: bool = False, width: int = 16,
+             height: int = 12) -> str:
+        job_id = new_job()
+        job = open_job(job_id, load_config())
+        frames = job.folder / "work" / "frames"
+        write_picks(frames, picks, width, height)
+        coverage = write_mask(frames / MASK, width, height) if mask_used else 0.0
+        start, end = job.record.start_seconds, job.record.end_seconds  # the Used_Part
+        write_json(frames / RECORD, {
+            "colour_transfer": "bt709", "tone_mapped": False,
+            "still_start_seconds": 0.0, "still_end_seconds": 0.0,
+            "kept_start_seconds": start, "kept_end_seconds": end,
+            "target_picks": picks, "jolt_filter_skipped": False,
+            "pick_width": width, "pick_height": height,
+            "mask_coverage": coverage, "mask_used": mask_used,
+            "mask_file": MASK if mask_used else None,
+            "picks": [{"number": number, "file": pick_name(number), "frame_number": number,
+                       "seconds": start + (end - start) * number / picks, "sharpness": 100.0,
+                       "motion": 0.0 if number == 0 else 2.0, "contrast": 40.0}
+                      for number in range(picks)]})
+        return job_id
 
     return make
 
