@@ -24,8 +24,14 @@ the repo root, and none runs the step.
   its Name cell: the numpy and scipy rows each start their Installed cell with Yes, and so do the
   Node.js, splat-transform 3.8.0 and npm rows. The Node.js row says Node is never vendored,
   linked or shipped.
+- The entry points (Req 8.1): splatpipe.clean defines work and run, and splatpipe.clean.__main__
+  defines main, each with the parameters Req 8.1 names, read with inspect.signature, so a missing
+  entry point or a renamed parameter fails. The import checks read splatpipe/clean/ with rglob,
+  so they cover __init__.py and __main__.py too (Req 8.5).
 """
 
+import importlib
+import inspect
 import json
 import re
 import sys
@@ -157,6 +163,16 @@ def lockfile_package_names() -> list[str]:
     itself, so it isn't one (Req 6.13)."""
     return sorted({key.rpartition("node_modules/")[2]
                    for key in read_json(PACKAGE_LOCK)["packages"] if key})
+
+
+def bare_parameters(signature: inspect.Signature) -> str:
+    """The parameters of `signature` as inspect writes them, with their annotations and defaults
+    taken off, so what's left is their names, their order and the * before the keyword-only
+    ones: run(job_id, preset=None, *, config=None) gives (job_id, preset, *, config) (Req 8.1)."""
+    empty = inspect.Parameter.empty
+    bare = [parameter.replace(annotation=empty, default=empty)
+            for parameter in signature.parameters.values()]
+    return str(signature.replace(parameters=bare, return_annotation=empty))
 
 
 # The real config.toml
@@ -296,3 +312,24 @@ def test_the_node_licence_row_says_node_is_never_vendored_linked_or_shipped() ->
     assert "never vendored, linked or shipped" in how.lower(), (
         f"the Licence_List's {NODE_ROW!r} row should say Node is never vendored, linked or "
         f"shipped, not {how!r}")
+
+
+# The entry points
+
+@pytest.mark.parametrize(("module", "name", "parameters", "defaults"), [
+    pytest.param("splatpipe.clean", "work", "(step)", {}, id="work"),
+    pytest.param("splatpipe.clean", "run", "(job_id, preset, *, config)",
+                 {"preset": None, "config": None}, id="run"),
+    pytest.param("splatpipe.clean.__main__", "main", "(argv)", {}, id="main"),
+])
+def test_the_package_defines_each_entry_point_with_the_parameters_req_8_1_names(
+        module: str, name: str, parameters: str, defaults: dict[str, Any]) -> None:
+    """Req 8.1: work(step), run(job_id, preset=None, *, config=None) and main(argv). Each is
+    found by its name and read with inspect.signature, so a missing one, a renamed parameter or
+    a config that a position can reach fails. Only the defaults Req 8.1 gives are checked, so
+    main's argv may default to None, as sys.exit(main()) in __main__.py needs."""
+    function = getattr(importlib.import_module(module), name, None)
+    assert callable(function), f"{module} should define {name}, as Req 8.1 names it"
+    signature = inspect.signature(function)
+    assert bare_parameters(signature) == parameters
+    assert {key: signature.parameters[key].default for key in defaults} == defaults

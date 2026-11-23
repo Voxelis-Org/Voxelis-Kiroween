@@ -54,6 +54,10 @@ evenly spaced grid of more than neighbours Gaussians, with finite properties, ra
 quaternions and every Real_Opacity above min_opacity. It has no tie check, because a grid is full
 of Gaussians with two others at one Centre_Distance, and Property 6 has to hold whichever of them
 the tree counts (Req 10.13).
+
+put_source is for the step's own tests in tests/test_clean_step.py: it writes Splat_Data as
+out/train.ply in a Job that the new_job fixture made, with ply_bytes, so the step reads bytes it
+didn't write itself, and gives the path written.
 """
 
 import functools
@@ -63,6 +67,7 @@ import struct
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TypeVar
 
 import numpy as np
@@ -72,7 +77,8 @@ from hypothesis.extra.numpy import arrays, from_dtype
 
 from splatpipe.clean.ply_read import PLY_TYPES
 from splatpipe.clean.settings import CleanSettings, check_settings
-from splatpipe.config import StepSettings
+from splatpipe.config import StepSettings, load_config
+from splatpipe.jobs import open_job
 
 from conftest import CLEAN_PRESETS, CLEAN_SHARED
 
@@ -921,3 +927,25 @@ def float32_at_least(value: float) -> float:
     if float(nearest) < value:
         nearest = np.nextafter(nearest, np.float32(math.inf))
     return float(nearest)
+
+
+# Source splats in a Job, for tests/test_clean_step.py
+
+def put_source(job_id: str, data: np.ndarray) -> Path:
+    """Write `data` as out/train.ply, the Source_Splat, in the Job `job_id`, which the new_job
+    fixture made. Gives the path written, so a test can hash the file or check it's untouched.
+
+    `data` is Splat_Data as gaussians and the Splats strategies give it: a structured array with
+    a float32 field for each property. Each field is written as a float property of the vertex
+    element, in the array's order, in a binary_little_endian PLY, as the training step writes one
+    (A1). ply_bytes packs the rows on its bulk path, which is quick for the memory test's 20,000
+    Gaussians, and shares no code with the step's reader or writer.
+
+    The Job_Folder is found as the Step_Runner finds it, with open_job on the config that
+    load_config reads, which the autouse temp_config fixture points at the test config. So the
+    file lands in the test's own Jobs_Folder, inside tmp_path, and never in the real data/
+    (Req 10.3).
+    """
+    path = open_job(job_id, load_config()).folder / "out" / "train.ply"
+    path.write_bytes(ply_bytes([(name, "float") for name in data.dtype.names], data))
+    return path
