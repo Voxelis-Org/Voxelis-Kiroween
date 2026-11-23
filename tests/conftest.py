@@ -1,28 +1,44 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_clean, which sets its [clean] settings, and work_calls, which records whose Fake_Step work
-runs.
+set_frames, which changes its [frames] settings, set_clean, which sets its [clean] settings,
+work_calls, which records whose Fake_Step work runs, and fake_tools, which puts a FakeTools in
+place of the Frames_Step's ffprobe and ffmpeg.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
-a Job in the real data/ folder (Req 14.2).
+a Job in the real data/ folder (Req 14.2). The test config also has [frames] with its three
+Preset tables, so a test that runs the Frames_Step without a Config of its own gets settings
+(frames spec, Req 9.11). It has [clean] and its three Preset tables too, from CLEAN_SHARED and
+CLEAN_PRESETS.
+
+FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
+one on demand, and records what the step asked for. It can also report that ffmpeg has no
+filters, or fail the first pass with the Tone_Map, for the HDR tests. So the step's tests run it
+through splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 2.4, 2.5, 13.6, 13.7).
 """
+
+from __future__ import annotations
 
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from itertools import islice
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pytest
 
 import splatpipe.config
 from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
+
+if TYPE_CHECKING:  # named in FakeTools' type hints only, so only its tests import splatpipe.frames
+    from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo
 
 # The names the tests run the Fake_Step under. Each gets a section like the real [fake].
 STEP_NAMES = ("fake", "fake_a", "fake_b", "fake_c")
@@ -55,6 +71,37 @@ files = 2
 [{name}.quality]
 files = 3
 """
+
+# The test config's [frames] Shared_Settings: the real values, except that min_picks is 1 and both
+# timeouts are 60 s, so tiny clips pass. Each value has the TOML type it has in the real config.
+FRAMES = {
+    "score_width": 320,
+    "tonemap_npl": 100,
+    "tonemap_desat": 0.0,
+    "still_motion": 1.0,
+    "motion_window_seconds": 1,
+    "min_still_seconds": 2,
+    "blip_seconds": 0.5,
+    "jolt_ratio": 0.6,
+    "jolt_window_seconds": 1,
+    "mask_samples": 240,
+    "mask_ratio": 0.2,
+    "mask_min_coverage": 0.002,
+    "mask_max_coverage": 0.25,
+    "jpeg_quality": 95,
+    "long_edge": 1600,
+    "seconds_per_pick": 2,
+    "max_picks": 400,
+    "min_picks": 1,
+    "min_vcpus": 16,
+    "min_memory_gb": 16,
+    "ffmpeg_timeout_seconds": 60,
+    "ffprobe_timeout_seconds": 60,
+}
+
+# The test config's base_picks, the one Preset_Setting of [frames], for each Preset. They're tiny
+# for the same reason as min_picks.
+BASE_PICKS = {"fast": 2, "default": 3, "quality": 4}
 
 # The test config's [clean] and its three Preset tables, as tomllib reads them: the real keys
 # with the real values, except where a comment gives the real one. clean_toml and clean_settings
@@ -90,8 +137,8 @@ CLEAN_PRESETS: dict[str, dict[str, object]] = {
 
 
 def toml_value(value: object) -> str:
-    """`value` as TOML: a bool as true or false, a str in double quotes, and a number as Python
-    writes it, which TOML reads back as the same number."""
+    """`value` as a TOML value: a bool as true or false, text in double quotes as JSON writes it,
+    and a number as Python writes it, which TOML reads back as the same int or float."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
@@ -99,6 +146,21 @@ def toml_value(value: object) -> str:
         # TOML reads them back. TOML can't hold DEL as it is either, so that's escaped too.
         return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     return repr(value)
+
+
+def frames_text(frames: Mapping[str, Any]) -> str:
+    """[frames] and its three Preset tables as TOML, with each key in `frames` set to its value
+    and every other key at its value in FRAMES or BASE_PICKS.
+
+    A Shared_Setting takes its new value, like {"mask_samples": 3}. base_picks takes a dict of
+    the Presets it changes, like {"base_picks": {"fast": 50}}, and the other Presets keep theirs.
+    """
+    shared = {**FRAMES, **{key: value for key, value in frames.items() if key != "base_picks"}}
+    base_picks = {**BASE_PICKS, **frames.get("base_picks", {})}
+    return ("\n[frames]\n"
+            + "".join(f"{key} = {toml_value(value)}\n" for key, value in shared.items())
+            + "".join(f"\n[frames.{preset}]\nbase_picks = {toml_value(value)}\n"
+                      for preset, value in base_picks.items()))
 
 
 def clean_toml(changes: Mapping[str, object]) -> str:
@@ -122,19 +184,19 @@ def clean_toml(changes: Mapping[str, object]) -> str:
                    for header, table in tables.items())
 
 
-def config_text(jobs_folder: Path, clean: Mapping[str, object] | None = None, /,
-                **fail: str) -> str:
+def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
+                frames: Mapping[str, Any] | None = None,
+                clean: Mapping[str, object] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [clean] and its Preset tables come last, with the
-    changes in `clean` made, as clean_toml reads them. The Jobs_Folder is written with forward
-    slashes, so a Windows backslash can't become a TOML escape.
-
-    `clean` can only be given by position, so no Step_Name in `fail` lands in it, not even
-    "clean"."""
+    Fake_Step section gets fail = "none". [frames] comes next, with the keys in `frames` changed
+    as frames_text says. [clean] and its Preset tables come last, with the changes in `clean`
+    made, as clean_toml reads them. The Jobs_Folder is written with forward slashes, so a Windows
+    backslash can't become a TOML escape."""
+    modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
-    steps = "".join(STEP_TOML.format(name=name, fail=fail.get(name, "none"))
+    fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
-    return jobs + steps + clean_toml(clean or {})
+    return jobs + fakes + frames_text(frames or {}) + clean_toml(clean or {})
 
 
 @pytest.fixture(autouse=True)
@@ -158,11 +220,29 @@ def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. load_config() reads the file each time it's
-    called, so the next run that loads the config sees the change.
+    fail = "none", and set_fail() sets them all back. [frames] and [clean] are back to the test
+    config's values too. load_config() reads the file each time it's called, so the next run that
+    loads the config sees the change.
     """
     def rewrite(**modes: str) -> None:
-        temp_config.write_text(config_text(tmp_path / "jobs", **modes), encoding="utf-8")
+        temp_config.write_text(config_text(tmp_path / "jobs", fail=modes), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_frames(**values), which rewrites the test config with each [frames] key it names
+    set to the given value, like set_frames(mask_samples=3). base_picks, which each Preset has
+    its own of, takes a dict of the Presets to change, like set_frames(base_picks={"fast": 50}).
+
+    Like set_fail, each call writes the whole file again from config_text, so every key it doesn't
+    name is back to the test config's value, and every fail is back to "none". The next run that
+    loads the config sees the change. Each test gets a new test config, so the next test sees the
+    test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
 
     return rewrite
 
@@ -175,11 +255,12 @@ def set_clean(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     set_clean(neighbours=None), so a test can check a missing setting.
 
     Each call writes the whole file again, the way set_fail does, so every setting it doesn't
-    name is back to its value in CLEAN_SHARED or CLEAN_PRESETS, every fail is back to "none", and
-    set_clean() sets them all back. A set_fail call after it puts [clean] back the same way.
+    name is back to its value in CLEAN_SHARED or CLEAN_PRESETS, every fail is back to "none",
+    [frames] is back to the test config's values, and set_clean() sets them all back. A set_fail
+    or set_frames call after it puts [clean] back the same way.
     """
     def rewrite(**values: object) -> None:
-        temp_config.write_text(config_text(tmp_path / "jobs", values), encoding="utf-8")
+        temp_config.write_text(config_text(tmp_path / "jobs", clean=values), encoding="utf-8")
 
     return rewrite
 
@@ -274,3 +355,149 @@ def work_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(fake, "work", recorded_work)
     return names
+
+
+# A synthetic frame for FakeTools: its Frame_Time in seconds, and its picture, a 2-D uint8 array
+# of grey levels of any size.
+Pair = tuple[float, np.ndarray]
+
+
+class FakeTools:
+    """A stand-in for the Frames_Step's tools, ffprobe, ffmpeg's filter check and the ffmpeg
+    decode, so the step's tests need no ffmpeg (frames spec, Req 13.6). The fake_tools fixture
+    installs one in their place.
+
+    FakeTools(info, pairs) is built from the VideoInfo that probe gives back and a list of
+    synthetic (time, picture) Pairs. FakeTools.stream(info, count, make) is built from a count
+    and a function that makes pair k, for k from 0 to count − 1, only when decode reaches it, so
+    a test can feed a long stream without holding it (Req 13.7). Each decode call goes through
+    the pairs afresh.
+
+    probe, has_filters and decode take the same arguments as ffmpeg.probe_stream,
+    ffmpeg.has_filters and ffmpeg.decode, in the order the step gives them. has_filters says
+    this ffmpeg has every filter it's asked about, or, with `no_filters` set, that it hasn't.
+    decode gives on_frame only the pairs whose times a new FrameGate for the plan's Used_Part
+    accepts, in order, as the real decode does. Each frame it gives is a new uint8 array at the
+    plan's size, made from its pair's picture: grey for a grey plan, and a BGR frame with that
+    grey in all three channels for a colour plan. So each Pick shows the picture of the pair its
+    Score_Frame came from, and a test can tell which pair became which Pick.
+
+    It records each probe call as (video, timeout_seconds) in `probes`, each has_filters call as
+    (names, timeout_seconds) in `filter_checks`, with the names as a tuple, and each decode
+    call's plan in `plans`. Three settings change what decode does. With `pick_pass_frames`
+    set, the Pick_Pass, the colour plan, gives only its first pick_pass_frames frames. With
+    `tone_map_failure` set to (frames, last_line), the first plan with a ToneMap gives its first
+    `frames` frames and then raises DecodeFailed(last_line), as the real decode does when ffmpeg
+    exits with a non-zero code, and every later plan runs as usual. With `error` set, decode
+    raises it once the plan is recorded, before any frame.
+    """
+
+    def __init__(self, info: VideoInfo, pairs: Iterable[Pair], *,
+                 pick_pass_frames: int | None = None, no_filters: bool = False,
+                 tone_map_failure: tuple[int, str] | None = None,
+                 error: Exception | None = None) -> None:
+        self.info = info
+        self.pairs = pairs
+        self.pick_pass_frames = pick_pass_frames
+        self.no_filters = no_filters
+        self.tone_map_failure = tone_map_failure
+        self.error = error
+        self.probes: list[tuple[Path, float]] = []
+        self.filter_checks: list[tuple[tuple[str, ...], float]] = []
+        self.plans: list[DecodePlan] = []
+
+    @classmethod
+    def stream(cls, info: VideoInfo, count: int, make: Callable[[int], Pair],
+               **settings: Any) -> FakeTools:
+        """A FakeTools whose pair k, for k from 0 to count − 1, is make(k), made only when decode
+        reaches it. `settings` are FakeTools' own, like pick_pass_frames."""
+        return cls(info, _MadePairs(count, make), **settings)
+
+    def probe(self, video: Path, timeout_seconds: float) -> VideoInfo:
+        """Record the call and give back the VideoInfo."""
+        self.probes.append((video, timeout_seconds))
+        return self.info
+
+    def has_filters(self, names: Collection[str], timeout_seconds: float) -> bool:
+        """Record the call, then say this ffmpeg has every filter in `names`, or, with no_filters
+        set, that it hasn't."""
+        self.filter_checks.append((tuple(names), timeout_seconds))
+        return not self.no_filters
+
+    def decode(self, plan: DecodePlan, timeout_seconds: float,
+               on_frame: Callable[[float, np.ndarray], None]) -> None:
+        """Record `plan`, then call on_frame(Frame_Time, frame) for each pair inside its
+        Used_Part, in order, keeping none of the frames it gives. With tone_map_failure set, the
+        first plan with a ToneMap fails after its first few frames, as the class says."""
+        from splatpipe.frames.ffmpeg import DecodeFailed, FrameGate
+
+        failure = self._failure(plan)  # before `plan` is recorded, so plans holds only earlier ones
+        self.plans.append(plan)
+        if self.error is not None:
+            raise self.error
+        gate = FrameGate(plan.start, plan.end)
+        inside = ((time, picture) for time, picture in self.pairs if gate.accept(time))
+        if failure is not None:
+            frames, last_line = failure
+            for time, picture in islice(inside, frames):
+                on_frame(time, _frame(picture, plan))
+            raise DecodeFailed(last_line)  # a new error each time, so this FakeTools holds none
+        # islice with None gives every pair, so only the Pick_Pass stops early, and only when
+        # pick_pass_frames is set.
+        for time, picture in islice(inside, self.pick_pass_frames if plan.colour else None):
+            on_frame(time, _frame(picture, plan))
+
+    def _failure(self, plan: DecodePlan) -> tuple[int, str] | None:
+        """tone_map_failure when `plan` is the first plan with a ToneMap, else None. Call it
+        before `plan` is recorded."""
+        first = plan.tone_map is not None and all(p.tone_map is None for p in self.plans)
+        return self.tone_map_failure if first else None
+
+
+@dataclass(frozen=True)
+class _MadePairs:
+    """FakeTools.stream's pairs, make(0) to make(count − 1), made one at a time each time they're
+    gone through, so nothing holds them all."""
+
+    count: int
+    make: Callable[[int], Pair]
+
+    def __iter__(self) -> Iterator[Pair]:
+        return map(self.make, range(self.count))
+
+
+def _frame(picture: np.ndarray, plan: DecodePlan) -> np.ndarray:
+    """A new uint8 frame at the plan's size made from `picture`, each pixel taking the picture's
+    pixel whose area holds the pixel's centre: that grey for a grey plan, and a BGR frame with that
+    grey in all three channels for a colour plan."""
+    height, width = picture.shape
+    rows = (2 * np.arange(plan.height) + 1) * height // (2 * plan.height)
+    columns = (2 * np.arange(plan.width) + 1) * width // (2 * plan.width)
+    grey = picture[np.ix_(rows, columns)]
+    return np.repeat(grey[:, :, np.newaxis], 3, axis=2) if plan.colour else grey
+
+
+@pytest.fixture
+def fake_tools(monkeypatch: pytest.MonkeyPatch) -> type[FakeTools]:
+    """Give fake_tools, which builds a FakeTools as the class does, with fake_tools(info, pairs,
+    ...) or fake_tools.stream(info, count, make, ...), and installs it as the Frames_Step's tools
+    for this test. Building another one installs that one instead.
+
+    Installing is monkeypatch.setattr("splatpipe.frames.TOOLS", ...) with a Tools of the
+    FakeTools' probe, has_filters and decode. The step reads TOOLS each time it runs, so a run
+    through splatpipe.frames.run, run_step or the step's CLI in this process uses the stand-in,
+    and the test reads what it recorded afterwards. splatpipe.frames is imported here, so only
+    the tests that use this fixture need it.
+    """
+    from splatpipe.frames import Tools
+
+    class Installed(FakeTools):
+        """A FakeTools that installs itself once it's built."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            monkeypatch.setattr("splatpipe.frames.TOOLS",
+                                Tools(probe=self.probe, has_filters=self.has_filters,
+                                      decode=self.decode))
+
+    return Installed

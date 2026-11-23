@@ -44,9 +44,10 @@ class StepEntry:
     required: bool  # a Required_Step's failure fails the Job, an Optional_Step's doesn't
 
 
-# The Step_List. It starts empty, and each step spec adds its own entry, in order (A2, Req 8.2).
-# The Fake_Step isn't in it, so it never runs on real Jobs. Tests pass their own list.
-STEP_LIST: tuple[StepEntry, ...] = ()
+# The Step_List. The Frames_Step is its first entry, and each later step spec adds its own entry
+# after it, in order (Req 8.2, and frames spec, D1, Req 11.3). The Fake_Step stays out, so it
+# never runs on real Jobs, and tests that run it pass their own list.
+STEP_LIST: tuple[StepEntry, ...] = (StepEntry("frames", "splatpipe.frames", True),)
 
 
 @dataclass(frozen=True)

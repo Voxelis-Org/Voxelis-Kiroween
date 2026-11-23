@@ -32,3 +32,34 @@ The laptop install leaves out the GPU packages (torch, gsplat and the depth mode
 ```
 uv run pytest
 ```
+
+## AWS setup
+
+To run jobs in your own AWS account, follow [docs/aws-setup.md](docs/aws-setup.md). The account owner deploys one CloudFormation stack from `cloud/aws-setup.yaml`, and each person who runs jobs sets up two AWS CLI profiles.
+
+## Run your own copy
+
+To run jobs in your own AWS account you need:
+
+- an AWS account with GPU quota (G instances in us-east-1; a new account starts at 0 and has to ask AWS to raise it);
+- the CloudFormation stack from the aws-setup spec deployed and the two AWS CLI profiles set up, per [docs/aws-setup.md](docs/aws-setup.md);
+- the machine image built once. That's a paid run of about $1.20 and about 45 minutes.
+
+Then, from the repo root, in order:
+
+```
+# Build the machine image once (paid, ~$1.20, ~45 min).
+uv run python -m cloud.image
+
+# Prove the fresh image works before any long job (paid).
+uv run python -m cloud.smoke
+
+# Start a job from a video (paid). Prints the job id and the machine it launched.
+uv run python -m cloud.start path/to/video.mov --preset fast
+
+# Check progress and fetch the results (free).
+uv run python -m cloud.status <job-id>
+uv run python -m cloud.download <job-id>
+```
+
+The paid commands (`cloud.image`, `cloud.smoke`, `cloud.start`) print the machine, the expected time and the rough cost first and start nothing unless `APPROVED_SPEND=1` is set on that one command. The $1.20 and 45 minutes are estimates; check them against the prices and times in `[cloud]` in `config.toml`. [docs/pipeline.md](docs/pipeline.md) describes the cloud run and all the commands.

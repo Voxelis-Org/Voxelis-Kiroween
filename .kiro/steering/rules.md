@@ -12,9 +12,9 @@ These apply to Kiro and to everyone on the team.
   - MIT, including MIT-0 and MIT-CMU
   - BSD-2-Clause, BSD-3-Clause and 0BSD
   - Apache-2.0, including Apache-2.0 with the LLVM exception
-  - ISC, PSF-2.0 and matplotlib's PSF-style licence, Zlib, BSL-1.0, the Unlicense and CC0
+  - ISC, PSF-2.0 and matplotlib's PSF-style licence, CNRI-Python (the licence of Python's early code), Zlib, BSL-1.0, the Unlicense and CC0
 
-  torch, numpy, Pillow, typing-extensions and splat-transform's npm packages use some of these.
+  torch, numpy, Pillow, typing-extensions, regex and splat-transform's npm packages use some of these.
 - Never in our code or our Python and npm dependencies: GPL, AGPL, LGPL or any other copyleft licence, anything non-commercial, or anything without a clear licence. The only exceptions are the bundled libraries and named exceptions below.
 - So no code from Inria's gaussian-splatting repo or anything copied from it, no nvdiffrast and no non-commercial model weights. Weights often have a different licence from their code, so check both.
 - Any other licence: ask Samarth before adding it.
@@ -54,7 +54,7 @@ These apply to Kiro and to everyone on the team.
 - Kiro and the team still need an OK for every run they start by hand.
 - It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
-- Once the person in the chat says yes to a paid run, Kiro runs our start or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
+- Once the person in the chat says yes to a paid run, Kiro runs our start, image-build or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.
 - The code has a spend guard: nothing paid starts unless `APPROVED_SPEND=1` is set. Kiro never sets it otherwise.
 - One machine per job at most. No automatic retries or relaunches.
 - Nothing stays running after a job. Every machine shuts itself down when its job ends.
@@ -62,10 +62,12 @@ These apply to Kiro and to everyone on the team.
 ## AWS access
 
 - Everything runs in us-east-1.
-- Kiro uses the read-only profile `kiroween-read`. It uses the runner profile `kiroween-runner` only inside our start, smoke-test and stop-all commands, and never any other AWS profile.
+- Kiro uses the read-only profile `kiroween-read`. It uses the runner profile `kiroween-runner` only inside our start, image-build, smoke-test and stop-all commands, and never any other AWS profile.
 - Never rely on `AWS_PROFILE`. AWS keys saved in environment variables beat it, so `AWS_PROFILE=kiroween-read` can run as another account. Only a profile named in the command or in the code beats them.
 - In aws commands, always pass `--profile kiroween-read`.
 - In Python on our laptops, always name the profile with `boto3.Session(profile_name=...)`, never `AWS_PROFILE` or the default credential chain.
+- aws commands also pass `--region us-east-1`. An `AWS_REGION` or `AWS_DEFAULT_REGION` environment variable beats the profile's region, even with `--profile`.
+- Python also passes `region_name` from `[aws].region` in `config.toml` to `boto3.Session`.
 - Code running on the job machine uses its instance role.
 - The AWS setup spec makes both profiles. Until `kiroween-read` exists, Kiro doesn't touch AWS at all.
 - Our team's account also holds an older project's resources, in other regions and in IAM and S3. Leave them exactly as they are: never delete, change, reuse or depend on them.
