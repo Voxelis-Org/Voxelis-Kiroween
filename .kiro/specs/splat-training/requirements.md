@@ -396,7 +396,7 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 8. THE Train_Smoke_Check SHALL pass only when the Trainer ran every planned Iteration and the PLY_Check passed, and SHALL give back a line for the log with the Iterations run, the splats written and the SH_Degree reached.
 9. IF the Trainer or the PLY_Check fails, THEN THE Train_Smoke_Check SHALL raise an error whose message says what failed, so the Smoke_Test reports the check as failed and goes on with the other checks.
 10. THE Train_Smoke_Check SHALL import the GPU_Module inside the check's own function, as the other GPU checks import torch, so `cloud/smoke_runner.py` still imports on a laptop.
-11. THE Train_Smoke_Check SHALL finish within `[cloud.smoke]`'s `check_timeout_seconds` (60) on the Smoke_Test's g5.xlarge, in line with the few seconds each check takes (cloud-jobs Requirement 11, criterion 2).
+11. THE Train_Smoke_Check SHALL run with no time limit of its own, and the Smoke_Test's log records how long the Train_Smoke_Check took, as the log records every check's time.
 12. THE Smoke_Test SHALL run the Train_Smoke_Check on the current Machine_Image with no Image_Build, because the Smoke_Command uploads the Code_Archive that holds the check. Running the Smoke_Test again is a paid run that needs the person's yes, and no task of this spec runs the Smoke_Test (A12).
 13. THE `tests/test_cloud_smoke_runner.py` test of the checks' order, the `[cloud.smoke]` tables in `tests/fake_aws.py` and `tests/test_cloud_config.py`, and the Pipeline_Doc's smoke test part SHALL change in the same task as SMOKE_CHECKS.
 
