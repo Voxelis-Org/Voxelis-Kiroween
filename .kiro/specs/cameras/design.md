@@ -51,15 +51,17 @@ Each item is a proposal for the user to confirm or change. O1 to O11 are the ope
 
 | Command | Key | Limit (s) | What the guess is based on |
 |---|---|---|---|
-| `feature_extractor` | `feature_extractor_timeout_seconds` | 1800 | CPU SIFT on 400 picks, each doubled to 3200 px by `first_octave = -1`: a few seconds per pick per core, so a few minutes on 32 vCPUs. |
-| `sequential_matcher` (each run) | `sequential_matcher_timeout_seconds` | 3600 | About 5,880 near pairs and 1,500 far pairs. Brute-force matching of up to 8,192 by 8,192 descriptors costs a fraction of a second per pair per core, plus RANSAC: minutes. |
-| `view_graph_calibrator` | `view_graph_calibrator_timeout_seconds` | 1800 | One focal length fit and a RANSAC refit of up to 7,400 pairs: minutes. |
-| `global_mapper` | `global_mapper_timeout_seconds` | 3600 | Global mapping of 400 frames takes minutes. The fixed seed turns off a solver ordering, which can make positioning slower. |
-| `mapper` | `mapper_timeout_seconds` | 7200 | Incremental mapping of 400 frames with repeated global bundle adjustment on the CPU: tens of minutes. |
-| `image_undistorter` | `image_undistorter_timeout_seconds` | 1800 | 400 warps and JPEG writes at quality 100: a few minutes. |
-| `image_undistorter_standalone` | `image_undistorter_standalone_timeout_seconds` | 300 | One PNG: seconds. |
+| `feature_extractor` | `feature_extractor_timeout_seconds` | 900 | CPU SIFT on 400 picks, each doubled to 3200 px by `first_octave = -1`: a few seconds per pick per core, so a few minutes on 8 vCPUs. |
+| `sequential_matcher` (each run) | `sequential_matcher_timeout_seconds` | 1800 | About 5,880 near pairs at a `near_overlap` of 15 and about 9,700 at quality's 25, and at most about 1,500 far pairs. Brute-force matching of up to 8,192 by 8,192 descriptors costs a fraction of a second per pair per core, plus RANSAC: up to about ten minutes on 8 vCPUs, for quality's near run. |
+| `view_graph_calibrator` | `view_graph_calibrator_timeout_seconds` | 600 | One focal length fit and a RANSAC refit of up to about 10,800 pairs at quality's overlap: a few minutes at most. |
+| `global_mapper` | `global_mapper_timeout_seconds` | 1800 | Global mapping of 400 frames takes minutes, on 8 vCPUs too. The fixed seed turns off a solver ordering, which can make positioning slower. |
+| `mapper` | `mapper_timeout_seconds` | 3600 | Incremental mapping of 400 frames with repeated global bundle adjustment on the CPU, the slowest command: ten to twenty minutes on 8 vCPUs. |
+| `image_undistorter` | `image_undistorter_timeout_seconds` | 600 | 400 warps and JPEG writes at quality 100: a few minutes at most. |
+| `image_undistorter_standalone` | `image_undistorter_standalone_timeout_seconds` | 120 | One PNG: seconds. |
 
-These are guesses, not measurements. They take the largest job the settings allow, 400 picks (`max_picks` in `[frames]`) of 1600 px on the long edge (`long_edge`), on the g5.8xlarge's 32 vCPUs, and leave several times the expected time. The first real cloud runs should replace them with measured times plus a margin.
+These are guesses, not measurements. They take the largest job the settings allow, 400 picks (`max_picks` in `[frames]`) of 1600 px on the long edge (`long_edge`), on an 8-vCPU type: g5.2xlarge or g6.2xlarge, the smallest types on the fast Fallback_List, or g6e.2xlarge, the smallest on quality's. A Job can land on one of them because `min_vcpus` is a soft need. Quality's `near_overlap` of 25 gives about 9,700 near pairs, so the matching and calibration rows count quality's pairs. Each limit leaves a few times the expected time.
+
+The limits also have to fit inside the cloud's Time_Cap. Otherwise a hung command would meet the Time_Cap before its own Time_Limit, and the step's failed Cameras_Report would never be written. With these values, a single hung command still fails the step before the fast preset's Cap_Deadline in a normal run. That deadline comes 110 minutes after the machine starts: the fast Time_Cap of 120 minutes, minus `upload_margin_minutes = 10`. The largest limit is the incremental mapper's 60 minutes, and the mapper starts after boot, the frames step, extraction, matching, calibration and global mapping have each taken their few minutes. Several commands that each run long, but under their own limits, can still reach the Time_Cap together, and the Time_Cap stays the cloud's backstop (cloud-jobs Req 10.8). The step doesn't read the Cap_Deadline, `SPLATPIPE_CAP_DEADLINE`, as the Pipeline_Doc says no current step does. Reading it would be a new requirement for a later spec. The first real cloud runs should replace these guesses with measured times plus a margin.
 
 ### O2: `fisheye_fov_degrees = 120.0`
 
@@ -869,22 +871,22 @@ axis_point_min_front_share = 0.5
 # A camera looking within this many degrees of straight up or down has no heading.
 heading_min_degrees = 10.0
 # Longest time colmap feature_extractor may run, in seconds.
-feature_extractor_timeout_seconds = 1800
+feature_extractor_timeout_seconds = 900
 # Longest time each of the two colmap sequential_matcher runs may take, in seconds.
-sequential_matcher_timeout_seconds = 3600
+sequential_matcher_timeout_seconds = 1800
 # Longest time colmap view_graph_calibrator may run, in seconds.
-view_graph_calibrator_timeout_seconds = 1800
+view_graph_calibrator_timeout_seconds = 600
 # Longest time colmap global_mapper may run, in seconds.
-global_mapper_timeout_seconds = 3600
+global_mapper_timeout_seconds = 1800
 # Longest time colmap mapper, the incremental mapper, may run, in seconds.
-mapper_timeout_seconds = 7200
+mapper_timeout_seconds = 3600
 # Longest time colmap image_undistorter may run, in seconds.
-image_undistorter_timeout_seconds = 1800
+image_undistorter_timeout_seconds = 600
 # Longest time colmap image_undistorter_standalone, which warps the mask, may run, in seconds.
-image_undistorter_standalone_timeout_seconds = 300
-# Fewest vCPUs the job's cloud machine needs for this step. The step never checks it.
+image_undistorter_standalone_timeout_seconds = 120
+# vCPUs the job's cloud machine should have for this step, a soft need. The step never checks it.
 min_vcpus = 16
-# Least memory the job's cloud machine needs for this step, in GB. The step never checks it.
+# Least memory the job's cloud machine needs for this step, in GB, a hard need. The step never checks it.
 min_memory_gb = 16
 
 # Every COLMAP command.
@@ -1266,8 +1268,8 @@ That's 173 Option_Keys, `camera_model` included: 1 for every command, 19 for `fe
 |---|---|---|
 | The program | `colmap` | D12. |
 | The log options, every command | `--log_target stderr --log_level 0 --log_severity 0 --log_color 0` | D4: the step captures every line, uncoloured, in the Command_Log. |
-| `feature_extractor` | `--camera_mode 1`, `--FeatureExtraction.type SIFT`, `--FeatureExtraction.use_gpu 0` | D4: one camera; the build has SIFT only, and SiftGPU is non-commercial. |
-| `sequential_matcher` | `--FeatureMatching.type SIFT_BRUTEFORCE`, `--FeatureMatching.use_gpu 0`, `--SequentialMatching.loop_detection 0`, and `--SequentialMatching.quadratic_overlap` 0 near and 1 far | D4, D6, A1: the build has no learned matchers or vocabulary tree; the two runs are defined by their pairing. |
+| `feature_extractor` | `--camera_mode 1`, `--FeatureExtraction.type SIFT`, `--FeatureExtraction.use_gpu 0` | D4: one camera; SIFT needs no model weights, with or without ONNX in the build; and SiftGPU is non-commercial. |
+| `sequential_matcher` | `--FeatureMatching.type SIFT_BRUTEFORCE`, `--FeatureMatching.use_gpu 0`, `--SequentialMatching.loop_detection 0`, and `--SequentialMatching.quadratic_overlap` 0 near and 1 far | D4, D6, A1: `SIFT_BRUTEFORCE` needs no model weights, and loop detection would need a vocabulary tree that COLMAP downloads at run time, so nothing is downloaded on any build; the two runs are defined by their pairing. |
 | `global_mapper` | `--GlobalMapper.gp_use_gpu 0`, `--GlobalMapper.ba_ceres_use_gpu 0`, `--GlobalMapper.ba_backend CERES` | D4, O7: no CUDA in the build. |
 | `mapper` | `--Mapper.ba_use_gpu 0`, `--Mapper.ba_local_backend CERES`, `--Mapper.ba_global_backend CERES` | D4, O7. |
 | `image_undistorter` | `--output_type COLMAP` | A1: the step reads COLMAP's own layout. |
@@ -1339,23 +1341,23 @@ Every check runs before the step reads `frames.json` or runs any COLMAP_Command 
 | `tests/test_frames_step.py` | The real-ffmpeg `run_job` test passes `steps=[entry for entry in STEP_LIST if entry.name == "frames"]`, so it still checks the Frames_Step alone, and its docstrings say so. | 14.6 |
 | `tests/test_imports.py` | The Step_List check's docstring no longer says the Frames_Step is the only entry, and its loop loads `[cameras]` for each Preset from the real config. A new check reads every `splatpipe/cameras/*.py` and allows only `sys.stdlib_module_names`, numpy, cv2 and splatpipe. | 14.7, 16.10 |
 | `tests/test_docs.py` | "The step list" test checks the three new phrases below and that "Until the camera solve spec adds its entry" is gone. New tests for `## Step: cameras` and the COLMAP row. | 14.8, 16.12 |
-| `docs/pipeline.md` | A `## Step: cameras` section after `## Step: frames`, and "The step list" rewritten. | 15.1 to 15.7 |
-| `docs/third-party-licences.md` | The COLMAP 4.2.1 row. | 15.8 |
+| `docs/pipeline.md` | A `## Step: cameras` section after `## Step: frames`, and the first three sentences of "The step list" replaced. | 15.1 to 15.7 |
+| `docs/third-party-licences.md` | The COLMAP 4.2.1 row: `main`'s text up to "SIFT runs on the CPU." stays, and the step's use follows it. | 15.8 |
 | `.kiro/specs/frames/requirements.md` | A note under Requirement 11, criteria 3 and 4, and under Requirement 12, criterion 5: "The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it." The criteria's own words stay. | 14.9 |
 
 Unchanged: `pyproject.toml` and `uv.lock` (Req 12.12), `.kiro/steering/tech.md`, every Skeleton module but `splatpipe/run.py`, the Frames_Step's code, and `tests/test_config.py`, whose comment check covers `[cameras]` as it is.
 
-**"The step list"** gets these words in place of its paragraph about the frames step (Req 15.7): "The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done." The test checks the phrases "The list holds the frames step and then the cameras step, both required", "Each later step spec adds its own entry after the cameras step" and "Until the training spec adds its entry, a job is done once the cameras step is done".
+**"The step list"** gets these words in place of the first three sentences of its paragraph about the frames step, from "The list holds the frames step as its first, required entry" to "a job is done once the frames step is done." (Req 15.7): "The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done." The rest of the part stays as it is on `main`: the paragraph's last sentence, "The planned steps are:", the two bullets "Required steps: picking frames, solving cameras and training." and "Optional steps: depth priors and clean and export.", and the closing sentence "Running a job in the cloud comes in its own spec, and it isn't a step." The test checks the phrases "The list holds the frames step and then the cameras step, both required", "Each later step spec adds its own entry after the cameras step" and "Until the training spec adds its entry, a job is done once the cameras step is done".
 
 **`## Step: cameras`** opens with the CLI, the plain function and the order of the work, then has the Frames_Step's five parts (Req 15.1):
 
 - `### What it reads` (Req 15.2): `work/frames/frames.json` and the fields it uses, `images/`, `grey/` and `mask.png`; that the Feature_Extraction reads the Grey_Copies while the mappers and the Undistortion read the Colour_Picks, which share their names; and that the Job's machine image needs COLMAP 4.2.1 built as `.kiro/steering/tech.md` says.
 - `### What it writes` (Req 15.3): the Work_Folder tree, the Model_Files' layout tables and the Pose convention, the one PINHOLE camera, the names that match `work/cameras/images/`, the Training_Masks only with `mask_used`, the World_Up (0, −1, 0), the Heading along +Z and the Scene_Centre at the origin, that the Training_Step reads these files with its own reader, with no COLMAP or pycolmap, what the COLMAP_Folder holds, and the Solve_Record's fields.
-- `### Config section` (Req 15.4): a table of every key in `[cameras]` and its Preset tables, with the COLMAP option each Option_Key sets, its value and what it does; the Fixed_Constants; and the Machine_Needs, at least 16 vCPUs and 16 GB of memory on the Job's cloud machine, which the step never checks.
+- `### Config section` (Req 15.4): a table of every key in `[cameras]` and its Preset tables, with the COLMAP option each Option_Key sets, its value and what it does; the Fixed_Constants; and the Step_Needs, 16 vCPUs, a soft need, and 16 GB of memory, a hard need, as the Pipeline_Doc's "What each step asks the machine for" table plans them. The Start_Command reads them to pick the machine, and the step never checks the machine.
 - `### Step report fields` (Req 15.5): every count and timing of the Cameras_Report, and when each warning appears.
 - `### Files in out/` (Req 15.6): `out/cameras.json` and its fields, removed when the step's own code starts and written last of all, so a run that fails in the step's code leaves none. A run that the step runner stops before the step's code starts leaves the earlier run's `work/cameras/` and `out/cameras.json` in place, next to a failed report.
 
-**The COLMAP row** (Req 15.8, A15). "How we use it": "The cameras step runs `feature_extractor`, `sequential_matcher`, `view_graph_calibrator`, `global_mapper`, `mapper`, `image_undistorter` and `image_undistorter_standalone` as separate command line processes on our private machine image, built without CUDA, OpenGL, the GUI, CGAL and LSD. Never vendored or linked, and no pycolmap. On laptops, Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD, is used only for `-h` and small CPU tests, always with `use_gpu 0`." "Installed": "Yes, on the laptop through Homebrew. Not yet on the machine image."
+**The COLMAP row** (Req 15.8, A15). Its "How we use it" cell keeps the text it has on `main` word for word up to "SIFT runs on the CPU.", because cloud-jobs Req 14.5 put the build flags there and `tests/test_cloud_image.py` checks the five-flag string in the row verbatim: "Command line tool on our private machine image. Finds the camera poses. Built from source with `-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF`: the first three keep SiftGPU (non-commercial) out, `-DCGAL_ENABLED=OFF` keeps out CGAL (GPL) and `-DLSD_ENABLED=OFF` keeps out LSD (AGPL). SIFT runs on the CPU." The step's use then takes the place of `main`'s last sentence, "Never vendored, linked or shipped.": "The cameras step runs `feature_extractor`, `sequential_matcher`, `view_graph_calibrator`, `global_mapper`, `mapper`, `image_undistorter` and `image_undistorter_standalone` as separate command line processes on our private machine image, never vendored or linked, never shipped, and with no pycolmap. On laptops, Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD, is used only for `-h` and small CPU tests, always with `use_gpu 0`." "Installed": "Yes, on the laptop through Homebrew. Not yet on the machine image." The row stays the Licence_List's only row with COLMAP in its name, which `tests/test_cloud_image.py` also checks.
 
 ## Error Handling
 

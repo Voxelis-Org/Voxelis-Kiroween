@@ -19,7 +19,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - `tests/conftest.py`: task 1 adds `[cameras]`, `MISSING`, `set_cameras` and the `colmap_options` oracle. Task 4 adds `cameras_job`. Task 5 adds `FakeColmap` and `fake_colmap` for the commands the solve flow runs. Task 7 gives `FakeColmap` the two undistorters and makes `fake_colmap` install it as the step's tools.
 - `tests/test_imports.py`: task 1 adds the cameras import check, and task 10 changes the Step_List check's docstring.
 - `tests/test_docs.py`: task 9 tests the cameras section and the COLMAP row, and task 10 tests "The step list".
-- `docs/pipeline.md`: task 9 adds `## Step: cameras`, and task 10 rewrites "The step list".
+- `docs/pipeline.md`: task 9 adds `## Step: cameras`, and task 10 replaces the first three sentences of "The step list".
 - `tests/test_cameras_step.py`: task 7 writes it, and task 10 adds the `run_job` test of both steps.
 
 ## Working rules for every task
@@ -424,14 +424,15 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Put it after `## Step: frames`. It opens with the CLI, `uv run python -m splatpipe.cameras --job <id> [--preset P]`, the plain function `splatpipe.cameras.run(job_id, preset=None)` and the order of the work, then has the Frames_Step's five parts.
     - What it reads: `work/frames/frames.json` and the fields the step uses, `images/`, `grey/` and `mask.png`. The Feature_Extraction reads the Grey_Copies, while the mappers and the Undistortion read the Colour_Picks, which share their names. The Job's machine image needs COLMAP 4.2.1 built as `.kiro/steering/tech.md` says.
     - What it writes: the Work_Folder tree, the Model_Files' layout tables and the Pose convention, the one PINHOLE camera, the names that match `work/cameras/images/`, the Training_Masks only with `mask_used`, the World_Up (0, −1, 0), the Heading along +Z and the Scene_Centre at the origin. It says the Training_Step reads these files with its own reader, with no COLMAP or pycolmap, and gives what the COLMAP_Folder holds and the Solve_Record's fields.
-    - Config section: a table of every key in `[cameras]` and its Preset tables, with the COLMAP option each Option_Key sets, its value and what it does; the Fixed_Constants; and the Machine_Needs, at least 16 vCPUs and 16 GB of memory on the Job's cloud machine, which the step itself never checks.
+    - Config section: a table of every key in `[cameras]` and its Preset tables, with the COLMAP option each Option_Key sets, its value and what it does; the Fixed_Constants; and the Step_Needs, 16 vCPUs, a soft need, and 16 GB of memory, a hard need, as the Pipeline_Doc's "What each step asks the machine for" table plans them. The Start_Command reads them to pick the machine, and the step itself never checks the machine.
     - Step report fields: every count and timing of the Cameras_Report, and when each warning appears.
     - Files in out/: `out/cameras.json` and its fields. The step removes an earlier one when its own code starts and writes a new one last of all, so a run that fails in the step's code leaves none. A run that the step runner stops before the step's code starts leaves the earlier run's `work/cameras/` and `out/cameras.json` in place, next to a failed report.
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6_
 
-  - [ ] 9.2 Rewrite the COLMAP row in `docs/third-party-licences.md`
-    - "How we use it" becomes the design's text. The cameras step runs `feature_extractor`, `sequential_matcher`, `view_graph_calibrator`, `global_mapper`, `mapper`, `image_undistorter` and `image_undistorter_standalone` as separate command line processes on our private machine image, built without CUDA, OpenGL, the GUI, CGAL and LSD, never vendored or linked, and with no pycolmap. On laptops, Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD, is used only for `-h` and small CPU tests, always with `use_gpu 0`.
-    - "Installed" becomes "Yes, on the laptop through Homebrew. Not yet on the machine image." The licence stays BSD-3-Clause.
+  - [ ] 9.2 Add the step's use to the COLMAP row in `docs/third-party-licences.md`
+    - "How we use it" keeps its text from `main` word for word up to "SIFT runs on the CPU.", build flags included, because cloud-jobs Req 14.5 requires them and `tests/test_cloud_image.py` checks the five-flag string `-DCUDA_ENABLED=OFF -DOPENGL_ENABLED=OFF -DGUI_ENABLED=OFF -DCGAL_ENABLED=OFF -DLSD_ENABLED=OFF` in the row verbatim.
+    - `main`'s last sentence, "Never vendored, linked or shipped.", gives way to the design's text for the step: "The cameras step runs `feature_extractor`, `sequential_matcher`, `view_graph_calibrator`, `global_mapper`, `mapper`, `image_undistorter` and `image_undistorter_standalone` as separate command line processes on our private machine image, never vendored or linked, never shipped, and with no pycolmap. On laptops, Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD, is used only for `-h` and small CPU tests, always with `use_gpu 0`."
+    - "Installed" becomes "Yes, on the laptop through Homebrew. Not yet on the machine image." The licence stays BSD-3-Clause, and the row stays the Licence_List's only row with COLMAP in its name, which `tests/test_cloud_image.py` also checks.
     - _Requirements: 15.8_
 
   - [ ] 9.3 Write the doc tests for the cameras section and the COLMAP row in `tests/test_docs.py`
@@ -445,7 +446,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.8, 16.12_
 
   - [ ] 9.4 Run the tests and commit
-    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included, and so do the COLMAP row checks in `tests/test_cloud_image.py`, which the full run takes in.
     - On `feat/camera-solve`: `git add docs/pipeline.md docs/third-party-licences.md tests/test_docs.py`, then commit those files with the message "Cameras: pipeline doc section and the COLMAP licence row".
     - _Requirements: 16.4, 16.13_
 
@@ -474,8 +475,9 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The docstring of `test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section` says the check loads `[frames]` and `[cameras]` from the real config for each of the three Presets, and no longer describes the Frames_Step as the only entry. Its loop already goes through every entry, so it loads `[cameras]` with no code change.
     - _Requirements: 14.7_
 
-  - [ ] 10.5 Rewrite "The step list" in `docs/pipeline.md`, with its test
-    - In place of the paragraph about the frames step, write the design's words: "The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done." Keep the list of planned steps.
+  - [ ] 10.5 Update "The step list" in `docs/pipeline.md`, with its test
+    - In place of the first three sentences of the paragraph about the frames step, from "The list holds the frames step as its first, required entry" to "a job is done once the frames step is done.", write the design's words: "The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done."
+    - Leave the rest of the part as it is on `main`: the paragraph's last sentence, "The planned steps are:", the two bullets "Required steps: picking frames, solving cameras and training." and "Optional steps: depth priors and clean and export.", and the closing sentence "Running a job in the cloud comes in its own spec, and it isn't a step."
     - In `tests/test_docs.py`, the test of "The step list" gets a name that fits and checks the phrases "The list holds the frames step and then the cameras step, both required", "Each later step spec adds its own entry after the cameras step" and "Until the training spec adds its entry, a job is done once the cameras step is done". It checks that "Until the camera solve spec adds its entry", "The list starts empty" and "No steps are set up yet" are gone. The existing Step_List check now finds `## Step: cameras`, and its docstring says so.
     - _Requirements: 14.8, 15.7_
 
