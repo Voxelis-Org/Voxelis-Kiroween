@@ -68,19 +68,25 @@ let it go. After each frame, at most 8 may be alive: the frame before, the curre
 buffer's 6. When the Pick_Pass starts, none may be, because the helper that runs the Score_Pass
 and the choosing gives back no Score_Frame (Req 1.12, 13.7).
 
+The Step_List test runs the walk through run_job with no steps given, so the real Step_List runs:
+the Frames_Step, then the Train_Step. No camera solve has run, so once the Frames_Step is done the
+Train_Step finds no work/cameras/images/ and fails, and so does the Job, with the Train_Step's
+message for the missing folder as the Job_Summary's readable_error (splat-training spec, Req 1.2,
+11.5, 11.11).
+
 The two real ffmpeg tests run the step with the real TOOLS, so they're skipped, with the reason
 "ffmpeg and ffprobe aren't installed", when either tool is missing, like the real tests in
 tests/test_frames_ffmpeg.py (Req 13.5). Each makes its clip in tmp_path with ffmpeg, at 10 frames
 a second and 64 × 48, smaller than the test config's long_edge of 1600. The first clip is lavfi's
 testsrc, 3 s long. The second, the ramp, is 2 s long, and its frame k is flat grey at a
 brightness of 16 + 10k, from 16 to 206, so neighbouring frames are 10 apart. The ramp's test runs
-the Job through run_job with the real Step_List, whose only entry is the Frames_Step, so the Job
-is done once the step is (Req 11.4). The runs that make the clips have a limit of 60 s, and the
-step's own ffprobe and ffmpeg runs take the test config's limits, also 60 s (Req 13.11). make_job
-would refuse either clip, which is bigger than the test config's max_video_bytes of 1024, so each
-test makes the Job with new_job and then copies its clip over the Job's input/video.mp4. The step
-reads only that video and the Job_Record's Trim, which runs from 0 to 10 s, so ffmpeg reads the
-clip to its end, and Frame_Number k is the clip's frame k.
+the Job through run_job with a Step_List of the Frames_Step's entry alone, so the Job is done once
+the step is (Req 11.4, and splat-training spec, Req 11.10). The runs that make the clips have a
+limit of 60 s, and the step's own ffprobe and ffmpeg runs take the test config's limits, also
+60 s (Req 13.11). make_job would refuse either clip, which is bigger than the test config's
+max_video_bytes of 1024, so each test makes the Job with new_job and then copies its clip over
+the Job's input/video.mp4. The step reads only that video and the Job_Record's Trim, which runs
+from 0 to 10 s, so ffmpeg reads the clip to its end, and Frame_Number k is the clip's frame k.
 """
 
 import errno
@@ -104,7 +110,7 @@ from splatpipe.frames.__main__ import main as frames_main
 from splatpipe.frames.ffmpeg import DecodePlan, ToneMap, VideoInfo, decode, decode_command
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json
-from splatpipe.run import run_job
+from splatpipe.run import StepEntry, run_job
 
 # A Frame_Time in seconds and its picture, as FakeTools takes them.
 Pair = tuple[float, np.ndarray]
@@ -807,6 +813,25 @@ def test_a_5000_frame_score_pass_leaves_at_most_8_frames_alive_and_none_at_the_p
     assert watch.alive_when_the_pick_pass_starts == [0]
 
 
+# The real Step_List (splat-training spec, Req 1.2, 11.5, 11.11)
+
+def test_run_job_with_the_real_step_list_fails_at_train_once_the_frames_step_is_done(
+        new_job: Callable[..., str], fake_tools: Callable[..., Any],
+        set_frames: Callable[..., None]) -> None:
+    job_id = new_job()
+    fake_tools(INFO, walk())
+    set_frames(**TINY)
+    summary = run_job(job_id)  # with no steps given, the real Step_List runs
+    assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
+        ("frames", "done"), ("train", "failed"), ("clean", "not_run")]
+    assert (summary["status"], summary["failed_step"]) == ("failed", "train")
+    # No camera solve has run, so the Train_Step finds no work/cameras/images/.
+    images = folder_of(job_id).resolve() / "work" / "cameras" / "images"
+    assert summary["readable_error"] == (
+        f"The train step needs {images}, which the camera solve step writes, but it isn't "
+        "there. Run the camera solve step on this job first.")
+
+
 # The real ffmpeg (Req 8.1, 8.2, 8.4, 8.5, 11.4, 13.4, 13.5, 13.11)
 
 # Skips a test that runs the real ffmpeg and ffprobe when either isn't installed, the same way as
@@ -903,9 +928,10 @@ def make_ramp_clip(folder: Path) -> Path:
 def test_run_job_with_the_real_ffmpeg_is_done_and_each_colour_pick_shows_the_frame_its_entry_names(
         new_job: Callable[..., str], tmp_path: Path) -> None:
     job_id = real_job(new_job, make_ramp_clip(tmp_path))
-    # The Job_Runner with the real Step_List, whose only entry is the Frames_Step, and the real
-    # TOOLS, so ffprobe and ffmpeg read the ramp. The Job is done once the step is (Req 11.4).
-    summary = run_job(job_id)
+    # The Job_Runner with a Step_List of the Frames_Step's entry alone, and the real TOOLS, so
+    # ffprobe and ffmpeg read the ramp. The Job is done once the step is (Req 11.4, and
+    # splat-training spec, Req 11.10).
+    summary = run_job(job_id, steps=(StepEntry("frames", "splatpipe.frames", True),))
     assert summary["status"] == "done", summary["readable_error"]
     record = record_of(job_id)
     picks = record["picks"]

@@ -4,24 +4,24 @@
 Spend_Guard first, so nothing paid starts before the yes (Req 6.1, 11.4). Only then does it find the
 current Machine_Image, admit the `smoke_instance_type` against the real G_Quota, upload the
 Code_Archive of HEAD and launch one machine from that image with the Requirement 8 request and the
-Smoke_Test's Time_Cap (Req 11.1). That machine's User_Data runs every GPU code path for a few
-seconds on a tiny synthetic scene and runs the Cloud_Runner end to end on a tiny Fake_Step Job
-(Req 11.2); on a pass it writes the Smoke_Marker keyed to the image id (Req 11.3), measures how long
-it took to be ready (Req 11.5) and ends itself (Req 11.4). `run_smoke` then records a LABEL_SMOKE
+Smoke_Test's Time_Cap (Req 11.1). That machine's User_Data runs `cloud.smoke_runner`, which runs
+every GPU code path for a few seconds on a tiny synthetic scene and runs the Cloud_Runner end to end
+on a tiny Fake_Step Job (Req 11.2); on a pass it writes the Smoke_Marker keyed to the image id
+(Req 11.3), measures how long it took to be ready (Req 11.5) and ends itself (Req 11.4). `run_smoke` then records a LABEL_SMOKE
 Spend_Line for the machine, labelled an estimate (Req 12.2, 12.3). The GPU work runs only on the
 real machine; the CPU Test_Suite checks the launch request, the marker-key round-trip and the
 Spend_Line against the Fake_AWS.
 
 `smoke_marker_key` and `image_id_from_marker` are the pure key helpers: the marker lives under
 `jobs/` so the machine's Job_Role may write it and the Read_Profile may read it (Req 11.3), and the
-two round-trip. `cloud.start` imports `smoke_marker_key` from here (lazily, so `import cloud.start`
+two round-trip. `smoke_log_key` is where the machine puts its check results, beside the marker. `cloud.start` imports `smoke_marker_key` from here (lazily, so `import cloud.start`
 works before this module exists) to gate a Job on a passing Smoke_Marker; the name and its result
 stay stable.
 
 `main` is the Smoke_Command CLI, `uv run python -m cloud.smoke`. It builds the Runner_Profile `Aws`
 from `[aws].runner_profile`, resolves the Stack and runs the Smoke_Test (Req 1.5). The machine-side
-GPU checks this module's User_Data points at run only on the real GPU machine, and each later spec
-that adds a GPU code path adds that path to them (Req 11.5).
+checks are in `cloud.smoke_runner`, and each later spec that adds a GPU code path adds a check for
+it there (Req 11.5).
 
 A cloud module may import `splatpipe` to call its public functions; `splatpipe` never imports
 `cloud`. This module imports no boto3 (it talks to AWS only through the `Aws` seam) and no GPU
@@ -72,6 +72,8 @@ _IMAGE_COMMAND = "uv run python -m cloud.image"
 # writes it and the Read_Profile reads it (Req 11.3).
 _MARKER_PREFIX = "jobs/_smoke/"
 _MARKER_SUFFIX = ".json"
+# The smoke machine's check results go beside the marker, as jobs/_smoke/<image_id>.log.
+_LOG_SUFFIX = ".log"
 
 
 def smoke_marker_key(image_id: str) -> str:
@@ -81,6 +83,14 @@ def smoke_marker_key(image_id: str) -> str:
     it. `cloud.start` imports this to gate a Job on a passing marker, so the result stays stable.
     """
     return f"{_MARKER_PREFIX}{image_id}{_MARKER_SUFFIX}"
+
+
+def smoke_log_key(image_id: str) -> str:
+    """Where the smoke machine puts its check results, pass or fail: `jobs/_smoke/<image_id>.log`.
+
+    It sits beside the Smoke_Marker, so the image id the Smoke_Command prints is enough to find it.
+    """
+    return f"{_MARKER_PREFIX}{image_id}{_LOG_SUFFIX}"
 
 
 def image_id_from_marker(key: str) -> str:
@@ -132,8 +142,8 @@ def run_smoke(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs: S
     admitted = admit([smoke_type], running, aws.gpu_quota(), cc)
     attempts = launch_plan(admitted, aws, outputs, cc)
 
-    # 4. The first paid actions. The machine runs cloud.smoke and the Cloud_Runner at HEAD, so it
-    #    needs the Code_Archive; upload it under this smoke run's own Job_Id (Req 11.2, 7.4).
+    # 4. The first paid actions. The machine runs cloud.smoke_runner and the Cloud_Runner at HEAD,
+    #    so it needs the Code_Archive; upload it under this smoke run's own Job_Id (Req 11.2, 7.4).
     job_id = new_job_id()
     with tempfile.TemporaryDirectory(prefix="voxelis-smoke-") as tmp:
         archive = Path(tmp) / "code.tar"
@@ -142,8 +152,9 @@ def run_smoke(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs: S
         code_key = f"jobs/{job_id}/input/code.tar"
         aws.s3_upload(archive, code_key)
 
-        # 5. The smoke User_Data (role "smoke" runs cloud.smoke on the machine) and the launch, with
-        #    the Smoke_Test's Time_Cap and the Requirement 8 request through the fallback (Req 11.1).
+        # 5. The smoke User_Data (role "smoke" runs cloud.smoke_runner on the machine) and the
+        #    launch, with the Smoke_Test's Time_Cap and the Requirement 8 request through the
+        #    fallback (Req 11.1).
         user_data = render_user_data(UserDataValues(
             job_id=job_id, bucket=outputs.bucket, region=aws.region,
             preset=config.jobs().default_preset, image_id=image.id, code_archive_key=code_key,
@@ -167,7 +178,8 @@ def run_smoke(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs: S
         seconds=plan.expected_minutes * 60, price_per_hour_usd=spec.price_per_hour_usd, index=0))
 
     print(f"Launched a {launched_type} in {launched_zone} ({instance.id}) to smoke-test image "
-          f"{image.id}. It writes {smoke_marker_key(image.id)} if it passes, then ends itself.")
+          f"{image.id}. It writes its results to {smoke_log_key(image.id)}, and "
+          f"{smoke_marker_key(image.id)} if it passes, then ends itself.")
 
 
 def main(argv: list[str] | None = None) -> int:

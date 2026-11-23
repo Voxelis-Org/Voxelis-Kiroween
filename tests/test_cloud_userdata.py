@@ -8,12 +8,16 @@ line and the cap line before any download or run, carries the Time_Cap from `cap
 interpolates every value `shlex.quote`d so splitting the line with `shlex` recovers the original
 value (Req 8.7, 8.8, 10.7).
 
-The three example tests pin the shapes the task names: a Job_Id-shaped value goes in `shlex.quote`d
-and round-trips, a value that fails its pattern is refused with a `CloudError`, and the Cap_Deadline
-variable is the documented `CAP_DEADLINE_ENV` constant. These run on the CPU with no network and no
-AWS: rendering is pure string work.
+The first three example tests pin the shapes the task names: a Job_Id-shaped value goes in
+`shlex.quote`d and round-trips, a value that fails its pattern is refused with a `CloudError`, and
+the Cap_Deadline variable is the documented `CAP_DEADLINE_ENV` constant. The rest pin the machine
+side: a Job's machine runs `cloud.runner` and the smoke machine `cloud.smoke_runner`, each of whose
+command lines takes the `--job` the script passes, and the instance type the Spend_Lines price comes
+from the instance metadata with an IMDSv2 token. These run on the CPU with no network and no AWS:
+rendering is pure string work.
 """
 
+import importlib
 import shlex
 from collections.abc import Callable
 
@@ -22,7 +26,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from cloud.errors import CloudError
-from cloud.userdata import CAP_DEADLINE_ENV, UserDataValues, render_user_data
+from cloud.userdata import (CAP_DEADLINE_ENV, RUNNER_MODULE, VENV_PYTHON, UserDataValues,
+                            render_user_data)
 from splatpipe.config import PRESETS
 from splatpipe.jobs import JOB_ID
 
@@ -151,3 +156,46 @@ def test_the_cap_deadline_variable_is_the_documented_constant() -> None:
     assert CAP_DEADLINE_ENV == "SPLATPIPE_CAP_DEADLINE"
     script = render_user_data(example_values())
     assert f"export {CAP_DEADLINE_ENV}=" in script
+
+
+# The machine's entry points
+
+@pytest.mark.parametrize(("role", "module"), [("job", "cloud.runner"),
+                                              ("smoke", "cloud.smoke_runner")])
+def test_each_role_runs_its_own_machine_entry_point(role: str, module: str) -> None:
+    # A Job's machine runs the Cloud_Runner, and the smoke machine runs the smoke test's own checks,
+    # never cloud.smoke, the laptop command that launches it.
+    lines = render_user_data(example_values(role=role)).split("\n")
+    assert lines[-2] == f'{VENV_PYTHON} -m {module} --job "$JOB_ID"'
+    assert lines[-1] == ""  # the script ends with one line break
+
+
+@pytest.mark.parametrize("module_name", sorted(set(RUNNER_MODULE.values())))
+def test_every_machine_entry_point_takes_the_job_id(module_name: str) -> None:
+    # The run line passes --job "$JOB_ID", so each entry point's own command line must take it, as
+    # the laptop's cloud.smoke, which takes no arguments, never could.
+    module = importlib.import_module(module_name)
+    assert callable(module.main)
+    assert module._parser().parse_args(["--job", "20261119-142530-7f3a9c"]).job == (
+        "20261119-142530-7f3a9c")
+    with pytest.raises(SystemExit):
+        module._parser().parse_args([])  # --job is required
+
+
+def test_the_instance_type_comes_from_imdsv2_before_the_run() -> None:
+    # The fallback picks the instance type at launch, so the script asks the instance metadata for
+    # it, with an IMDSv2 session token, which the launch makes required. Each read is a plain
+    # assignment before its export, so set -e stops the script when curl fails, which an
+    # `export X="$(...)"` would hide.
+    lines = render_user_data(example_values()).split("\n")
+    token = line_index(lines, lambda s: s.startswith('IMDS_TOKEN="$(curl -fsS -X PUT '))
+    read = line_index(lines, lambda s: s.startswith('INSTANCE_TYPE="$(curl -fsS -H '))
+    export = lines.index("export INSTANCE_TYPE")
+    cap = line_index(lines, lambda s: s.startswith("shutdown -h "))
+    run = line_index(lines, lambda s: s.endswith('--job "$JOB_ID"'))
+    assert cap < token < read < export < run
+    assert "/latest/api/token" in lines[token]
+    assert "X-aws-ec2-metadata-token-ttl-seconds:" in lines[token]
+    assert '"X-aws-ec2-metadata-token: $IMDS_TOKEN"' in lines[read]
+    assert lines[read].endswith('/latest/meta-data/instance-type)"')
+    assert not any(line.startswith("export INSTANCE_TYPE=") for line in lines)

@@ -34,7 +34,7 @@ These apply to Kiro and to everyone on the team.
 - Hypothesis (MPL-2.0): only as a test dependency.
 - certifi (MPL-2.0) and tqdm (MPL-2.0 and MIT): used unmodified. certifi comes in through requests and tqdm through huggingface-hub.
 - `opencv-python-headless`: its wheels ship FFmpeg under LGPL-2.1. Never plain `opencv-python`. All the OpenCV packages install the same cv2 module, and OpenCV's own README says to install only one of them per environment. We use the headless one because a server needs no GUI parts, and MoGe asks for it too. Never use cv2 to read or write video, frames always come from the ffmpeg command line.
-- torch's CUDA wheels: torch plus the `nvidia-*` and `cuda-*` packages it pulls in, which are under NVIDIA's own licence. Only on the cloud machine image.
+- torch's CUDA wheels: torch plus the `nvidia-*` and `cuda-*` packages it pulls in, which are under NVIDIA's own licence. The same goes for torchvision's CUDA wheel with the NVIDIA libraries it bundles, nvJPEG and the CUDA runtime, and for triton's wheel, which torch pulls in, with the NVIDIA tools and libraries it bundles: `ptxas`, `cuobjdump`, `nvdisasm` and CUPTI. Samarth OKs torchvision's and triton's. Only on the cloud machine image.
 
 ## Footage and other data
 

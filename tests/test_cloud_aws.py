@@ -8,6 +8,11 @@ laptop command can't run as the wrong account (Req 1.6). `machine_aws` names onl
 job machine falls back on its instance role (Req 1.7). A fake `boto3.Session` records the kwargs the
 code passes, and the environment carries values the code must ignore.
 
+`job_machine_aws` builds the machine's one with the region from `[aws].region` and the Job_Bucket
+from the BUCKET variable the User_Data exports, and refuses without it. `BotoAws.s3_exists` asks with
+a list whose prefix is the key, because the Job_Role may list only under jobs/ and work/, so S3
+would answer its HeadObject of a missing key with 403 rather than 404.
+
 Second, `BotoAws.run_instances` converts AWS errors so no other module touches botocore and no raw
 account id reaches a chat. A capacity `ClientError` (`InsufficientInstanceCapacity` or `Unsupported`)
 becomes a `CapacityUnavailable` the launch loop can catch (Req 5.5); any other `ClientError` or
@@ -17,13 +22,14 @@ raises the botocore error in place, so nothing reaches the network.
 
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 
 import cloud.aws as aws_module
-from cloud.aws import BotoAws, laptop_aws, machine_aws
+from cloud.aws import BotoAws, job_machine_aws, laptop_aws, machine_aws
 from cloud.errors import CapacityUnavailable, CloudError
 from splatpipe.config import Config
 
@@ -87,6 +93,109 @@ def test_machine_aws_names_the_region_and_no_profile(monkeypatch: pytest.MonkeyP
     aws = machine_aws(REGION)
     assert calls == [{"region_name": REGION}]  # no profile_name key: the instance role is used
     assert aws.region == REGION
+
+
+def test_job_machine_aws_takes_the_region_from_config_and_the_bucket_from_the_user_data(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    # The region env vars hold values the code must ignore: the region comes from [aws].region.
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "env-region-ignored")
+    calls = patch_session(monkeypatch)
+    aws = job_machine_aws(aws_config(), environ={"BUCKET": "voxelis-kiroween-jobs"})
+    assert calls == [{"region_name": REGION}]  # no profile: the machine uses its instance role
+    assert (aws.region, aws.bucket) == (REGION, "voxelis-kiroween-jobs")
+
+
+def test_job_machine_aws_refuses_without_the_bucket_variable(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = patch_session(monkeypatch)
+    with pytest.raises(CloudError) as caught:
+        job_machine_aws(aws_config(), environ={})
+    assert "BUCKET" in str(caught.value)
+    assert calls == []  # refused before any Session is built
+
+
+# BotoAws.wait_image_available waits as long as the caller says, not botocore's default 10 minutes
+
+class _WaiterEc2:
+    """A stand-in ec2 client whose waiters record the name they were asked for and their kwargs."""
+
+    def __init__(self) -> None:
+        self.waits: list[tuple[str, dict[str, Any]]] = []
+
+    def get_waiter(self, name: str) -> Any:
+        ec2 = self
+
+        class Waiter:
+            def wait(self, **kwargs: Any) -> None:
+                ec2.waits.append((name, dict(kwargs)))
+
+        return Waiter()
+
+
+def test_wait_image_available_polls_for_as_long_as_the_caller_says() -> None:
+    ec2 = _WaiterEc2()
+    bot = BotoAws(_FakeSessionFor(ec2), region=REGION)  # type: ignore[arg-type]
+    bot.wait_image_available("ami-0123456789abcdef0", poll_seconds=20, max_minutes=120)
+    # 120 minutes at one look every 20 seconds is 360 looks.
+    assert ec2.waits == [("image_available", {
+        "ImageIds": ["ami-0123456789abcdef0"],
+        "WaiterConfig": {"Delay": 20, "MaxAttempts": 360}})]
+
+
+# BotoAws.s3_exists asks with a list, which the Job_Role may make under jobs/ and work/
+
+class _ListS3:
+    """A stand-in s3 client whose list_objects_v2 records its kwargs and answers with `keys`."""
+
+    def __init__(self, keys: list[str], error: BaseException | None = None) -> None:
+        self.kwargs: dict[str, Any] = {}
+        self._keys = keys
+        self._error = error
+
+    def list_objects_v2(self, **kwargs: Any) -> Any:
+        self.kwargs = dict(kwargs)
+        if self._error is not None:
+            raise self._error
+        return {"Contents": [{"Key": key} for key in self._keys]} if self._keys else {}
+
+
+class _FakeSessionWithS3:
+    """A stand-in Session handing `BotoAws` the seeded s3 client and throwaway others."""
+
+    def __init__(self, s3: _ListS3) -> None:
+        self._s3 = s3
+
+    def client(self, name: str) -> Any:
+        return self._s3 if name == "s3" else object()
+
+
+KEY = "jobs/20261119-142530-7f3a9c/out/spend.jsonl"
+
+
+@pytest.mark.parametrize(("keys", "exists"), [
+    ([KEY], True),                  # the key itself sorts first among the keys it prefixes
+    ([KEY + ".old"], False),        # only a longer key that starts with it
+    ([], False),                    # nothing there
+])
+def test_s3_exists_asks_with_a_list_of_the_key_as_its_prefix(keys: list[str], exists: bool) -> None:
+    # A HeadObject of a missing key answers 403 to the Job_Role, which may list only with a prefix
+    # under jobs/ or work/, so a list with the key as the prefix answers the question on the machine
+    # and on a laptop alike.
+    s3 = _ListS3(keys)
+    bot = BotoAws(_FakeSessionWithS3(s3), region=REGION, bucket="voxelis-kiroween-jobs")  # type: ignore[arg-type]
+    assert bot.s3_exists(KEY) is exists
+    assert s3.kwargs == {"Bucket": "voxelis-kiroween-jobs", "Prefix": KEY, "MaxKeys": 1}
+
+
+def test_s3_exists_turns_an_aws_error_into_a_redacted_cloud_error() -> None:
+    error = ClientError({"Error": {"Code": "AccessDenied",
+                                   "Message": f"User arn:aws:sts::{ACCOUNT}:assumed-role/x is denied"}},
+                        "ListObjectsV2")
+    bot = BotoAws(_FakeSessionWithS3(_ListS3([], error)), region=REGION,  # type: ignore[arg-type]
+                  bucket="voxelis-kiroween-jobs")
+    with pytest.raises(CloudError) as caught:
+        bot.s3_exists(KEY)
+    assert ACCOUNT not in str(caught.value) and "<account>" in str(caught.value)
 
 
 # BotoAws.run_instances converts AWS errors (Req 5.5, 1.9)
@@ -155,3 +264,28 @@ def test_run_instances_turns_a_botocore_error_into_a_redacted_cloud_error() -> N
     text = str(caught.value)
     assert ACCOUNT not in text
     assert "<account>" in text
+
+
+# BotoAws.console_output asks for the newest output and decodes it
+
+class _ConsoleEc2:
+    """A stand-in ec2 client that records get_console_output's kwargs and answers like EC2 does,
+    with the output base64-encoded."""
+
+    def __init__(self, text: str) -> None:
+        self.kwargs: dict[str, Any] = {}
+        self._text = text
+
+    def get_console_output(self, **kwargs: Any) -> Any:
+        self.kwargs = dict(kwargs)
+        return {"Output": base64.b64encode(self._text.encode("utf-8")).decode("ascii")}
+
+
+def test_console_output_asks_for_the_latest_output_and_decodes_it() -> None:
+    # Without Latest=True EC2 only posts console output around state changes, so a line printed long
+    # after boot, like the image build's done marker, would never show up.
+    ec2 = _ConsoleEc2("booted\nvoxelis-kiroween image build: install complete\n")
+    bot = BotoAws(_FakeSessionFor(ec2), region=REGION)  # type: ignore[arg-type]
+    text = bot.console_output("i-0abc")
+    assert ec2.kwargs == {"InstanceId": "i-0abc", "Latest": True}
+    assert text == "booted\nvoxelis-kiroween image build: install complete\n"

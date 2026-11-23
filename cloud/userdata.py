@@ -2,9 +2,10 @@
 
 `render_user_data` turns a checked `UserDataValues` into the launch script that powers the machine
 off when it ends, schedules the Time_Cap shutdown as a backstop, carries the Job's settings and the
-Cap_Deadline to the Cloud_Runner, fetches the Code_Archive with the instance role and runs the
-Cloud_Runner at the committed revision. The script begins `#!/bin/bash`, uses only `\\n` line
-endings and is at most 16 KB, the EC2 User_Data limit (Req 8.7, 8.8).
+Cap_Deadline to the Cloud_Runner, reads the machine's own instance type from the instance metadata
+with an IMDSv2 token, fetches the Code_Archive with the instance role and runs the Cloud_Runner at
+the committed revision. The script begins `#!/bin/bash`, uses only `\\n` line endings and is at
+most 16 KB, the EC2 User_Data limit (Req 8.7, 8.8).
 
 The `poweroff` trap is written before the Time_Cap `shutdown` line, so a failure on the cap line
 itself still powers the machine off, and the cap line comes before any download or run, so a hang
@@ -14,8 +15,9 @@ checked and then `shlex.quote`d before it goes into the script: the Job_Id throu
 region, image id, code-archive key and lock hashes against safe patterns, and the minutes as whole
 numbers. The script never holds AWS keys; the machine uses its instance role (Req 1.7).
 
-`render_user_data` serves a Job (`cloud.runner`) and the Smoke_Test (`cloud.smoke`); the Image_Build
-passes its own install script as the whole User_Data instead, so there is no `image` case here.
+`render_user_data` serves a Job, whose machine runs `cloud.runner`, and the Smoke_Test, whose
+machine runs `cloud.smoke_runner`; the Image_Build passes its own install script as the whole
+User_Data instead, so there is no `image` case here.
 
 A cloud module may import `splatpipe` to call its public functions; `splatpipe` never imports
 `cloud`. This module imports no boto3 and no GPU package, so it loads on a laptop.
@@ -34,6 +36,12 @@ from cloud.errors import CloudError
 
 CAP_DEADLINE_ENV = "SPLATPIPE_CAP_DEADLINE"   # the Cap_Deadline variable the Cloud_Runner sets (Req 10.7)
 
+# The machine paths a Job, the Smoke_Test and the Image_Build share: the folder the Code_Archive is
+# extracted into, and the Python of the environment the Image_Build sets up there with uv. cloud.image
+# installs into this same VENV_PYTHON, so the two can't drift apart.
+JOB_ROOT = "/opt/job"
+VENV_PYTHON = f"{JOB_ROOT}/.venv/bin/python"
+
 _MAX_BYTES = 16384   # the EC2 User_Data size limit (Req 8.7)
 
 # Safe patterns for the values that have no checker of their own. shlex.quote already makes every
@@ -45,9 +53,14 @@ _HASH = re.compile(r"[0-9a-f]{64}")                         # a sha-256 hex dige
 _AMI = re.compile(r"ami-[0-9a-f]{8,17}")                    # an AMI id
 _KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")           # an S3 object key, like jobs/<id>/input/code.tar
 
-# role -> the on-machine entry point module. render_user_data builds the bootstrap for a Job and for
-# the Smoke_Test only; the Image_Build passes install_script() as its whole User_Data instead.
-_RUNNER_MODULE = {"job": "cloud.runner", "smoke": "cloud.smoke"}
+# role -> the on-machine entry point module, each with a `main` that takes --job. render_user_data
+# builds the bootstrap for a Job and for the Smoke_Test only; the Image_Build passes
+# install_script() as its whole User_Data instead. cloud.smoke is the laptop's Smoke_Command, which
+# launches the smoke machine; cloud.smoke_runner is what that machine runs.
+RUNNER_MODULE = {"job": "cloud.runner", "smoke": "cloud.smoke_runner"}
+# The instance metadata service, which the script asks for the machine's own instance type with an
+# IMDSv2 session token, since the fallback picks the type only at launch.
+_IMDS = "http://169.254.169.254/latest"
 
 
 @dataclass(frozen=True)
@@ -94,7 +107,7 @@ def render_user_data(values: UserDataValues) -> str:
     `shutdown` line, and the cap line comes before any download or run (Req 8.7, 10.8). A rendered
     text over 16 KB is a `CloudError`.
     """
-    module = _RUNNER_MODULE.get(values.role)
+    module = RUNNER_MODULE.get(values.role)
     if module is None:
         raise CloudError(f"render_user_data builds the bootstrap for a job or a smoke machine, but "
                          f"it got role {values.role!r}. The image build passes its own install "
@@ -134,13 +147,19 @@ def render_user_data(values: UserDataValues) -> str:
         # The Cap_Deadline: the machine's start plus the Time_Cap, minus the upload margin, as an
         # absolute UTC instant the Steps can read (Req 10.7).
         f'export {CAP_DEADLINE_ENV}="$(date -u -d "+$((CAP_MINUTES - UPLOAD_MARGIN_MINUTES)) minutes" +%Y-%m-%dT%H:%M:%SZ)"',
+        # The machine's own instance type, which the Spend_Lines price, from the instance metadata
+        # with an IMDSv2 token. curl -f fails on an HTTP error, and each value is a plain
+        # assignment before its export, so set -e stops the script if either read fails.
+        f'IMDS_TOKEN="$(curl -fsS -X PUT {_IMDS}/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")"',
+        f'INSTANCE_TYPE="$(curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" {_IMDS}/meta-data/instance-type)"',
+        "export INSTANCE_TYPE",
         # Fetch the Code_Archive with the instance role, extract it to /opt/job, and run the
-        # Cloud_Runner at the committed revision.
-        "mkdir -p /opt/job",
+        # Cloud_Runner, or the smoke machine's checks, at the committed revision.
+        f"mkdir -p {JOB_ROOT}",
         'aws s3 cp "s3://$BUCKET/$CODE_ARCHIVE_KEY" /tmp/code.tar',
-        "tar -xf /tmp/code.tar -C /opt/job",
-        "cd /opt/job",
-        f'/opt/job/.venv/bin/python -m {module} --job "$JOB_ID"',
+        f"tar -xf /tmp/code.tar -C {JOB_ROOT}",
+        f"cd {JOB_ROOT}",
+        f'{VENV_PYTHON} -m {module} --job "$JOB_ID"',
     ]
     script = "\n".join(lines) + "\n"
     if len(script.encode("utf-8")) > _MAX_BYTES:

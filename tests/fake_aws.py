@@ -67,6 +67,8 @@ class FakeAws:
         self.no_capacity = set(no_capacity or ())
         self.unsupported = set(unsupported or ())
         self.launch_failures = set(launch_failures or ())
+        # Each wait_image_available call's (image_id, poll_seconds, max_minutes).
+        self.image_waits: list[tuple[str, float, float]] = []
         self._counter = 0
 
     def _record(self, op: str, key: str = "") -> None:
@@ -140,8 +142,10 @@ class FakeAws:
                                      creation_date="2026-11-20T00:00:00+00:00", tags=dict(tags)))
         return image_id
 
-    def wait_image_available(self, image_id: str) -> None:
+    def wait_image_available(self, image_id: str, *, poll_seconds: float,
+                             max_minutes: float) -> None:
         self._record("wait_image_available", image_id)
+        self.image_waits.append((image_id, poll_seconds, max_minutes))
 
     def terminate_instances(self, instance_ids: Sequence[str]) -> None:
         ids = list(instance_ids)
@@ -237,8 +241,12 @@ def _base_cloud_mapping() -> dict[str, Any]:
     return {
         "types": types,
         "presets": presets,
-        "smoke": {"expected_minutes": 10, "cap_minutes": 30},
-        "image": {"expected_minutes": 45, "cap_minutes": 120},
+        "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
+                  "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4,
+                  "train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
+                  "train_refine_start_step": 10, "train_refine_every": 10,
+                  "train_sh_degree_interval": 5},
+        "image": {"expected_minutes": 75, "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
         "ipv4_usd_per_hour": 0.005,
@@ -257,7 +265,9 @@ def git_repo(tmp_path: Path) -> Path:
     Skips the test, with a reason, when git isn't installed, the way pipeline-core skips a test that
     needs ffprobe. The repo holds a file under splatpipe/ and under cloud/, a config.toml, a uv.lock
     and a package-lock.json, all committed, so a repo test can dirty one path, archive HEAD, read the
-    HEAD sha and hash the lockfiles. Returns the repo's path.
+    HEAD sha and hash the lockfiles. It also commits the other dependency manifests the Image_Build
+    uploads for its builder: pyproject.toml, .python-version and package.json. Returns the repo's
+    path.
     """
     if shutil.which("git") is None:
         pytest.skip("git isn't installed, so this test can't run.")
@@ -269,6 +279,9 @@ def git_repo(tmp_path: Path) -> Path:
     (root / "config.toml").write_text("[jobs]\n", encoding="utf-8")
     (root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     (root / "package-lock.json").write_text('{"lockfileVersion": 3}\n', encoding="utf-8")
+    (root / "pyproject.toml").write_text('[project]\nname = "test"\n', encoding="utf-8")
+    (root / ".python-version").write_text("3.11\n", encoding="utf-8")
+    (root / "package.json").write_text('{"private": true}\n', encoding="utf-8")
     # The -c flags keep the commit off the host's git config: a fresh identity, no gpg signing and
     # no line-ending rewrite, so the repo builds the same on every machine.
     base = ["git", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false",
@@ -276,7 +289,7 @@ def git_repo(tmp_path: Path) -> Path:
             "-c", "commit.gpgsign=false"]
     _run_setup_git([*base, "init"], root)
     _run_setup_git([*base, "add", "--", "splatpipe", "cloud", "config.toml", "uv.lock",
-                    "package-lock.json"], root)
+                    "package-lock.json", "pyproject.toml", ".python-version", "package.json"], root)
     _run_setup_git([*base, "commit", "-m", "Initial commit"], root)
     return root
 

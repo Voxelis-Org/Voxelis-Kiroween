@@ -12,16 +12,22 @@ Cloud_Runner inherits that resume exactly, without pre-filtering a single Step (
 `run_job` sees what a resumed laptop run would. The `Uploader` tails `out/job.log` and uploads a
 Step's report only once that Step's outcome line has appeared, so it never uploads a half-written,
 non-atomic `write_json` report (Req 10.3); `sync_all` is the final authoritative pass, so the
-uploaded set ends up equal to the Job's `out/` and `work/` files (Req 10.5). `spend.jsonl` is owned
+uploaded set ends up equal to the Job's `out/` and `work/` files (Req 10.5). Every pass, the final
+one too, skips a file whose size and modified time are what they were when it last went up, so a
+long Job doesn't upload its unchanged frames and splat again on every poll. `spend.jsonl` is owned
 by `append_spend_line`, which reads and writes it straight in the bucket, so the rebuild and the
 Uploader both leave it alone to avoid clobbering the bucket's copy.
 
 Machine facts come from the environment the User_Data exports: the Machine_Image's recorded lock
 hashes (`UV_LOCK_HASH`, `PACKAGE_LOCK_HASH`), which a drift check compares with the extracted
-Code_Archive's own lock files (Req 10.9), and the instance type (`INSTANCE_TYPE`) the Spend_Lines
-price. The whole runner is testable with injected `steps`, `now` and `shutdown` and the Fake_AWS, so
-the Test_Suite exercises it on a CPU with no account, no network and no real `run_job` change
-(Req 10.11).
+Code_Archive's own lock files (Req 10.9), and the instance type (`INSTANCE_TYPE`, which the
+User_Data reads from the instance metadata) the Spend_Lines price. The whole runner is testable with
+injected `steps`, `now` and `shutdown` and the Fake_AWS, so the Test_Suite exercises it on a CPU
+with no account, no network and no real `run_job` change (Req 10.11).
+
+`main` is the command the job machine's User_Data runs, `python -m cloud.runner --job <id>`. It
+builds the machine's `Aws` from its instance role, with the region from `[aws].region` and the
+Job_Bucket from the BUCKET variable, and runs `run_cloud_job`. It isn't a laptop command.
 
 A cloud module may import `splatpipe` to call its public functions; `splatpipe` never imports
 `cloud`. This module imports no boto3 (it talks to AWS only through the `Aws` seam) and no GPU
@@ -30,11 +36,13 @@ package, so it loads on a laptop.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import logging
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -44,10 +52,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import splatpipe.run
-from splatpipe.jobs import job_folder, open_job
+from splatpipe.config import load_config
+from splatpipe.jobs import check_job_id, job_folder, open_job
 from splatpipe.jsonio import read_json
 
-from cloud.errors import CloudError
+from cloud.aws import job_machine_aws
+from cloud.config import load_cloud_config
+from cloud.errors import CloudError, run_cloud_cli
 from cloud.redact import account_redaction
 from cloud.spend_file import LABEL_MACHINE, append_spend_line, spend_line
 
@@ -138,6 +149,14 @@ class Uploader:
     the uploaded set ends up equal to the Job's out/ and work/ files (Req 10.5). `spend.jsonl` is
     left to `append_spend_line`. The Uploader is best-effort: it swallows its own exceptions, so a
     transient read or upload error never stops the Job.
+
+    The Uploader remembers each file's size and modified time as they were just before it uploaded
+    the file, and every pass, `sync_all` too, skips a file that still has both. A file that changes
+    gets a new size or modified time and goes up again on the next pass, also when it changed while
+    it was uploading. So the bucket still ends up holding each file as it is on the machine, without
+    a thousand unchanged frames, or a splat of hundreds of MB, going up again on every poll. A file
+    that didn't go up, because its report was held back or its upload failed, isn't remembered, so a
+    later pass uploads it.
     """
 
     def __init__(self, aws: Aws, job_id: str, folder: Path, *, poll_seconds: float) -> None:
@@ -148,6 +167,8 @@ class Uploader:
         self._poll_seconds = float(poll_seconds)
         self._stopped = threading.Event()
         self._thread: threading.Thread | None = None
+        # Each uploaded key -> the file's (size in bytes, modified time in ns) just before it went up.
+        self._uploaded: dict[str, tuple[int, int]] = {}
 
     def start(self) -> None:
         """Start the background polling thread (a daemon, so it never keeps the process alive)."""
@@ -170,7 +191,8 @@ class Uploader:
             pass
 
     def sync_all(self) -> None:
-        """The final authoritative pass: upload every out/ and work/ file, reports included."""
+        """The final authoritative pass: upload every out/ and work/ file, reports included, that's
+        new or has changed since it last went up, so the bucket holds each file as it is now."""
         try:
             self._upload(None)
         except Exception:
@@ -182,7 +204,10 @@ class Uploader:
             self.sync()
 
     def _upload(self, finished: set[str] | None) -> None:
-        """Upload out/ and work/ once. `finished` gates reports; None uploads every report."""
+        """Upload out/ and work/ once, skipping each file unchanged since it last went up.
+
+        `finished` gates reports; None uploads every report.
+        """
         for path in _files_under(self._out):
             rel = path.relative_to(self._out).as_posix()
             if rel == _SPEND_FILE:  # append_spend_line owns spend.jsonl in the bucket
@@ -190,10 +215,28 @@ class Uploader:
             name = _report_step(rel)
             if name is not None and finished is not None and name not in finished:
                 continue  # a report whose Step hasn't logged its outcome yet (Req 10.3)
-            self._aws.s3_upload(path, f"jobs/{self._job_id}/out/{rel}")
+            self._upload_if_changed(path, f"jobs/{self._job_id}/out/{rel}")
         for path in _files_under(self._work):
             rel = path.relative_to(self._work).as_posix()
-            self._aws.s3_upload(path, f"work/{self._job_id}/{rel}")
+            self._upload_if_changed(path, f"work/{self._job_id}/{rel}")
+
+    def _upload_if_changed(self, path: Path, key: str) -> None:
+        """Upload `path` to `key`, unless its size and modified time are what they were the last
+        time it went up there.
+
+        The file is looked at before the upload, so a change made while it uploads leaves it
+        different from what's remembered, and the next pass uploads it again. Only an upload that
+        succeeds is remembered.
+        """
+        try:
+            info = path.stat()
+        except FileNotFoundError:  # removed since the listing, so there's nothing to upload
+            return
+        seen = (info.st_size, info.st_mtime_ns)
+        if self._uploaded.get(key) == seen:
+            return
+        self._aws.s3_upload(path, key)
+        self._uploaded[key] = seen
 
     def _finished_steps(self) -> set[str]:
         """The Step names whose done/failed outcome line has appeared in out/job.log (Req 10.3)."""
@@ -242,6 +285,35 @@ def run_cloud_job(job_id: str, *, aws: Aws, config: Config, cloud_config: CloudC
         return summary
     finally:
         shutdown()                                                        # 9
+
+
+def main(argv: list[str] | None = None) -> int:
+    """The Cloud_Runner's command on the job machine: `python -m cloud.runner --job <id>`.
+
+    The User_Data runs it as its last line, from the extracted Code_Archive; it isn't a laptop
+    command. It loads that archive's config.toml, builds the machine's `Aws` with `job_machine_aws`
+    (the instance role, `[aws].region` and the BUCKET the User_Data exports) and runs
+    `run_cloud_job`, which powers the machine off in its `finally` (Req 10.6). Then, while the
+    machine shuts down, it prints `Job <id>: <status>` and gives 0 for done and done with warnings,
+    or prints the Readable_Error and gives 1 for failed. A refusal or an error prints its
+    Readable_Error, Account_Redacted, on stderr and gives 1, through `run_cloud_cli`; one that comes
+    before `run_cloud_job` starts leaves the power-off to the User_Data's trap (Req 10.8).
+    """
+    def body() -> int:
+        args = _parser().parse_args(argv)
+        job_id = check_job_id(args.job)
+        config = load_config()
+        aws = job_machine_aws(config)
+        # _poweroff is looked up here, at call time, so a test can put a recorder in its place.
+        summary = run_cloud_job(job_id, aws=aws, config=config, cloud_config=load_cloud_config(),
+                                shutdown=_poweroff)
+        print(f"Job {job_id}: {summary['status'].replace('_', ' ')}")
+        if summary["status"] == "failed":
+            print(account_redaction(str(summary["readable_error"])), file=sys.stderr)
+            return 1
+        return 0
+
+    return run_cloud_cli(body)
 
 
 # The lock-hash backstop (step 1)
@@ -392,3 +464,19 @@ def _write_text(path: Path, text: str) -> None:
     """Write `text` to `path` as UTF-8 with LF line endings, making the parent folder if needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _parser() -> argparse.ArgumentParser:
+    """The command line: --job, which is required. The machine's User_Data passes it."""
+    parser = argparse.ArgumentParser(
+        prog="python -m cloud.runner", allow_abbrev=False,
+        description="Run one job on this cloud machine: rebuild its folder from the job bucket, run "
+                    "its steps, upload the results and power the machine off. The machine's user "
+                    "data runs it; it isn't a laptop command.")
+    parser.add_argument("--job", required=True,
+                        help="the job id cloud.start launched this machine for")
+    return parser
+
+
+if __name__ == "__main__":
+    sys.exit(main())
