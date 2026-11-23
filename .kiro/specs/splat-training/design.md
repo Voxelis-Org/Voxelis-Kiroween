@@ -530,15 +530,15 @@ It imports `torch`, `gsplat` for `__version__`, `from gsplat import MCMCStrategy
 
 The whole of `train`, the upload included, sits in one `try` that turns `torch.cuda.OutOfMemoryError` into `GpuOutOfMemory(i)`, with i the Iteration being run, or `None` before the first one (Req 2.12).
 
-The five term functions, each a few lines, take the Iteration's corrected render, target, `_View`, parameters and settings:
+The five term functions, each a few lines, take the Iteration's corrected render, target, `_View`, parameters and settings, and the Scene_Extent, `extent`, so `_TERMS` stays one table of functions with one signature, and the Trainer's loss passes `scene.extent` to each:
 
 | Term | Value (Req 5.2–5.6) |
 |---|---|
 | `l1` | `diff = (corrected − target).abs()`, its mean over all pixels and channels, or with a mask, `(diff × keep[..., None]).sum() / (3 × keep_count)`, the mean over the kept pixels' 3 channels. |
 | `ssim` | Both images as `[1, 3, H, W]`, each multiplied by the keep mask when there is one, so a Masked_Pixel is 0 in both. `ssim_map = FusedSSIMMap.apply(C1, C2, img1.contiguous(), img2.contiguous(), "same", True)` with `C1 = 0.01 ** 2` and `C2 = 0.03 ** 2`, the constants `fused_ssim` passes. The term is 1 − the map's mean over the kept pixels and the 3 channels, worked out like `l1`'s. Only `img1`, the render, gets a gradient. |
 | `opacity_reg` | `torch.sigmoid(params["opacities"]).mean()`. |
-| `scale_reg` | `torch.exp(params["scales"]).mean()`. |
-| `erank` | `log_q = torch.log_softmax(2 × params["scales"], -1)`, `erank = exp(−(log_q.exp() × log_q).sum(-1))`, then the mean over splats of `clamp(−log(erank − 1 + erank_epsilon), min=0) + exp(params["scales"]).min(-1).values` (D3). The entropy is 0 or more, so `erank − 1 + erank_epsilon` is at least `erank_epsilon` and its log is finite. Written fresh from D3's formula. |
+| `scale_reg` | `(torch.exp(params["scales"]) / extent).mean()`, each scale divided by the Scene_Extent (D7). |
+| `erank` | `log_q = torch.log_softmax(2 × params["scales"], -1)`, `erank = exp(−(log_q.exp() × log_q).sum(-1))`, then the mean over splats of `clamp(−log(erank − 1 + erank_epsilon), min=0) + exp(params["scales"]).min(-1).values / extent` (D3, D7). The entropy is 0 or more, so `erank − 1 + erank_epsilon` is at least `erank_epsilon` and its log is finite. Written fresh from D3's formula. |
 
 An Iteration on one 1600 × 900 image holds the uint8 image, its float32 copy and the render, about 39 MB, on top of the splats, MCMC's state and the 2.3 GB of uploaded views.
 
@@ -774,7 +774,7 @@ l1_weight = 0.8
 ssim_weight = 0.2
 # Weight of the splats' mean opacity, which fades splats the images don't need. 0 turns it off.
 opacity_reg = 0.01
-# Weight of the splats' mean scale, which keeps them small. 0 turns it off.
+# Weight of the splats' mean scale in units of the scene extent, which keeps them small. 0 turns it off.
 scale_reg = 0.01
 # Weight of the effective-rank term against needle-shaped splats. 0 turns it off.
 erank_reg = 0.01
