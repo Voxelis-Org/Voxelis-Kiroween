@@ -1,14 +1,16 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_frames, which changes its [frames] settings, work_calls, which records whose Fake_Step work
-runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg.
+set_frames, which changes its [frames] settings, set_clean, which sets its [clean] settings,
+work_calls, which records whose Fake_Step work runs, and fake_tools, which puts a FakeTools in
+place of the Frames_Step's ffprobe and ffmpeg.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
 a Job in the real data/ folder (Req 14.2). The test config also has [frames] with its three
 Preset tables, so a test that runs the Frames_Step without a Config of its own gets settings
-(frames spec, Req 9.11).
+(frames spec, Req 9.11). It has [clean] and its three Preset tables too, from CLEAN_SHARED and
+CLEAN_PRESETS.
 
 FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
 one on demand, and records what the step asked for. It can also report that ffmpeg has no
@@ -101,6 +103,38 @@ FRAMES = {
 # for the same reason as min_picks.
 BASE_PICKS = {"fast": 2, "default": 3, "quality": 4}
 
+# The test config's [clean] and its three Preset tables, as tomllib reads them: the real keys
+# with the real values, except where a comment gives the real one. clean_toml and clean_settings
+# in tests/splats.py copy these dicts and never change them.
+CLEAN_SHARED: dict[str, object] = {
+    "train_ply": "train.ply",
+    "clean_ply": "clean.ply",
+    "clean_sog": "clean.sog",
+    "min_opacity": 0.005,
+    "faint_cube_divisions": 128,
+    "faint_min_per_cube": 8,
+    "faint_min_paint_share": 0.10,
+    "extent_trim_percent": 1,
+    "neighbours": 8,
+    "isolation_ratio": 8.0,
+    "max_removed_fraction": 0.70,
+    "min_kept_splats": 1,  # real: 10000. So a splat of a few dozen Gaussians can pass.
+    "warn_kept_fraction": 0.5,
+    "max_source_splats": 8_000_000,
+    "max_workers": 1,  # real: 4. So the tests start no extra threads.
+    # real: 3600. So the real splat-transform run has a timeout, like every other subprocess in
+    # the suite (Req 10.7).
+    "splat_transform_timeout_seconds": 60,
+}
+# real: 3 bands in each Preset, and 10, 10 and 20 iterations. With 0, 1 and 3 bands, the
+# argument-list test sees a different band count for each Preset, and a test can reach the
+# Req 5.5 warning with a splat of fewer bands. 1 iteration keeps the real run quick.
+CLEAN_PRESETS: dict[str, dict[str, object]] = {
+    "fast": {"sog_sh_bands": 0, "sh_iterations": 1},
+    "default": {"sog_sh_bands": 1, "sh_iterations": 1},
+    "quality": {"sog_sh_bands": 3, "sh_iterations": 1},
+}
+
 
 def toml_value(value: object) -> str:
     """`value` as a TOML value: a bool as true or false, text in double quotes as JSON writes it,
@@ -108,7 +142,9 @@ def toml_value(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
-        return json.dumps(value)
+        # json.dumps escapes the quote, the backslash and every character below U+0020 the way
+        # TOML reads them back. TOML can't hold DEL as it is either, so that's escaped too.
+        return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007f")
     return repr(value)
 
 
@@ -127,17 +163,40 @@ def frames_text(frames: Mapping[str, Any]) -> str:
                       for preset, value in base_picks.items()))
 
 
+def clean_toml(changes: Mapping[str, object]) -> str:
+    """[clean] and its three Preset tables as TOML: CLEAN_SHARED and CLEAN_PRESETS, with
+    `changes` made.
+
+    A key of [clean] is given as it is, like "neighbours", and a key of a Preset table after its
+    Preset and two underscores, like "fast__sog_sh_bands". A value of None leaves the key out.
+    """
+    tables = {"clean": dict(CLEAN_SHARED),
+              **{f"clean.{preset}": dict(table) for preset, table in CLEAN_PRESETS.items()}}
+    for name, value in changes.items():
+        preset, _, key = name.rpartition("__")
+        table = tables[f"clean.{preset}" if preset else "clean"]
+        if value is None:
+            table.pop(key, None)
+        else:
+            table[key] = value
+    return "".join(f"\n[{header}]\n" + "".join(f"{key} = {toml_value(value)}\n"
+                                                for key, value in table.items())
+                   for header, table in tables.items())
+
+
 def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
-                frames: Mapping[str, Any] | None = None) -> str:
+                frames: Mapping[str, Any] | None = None,
+                clean: Mapping[str, object] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [frames] comes last, with the keys in `frames` changed
-    as frames_text says. The Jobs_Folder is written with forward slashes, so a Windows backslash
-    can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames] comes next, with the keys in `frames` changed
+    as frames_text says. [clean] and its Preset tables come last, with the changes in `clean`
+    made, as clean_toml reads them. The Jobs_Folder is written with forward slashes, so a Windows
+    backslash can't become a TOML escape."""
     modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
     fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
-    return jobs + fakes + frames_text(frames or {})
+    return jobs + fakes + frames_text(frames or {}) + clean_toml(clean or {})
 
 
 @pytest.fixture(autouse=True)
@@ -161,9 +220,9 @@ def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. [frames] is back to the test config's values
-    too. load_config() reads the file each time it's called, so the next run that loads the config
-    sees the change.
+    fail = "none", and set_fail() sets them all back. [frames] and [clean] are back to the test
+    config's values too. load_config() reads the file each time it's called, so the next run that
+    loads the config sees the change.
     """
     def rewrite(**modes: str) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", fail=modes), encoding="utf-8")
@@ -184,6 +243,24 @@ def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_clean(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_clean(**values), which rewrites the test config with the [clean] values given,
+    like set_clean(neighbours=3). A key of a Preset table comes after its Preset and two
+    underscores, like set_clean(fast__sog_sh_bands=1), and None leaves a key out, like
+    set_clean(neighbours=None), so a test can check a missing setting.
+
+    Each call writes the whole file again, the way set_fail does, so every setting it doesn't
+    name is back to its value in CLEAN_SHARED or CLEAN_PRESETS, every fail is back to "none",
+    [frames] is back to the test config's values, and set_clean() sets them all back. A set_fail
+    or set_frames call after it puts [clean] back the same way.
+    """
+    def rewrite(**values: object) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", clean=values), encoding="utf-8")
 
     return rewrite
 

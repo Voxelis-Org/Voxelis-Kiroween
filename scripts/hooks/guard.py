@@ -2,6 +2,9 @@
 
 It blocks raw aws commands that start paid things (the list is `[paid].aws` in
 config.toml), force pushes, pushes to main, and `git add -A` or `git add .`.
+When config.toml can't be read, as when a merge leaves git's conflict markers
+in it, it still judges git calls, with `main` as the main branch, and blocks
+every aws call.
 
 Kiro sends the tool call as JSON on stdin. Exit 2 with one line on stderr
 blocks the call and tells Kiro what to do instead. Exit 0 lets it run.
@@ -38,6 +41,9 @@ FORCE = ("guard: blocked a force push. Push without --force, -f or a + refspec, 
 MAIN = "guard: blocked a push to {}. Push your feature branch instead and open a pull request."
 ADD = ("guard: blocked `git add -A` or `git add .`. Stage the files by name instead, for example "
        "`git add path/to/file`.")
+UNREADABLE = ("guard: blocked an aws call because config.toml can't be read ({}), so aws calls stay "
+              "blocked until it's fixed. Fix config.toml, for example by resolving the merge conflict "
+              "in it, then run the command again.")
 
 
 def split_commands(text: str, escape: str) -> list[list[str]]:
@@ -252,11 +258,34 @@ def reason(command: str, config: dict, cwd: str) -> str | None:
     return None
 
 
+# The main branch's name, used only when config.toml can't be read, as when a merge
+# leaves git's conflict markers in it. It matches `[git] main_branch` in config.toml.
+FALLBACK_MAIN_BRANCH = "main"
+
+
 def load_config() -> dict:
     import tomllib  # only imported when there is an aws or git call to judge
 
     with open(os.path.join(ROOT, "config.toml"), "rb") as file:
         return tomllib.load(file)
+
+
+def read_config() -> tuple[dict | None, str]:
+    """config.toml's settings and "", or None and the error when config.toml can't be read."""
+    import tomllib
+
+    try:
+        return load_config(), ""
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        return None, f"{type(error).__name__}: {error}"
+
+
+def judge_unreadable(name: str, args: list[str], error: str, cwd: str) -> str | None:
+    """Like judge, while config.toml can't be read: block every aws call, because the
+    paid list is in config.toml, and judge git calls with FALLBACK_MAIN_BRANCH."""
+    if name == "aws":
+        return UNREADABLE.format(error)
+    return judge_git(args, FALLBACK_MAIN_BRANCH, cwd)
 
 
 def command_texts(event: object) -> list[str]:
@@ -298,9 +327,12 @@ def main() -> int:
         found = [call for text in command_texts(event) for call in calls(text)]
         if not found:
             return 0
-        config, cwd = load_config(), working_dir(event)
+        (config, unreadable), cwd = read_config(), working_dir(event)
         for name, args in found:
-            why = judge(name, args, config, cwd)
+            if config is None:
+                why = judge_unreadable(name, args, unreadable, cwd)
+            else:
+                why = judge(name, args, config, cwd)
             if why:
                 return block(why)
         return 0
