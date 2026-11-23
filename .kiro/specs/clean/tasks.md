@@ -442,11 +442,11 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/clean`: `git add splatpipe/clean/__init__.py splatpipe/clean/__main__.py tests/splats.py tests/test_clean_step.py tests/test_clean_repo.py`, then commit those files with the title "Clean step: run, work and the CLI" and the body "Joins the settings, the reader, the three filters, the limits, the writer and the export in splatpipe/clean/__init__.py, with python -m splatpipe.clean as its CLI. Both outputs are made in work/clean/ and move into out/ only once both are whole, the viewer copy removed first and moved last, so out/ never holds a viewer copy without the clean splat it came from. The step stays out of STEP_LIST until a spec with a step worth running adds the entries."
     - _Requirements: 8.3, 10.1, 10.2_
 
-- [ ] 9. Pipeline doc and README
+- [x] 9. Pipeline doc and README
   - Files: `docs/pipeline.md`, `README.md` and `tests/test_clean_repo.py` (changed).
   - _Requirements: 8.3, 8.4, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.8, 10.1, 10.2_
 
-  - [ ] 9.1 Write the `## Step: clean` section of `docs/pipeline.md`
+  - [x] 9.1 Write the `## Step: clean` section of `docs/pipeline.md`
     - Put it after `## Step: fake`, with the parts the Fake_Step's section has: `### What it reads`, `### What it writes`, `### Config section`, `### Step report fields` and `### Files in out/`. Give the CLI, `uv run python -m splatpipe.clean --job <id> [--preset P]`, and the plain function, `splatpipe.clean.run(job_id, preset=None)`.
     - "What it reads" states the training step's contract from A1: a standard 3DGS Binary_PLY at `out/<train_ply>`, `binary_little_endian` and float32, with the properties A1 lists. It says that the step carries every other property through unchanged, a NaN or an infinity in a colour included, and never writes that file (Req 9.4).
     - "What it writes" lists the filters in their order, the Requirement 3 limits and the two Step_Outputs. It says that every part of the step is CPU work for the 8 vCPUs and 8 GB a Step gets on the job machine, and that the Viewer_Copy is SOG meta version 2 because splat-transform is pinned at 3.8.0, so the web viewer has to be read against the version 2 spec (Req 9.6). It says the step needs Node 22 or newer and `npm ci` at the repo root.
@@ -459,7 +459,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Under "Install", after `uv sync`: the clean step also needs Node 22 or newer and `npm ci` at the repo root, which installs splat-transform 3.8.0 into `node_modules/`, and the tests that run it are skipped without them.
     - _Requirements: 9.8_
 
-  - [ ] 9.3 Add the doc and README checks to `tests/test_clean_repo.py`
+  - [x] 9.3 Add the doc and README checks to `tests/test_clean_repo.py`
     - Read `docs/pipeline.md` the way `tests/test_docs.py` does, and leave that file as it is. The `## Step: clean` section has its five `###` parts, each found by its heading's name, because `STEP_LIST` is empty and `tests/test_docs.py` doesn't reach this section (Req 9.1, 9.2).
     - Its "Files in out/" part says that both outputs are removed first, that a failure after that leaves neither, that a hard stop can leave a whole clean splat alone, that a viewer copy never sits there without its clean splat, and to trust the pair only when `out/reports/clean.json` says done (Req 9.3).
     - The section names `train.ply` and `binary_little_endian` and says other properties are carried through unchanged (Req 9.4). It says SOG version 2 and 8 GB (Req 9.6).
@@ -467,7 +467,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The README names `npm ci` and Node 22 (Req 9.8).
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.8_
 
-  - [ ] 9.4 Run the tests and commit
+  - [x] 9.4 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` and `tests/test_docs.py` included, which checks that the new section has a "Files in out/" part too.
     - Check with `git diff --name-only main -- tests/` that, of the files in `tests/`, this spec changed only `tests/conftest.py` and added only `tests/splats.py`, `tests/fake_splat_transform.py` and its own `tests/test_clean_*.py`, so no pipeline-core test changed (Req 8.3).
     - On `feat/clean`: `git add docs/pipeline.md README.md tests/test_clean_repo.py`, then commit those files with the title "Clean step: pipeline doc and README" and the body "Writes the clean step's section of docs/pipeline.md, with what it reads and writes, its eighteen settings, its report fields and the two-output guarantee, so the other step specs can build on it. The README says the step needs Node 22 and npm ci."
