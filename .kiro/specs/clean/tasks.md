@@ -323,7 +323,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/clean`: `git add splatpipe/clean/filters.py splatpipe/clean/limits.py tests/splats.py tests/test_clean_filters.py tests/test_clean_limits.py`, then commit those files with the title "Clean step: filter order and removal limits" and the body "Adds filters.py, which runs the broken, faint and isolated filters in order on index arrays, so a kept Gaussian's values never change, and limits.py, which stops the step when the faint and isolated filters would take more than max_removed_fraction of the splat or leave fewer than min_kept_splats. Broken Gaussians don't count toward the cap, and a dense, even grid loses nothing."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 7. splat-transform export, the lockfile and its licences
+- [x] 7. splat-transform export, the lockfile and its licences
   - Files: `package.json`, `package-lock.json`, `splatpipe/clean/export.py`, `tests/fake_splat_transform.py` and `tests/test_clean_export.py` (new), `docs/third-party-licences.md` and `tests/test_clean_repo.py` (changed).
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11, 5.12, 5.13, 5.14, 6.5, 6.12, 6.13, 8.7, 8.8, 9.6, 9.7, 10.1, 10.2, 10.4, 10.6, 10.7, 10.9_
 
@@ -356,7 +356,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - It reads `FAKE_SPLAT_TRANSFORM` from its environment: `ok` writes a few bytes to its last argument, `fail` prints 3,000 characters of lines with `\r` progress redraws and colour codes and exits with 3, `silent` exits with 0 and writes nothing, `empty` writes a file of 0 bytes, and `hang` sleeps for 60 seconds.
     - _Requirements: 10.6_
 
-  - [ ] 7.5 Write unit tests for the export in `tests/test_clean_export.py`
+  - [x] 7.5 Write unit tests for the export in `tests/test_clean_export.py`
     - The argument list for each test Preset: `node` and the repo's `bin/cli.mjs` first, then `-w`, `-g cpu`, `-i` with the Preset's `sh_iterations` and `--max-workers` with the Shared_Setting, all before the input, then `-H` with the band count right after the input, and the `.sog` last. It holds none of `--filter-floaters`, `--filter-cluster`, `--decimate`, `-N`, `.voxel.json` or `.webp` (Req 5.2, 5.3, 5.4, 5.6, 5.7, 10.9).
     - A `find` with no `node` on the PATH, one whose repo root has no `node_modules`, and one with neither, each give the Req 5.10 message, naming what's missing, `npm ci` and Node 22.
     - With the stand-in: `fail` gives the exit code and a tail of at most `TAIL_CHARS` characters that starts on a line, with no `\r`, no colour codes and no "Traceback" (Req 5.11). `hang` with a 0.5-second timeout gives the limit in the message within a few seconds, and the child is gone afterwards (Req 5.12). `silent` and `empty` give the Req 5.13 message, and `ok` gives the file's size (Req 5.13, 5.14).
@@ -364,7 +364,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The whole output lands in the log file in every case.
     - _Requirements: 5.2, 5.3, 5.4, 5.6, 5.7, 5.8, 5.10, 5.11, 5.12, 5.13, 5.14, 10.4, 10.6, 10.7, 10.9_
 
-  - [ ] 7.6 Write the real splat-transform test in `tests/test_clean_export.py`
+  - [x] 7.6 Write the real splat-transform test in `tests/test_clean_export.py`
     - Skip it unless `shutil.which("node")` finds Node and the repo has `bin/cli.mjs`, with a reason that says which is missing, so the whole suite passes on a machine with no Node (Req 10.6).
     - Write a splat of 64 Gaussians with 45 `f_rest_*` properties into `tmp_path` with `ply_bytes`, and run the real `export_sog` on it with `-H 1`, `-i 1`, `--max-workers 0` and a 60-second timeout (Req 10.7).
     - The `.sog` is a zip whose `meta.json` says `"version": 2` (Req 5.1, 9.6).
@@ -376,16 +376,16 @@ Some files grow over several tasks, so each piece comes with the first task that
     - With task 2.7's row lookup, the Node.js, splat-transform 3.8.0 and npm rows each start their Installed cell with "Yes", and the Node.js row says it's never vendored, linked or shipped (Req 9.7).
     - _Requirements: 6.12, 6.13, 9.7_
 
-  - [ ] 7.8 Run the tests and commit
+  - [x] 7.8 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. The real splat-transform test runs where Node is installed and is skipped, with its reason, where it isn't. Check that `package-lock.json` is under 1 MB.
     - On `feat/clean`: `git add package.json package-lock.json docs/third-party-licences.md splatpipe/clean/export.py tests/fake_splat_transform.py tests/test_clean_export.py tests/test_clean_repo.py`, then commit those files with the title "Clean step: splat-transform 3.8.0 export, with its lockfile and licences" and the body "Adds export.py, which runs splat-transform 3.8.0 under node, on the CPU and with no shell, to write the viewer copy into work/clean/, and turns each way it can fail into a readable error. package.json and package-lock.json pin 3.8.0 so npm ci installs the same tree everywhere, and the licence list names every package in that tree, each checked against our permissive list. The licence list also marks splat-transform 3.8.0 installed, gains a line for Node, which runs it, and notes that Node and npm aren't on the machine image yet. A stand-in script tests the failures on machines without Node."
     - _Requirements: 10.1, 10.2_
 
-- [ ] 8. Running the step: `run()`, `work()` and the CLI
+- [x] 8. Running the step: `run()`, `work()` and the CLI
   - Files: `splatpipe/clean/__main__.py` and `tests/test_clean_step.py` (new), `splatpipe/clean/__init__.py`, `tests/splats.py` and `tests/test_clean_repo.py` (changed).
   - _Requirements: 1.1, 1.11, 3.1, 3.2, 3.5, 3.6, 3.7, 3.8, 4.5, 4.8, 4.9, 4.10, 4.11, 4.12, 4.13, 5.1, 5.5, 5.9, 5.14, 6.6, 6.9, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8, 8.9, 10.1, 10.2, 10.3, 10.4, 10.6, 10.7, 10.8, 10.10, 10.11_
 
-  - [ ] 8.1 Write `run()` and `work()` in `splatpipe/clean/__init__.py`
+  - [x] 8.1 Write `run()` and `work()` in `splatpipe/clean/__init__.py`
     - `run()`, `work(step)`, `clean_and_write()`, `Written`, `viewer_bands()`, `remove_outputs()` and `move_outputs()`, as in the design's "__init__.py (run and work)" and "The two-output guarantee" sections. Rewrite the package's docstring to say what it now holds.
     - `work` runs the four phases in order: `check_settings`, before anything in the Job_Folder is opened, written or removed; `remove_outputs`, the Viewer_Copy first; `clean_and_write`, then `gc.collect()` before `node` starts; and `export_sog` into the Work_Folder, then `move_outputs`. It does nothing after `move_outputs` returns.
     - `clean_and_write` reads `out/<train_ply>` with `read_header` and adds `source_splats`. It runs `check_source_count` before `read_splat`, and `run_filters` and `check_limits` before anything is written, then adds the warning, writes `work/clean/<clean_ply>` and adds `clean_ply_bytes`. Its stages are timed as `read_ply`, `clean` and `write_ply`, and `work` times the export as `export_sog`. It returns only a path and the SH_Bands, so none of its arrays outlive it.
@@ -394,15 +394,15 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `move_outputs` calls `os.replace` for the Clean_Splat, then for the Viewer_Copy. On any `BaseException` it removes whatever it had moved into `out/` and raises again, an `OSError` as an `ExpectedFailure` naming the file.
     - _Requirements: 1.1, 3.1, 3.2, 3.5, 3.7, 3.8, 4.5, 4.8, 4.9, 4.10, 4.11, 4.12, 4.13, 5.1, 5.5, 5.9, 5.14, 6.9, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 8.1, 8.6, 8.7, 8.8, 8.9_
 
-  - [ ] 8.2 Write `splatpipe/clean/__main__.py`
+  - [x] 8.2 Write `splatpipe/clean/__main__.py`
     - `main(argv)`, which calls `step_main("clean", "splatpipe.clean", argv)`, and `if __name__ == "__main__": sys.exit(main())`, as the Fake_Step's does.
     - _Requirements: 8.1, 8.2_
 
-  - [ ] 8.3 Add `put_source` to `tests/splats.py`
+  - [x] 8.3 Add `put_source` to `tests/splats.py`
     - `put_source(job_id, data)` writes a splat as `out/train.ply` in a Job made with the `new_job` fixture.
     - _Requirements: 10.3_
 
-  - [ ] 8.4 Write end-to-end tests for done and failed runs in `tests/test_clean_step.py`
+  - [x] 8.4 Write end-to-end tests for done and failed runs in `tests/test_clean_step.py`
     - Run the step through `splatpipe.clean.run` and `splatpipe.clean.__main__.main`, with `splatpipe.clean.export_sog` patched to call the real `export_sog` with task 7's stand-in.
     - A done run writes both Step_Outputs. Its report, at `out/reports/clean.json`, has exactly the counts and timings of Req 7.1, as `int`s and seconds, no `removed_percent`, and the eighteen settings (Req 5.14, 7.1, 7.3, 7.4, 7.6, 7.7).
     - The Req 3.6 warning, and the Req 5.5 warning from a splat with fewer SH_Bands than the Preset keeps, land in `warnings` (Req 3.6, 5.5, 7.5).
@@ -414,7 +414,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - One done run uses the real splat-transform, skipped as in task 7 when Node or `bin/cli.mjs` is missing (Req 5.1, 10.6).
     - _Requirements: 1.1, 3.1, 3.2, 3.5, 3.6, 3.7, 3.8, 5.1, 5.5, 5.14, 6.6, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 8.2, 8.8, 10.4, 10.6, 10.7_
 
-  - [ ] 8.5 Write end-to-end tests for the two Step_Outputs and the trained splat in `tests/test_clean_step.py`
+  - [x] 8.5 Write end-to-end tests for the two Step_Outputs and the trained splat in `tests/test_clean_step.py`
     - A spy on `Path.unlink` shows the Viewer_Copy removed before the Clean_Splat. A removal that raises `PermissionError`, for each file in turn, names the file and leaves the files not yet removed (Req 4.8, 4.9, 4.13).
     - A lone `out/clean.ply`, as a hard stop leaves it, is gone before anything is written (Req 4.12).
     - A setting that `check_settings` refuses leaves an earlier pair in `out/` as it was (Req 4.10, 6.9).
@@ -426,18 +426,18 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Listing the Job_Folder before and after a done run shows only `work/clean/`, the two Step_Outputs and the report changed (Req 8.7, 10.11).
     - _Requirements: 1.11, 4.5, 4.8, 4.9, 4.10, 4.11, 4.12, 4.13, 5.9, 6.9, 8.6, 8.7, 10.8, 10.10, 10.11_
 
-  - [ ] 8.6 Write the memory test in `tests/test_clean_step.py`
+  - [x] 8.6 Write the memory test in `tests/test_clean_step.py`
     - As in the design's "The memory test" section: run the step through `run()` on 20,000 Gaussians on a jittered lattice, built with the bulk path of `ply_bytes`, every one a Faint_Gaussian, with `set_clean` values that put each in a Cube of its own (`faint_cube_divisions` at 10⁶) and make each Cube keep it (`faint_min_per_cube` at 1).
     - Start `tracemalloc` first, and patch `export_sog` with a stand-in that reads `tracemalloc.get_traced_memory()` when it's called.
     - At that moment the traced memory is back within 1 MB of where it started, so no array outlives the clean phase. The traced peak is at most 600 bytes per Gaussian above the start.
     - _Requirements: 8.9_
 
-  - [ ] 8.7 Add the package checks to `tests/test_clean_repo.py`
+  - [x] 8.7 Add the package checks to `tests/test_clean_repo.py`
     - `splatpipe.clean` has `work` and `run`, and `splatpipe.clean.__main__` has `main` (Req 8.1).
     - Task 1's import checks now read the whole package, and they still pass (Req 8.5).
     - _Requirements: 8.1, 8.5_
 
-  - [ ] 8.8 Run the tests and commit
+  - [x] 8.8 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` and `tests/test_run.py`'s `assert STEP_LIST == ()` included (Req 8.3).
     - On `feat/clean`: `git add splatpipe/clean/__init__.py splatpipe/clean/__main__.py tests/splats.py tests/test_clean_step.py tests/test_clean_repo.py`, then commit those files with the title "Clean step: run, work and the CLI" and the body "Joins the settings, the reader, the three filters, the limits, the writer and the export in splatpipe/clean/__init__.py, with python -m splatpipe.clean as its CLI. Both outputs are made in work/clean/ and move into out/ only once both are whole, the viewer copy removed first and moved last, so out/ never holds a viewer copy without the clean splat it came from. The step stays out of STEP_LIST until a spec with a step worth running adds the entries."
     - _Requirements: 8.3, 10.1, 10.2_
@@ -455,7 +455,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - In "The step list", add that the clean step isn't in `STEP_LIST` yet, that the first spec with a Step worth running adds the entries, and that the clean step's goes last, as an optional step (Req 8.3, 8.4, 9.5). Call the planned optional step "clean" in place of "clean and export".
     - _Requirements: 8.3, 8.4, 9.1, 9.3, 9.4, 9.5, 9.6_
 
-  - [ ] 9.2 Add the clean step's line to `README.md`
+  - [x] 9.2 Add the clean step's line to `README.md`
     - Under "Install", after `uv sync`: the clean step also needs Node 22 or newer and `npm ci` at the repo root, which installs splat-transform 3.8.0 into `node_modules/`, and the tests that run it are skipped without them.
     - _Requirements: 9.8_
 

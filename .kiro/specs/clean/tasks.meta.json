@@ -2,11 +2,11 @@
   "pbtResults": {
     "1.5 Write the property test for Property 10 in `tests/test_clean_limits.py`, with Hypothesis": {
       "status": "passed",
-      "lastRunTimestamp": 1795321979235
+      "lastRunTimestamp": 1795404627000
     },
     "2.6 Write the property test for Property 9 in `tests/test_clean_ply.py`, with Hypothesis": {
       "status": "passed",
-      "lastRunTimestamp": 1795321968195
+      "lastRunTimestamp": 1795404627963
     },
     "3.4 Write the property test for Property 2 in `tests/test_clean_filters.py`, with Hypothesis": {
       "status": "passed",
@@ -34,7 +34,7 @@
     },
     "6.7 Write the property test for Property 7 in `tests/test_clean_limits.py`, with Hypothesis": {
       "status": "passed",
-      "lastRunTimestamp": 1795366249380
+      "lastRunTimestamp": 1795404628899
     },
     "6.5 Write the property test for Property 6 in `tests/test_clean_filters.py`, with Hypothesis": {
       "status": "passed",
@@ -1271,6 +1271,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795372730125
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401160446
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401173234
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795402210629
       }
     ],
     "7.6 Write the real splat-transform test in `tests/test_clean_export.py`": [
@@ -1298,6 +1313,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238023
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401160911
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795402224560
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795402753530
       }
     ],
     "7.7 Add the lockfile and licence-row checks to `tests/test_clean_repo.py`": [
@@ -1362,6 +1392,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238231
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401161218
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795402766073
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795403049232
       }
     ],
     "8.1 Write `run()` and `work()` in `splatpipe/clean/__init__.py`": [
@@ -1389,6 +1434,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238318
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401161607
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795404003762
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795405837208
       }
     ],
     "8.2 Write `splatpipe/clean/__main__.py`": [
@@ -1416,6 +1476,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238417
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401161934
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795404004135
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795405841587
       }
     ],
     "8.3 Add `put_source` to `tests/splats.py`": [
@@ -1443,6 +1518,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238511
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401162564
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795404004354
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795405842450
       }
     ],
     "8.4 Write end-to-end tests for done and failed runs in `tests/test_clean_step.py`": [
@@ -1470,6 +1560,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238603
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401162928
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795405860663
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795407012150
       }
     ],
     "8.5 Write end-to-end tests for the two Step_Outputs and the trained splat in `tests/test_clean_step.py`": [
@@ -1497,6 +1602,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238702
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401163198
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795407032537
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795407982186
       }
     ],
     "8.6 Write the memory test in `tests/test_clean_step.py`": [
@@ -1524,6 +1644,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238802
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401163689
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795407994495
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795421007805
       }
     ],
     "8.7 Add the package checks to `tests/test_clean_repo.py`": [
@@ -1551,6 +1686,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370238906
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401164190
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795405863645
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795407014561
       }
     ],
     "8.8 Run the tests and commit": [
@@ -1578,6 +1728,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370239028
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401164385
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795421018163
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795421294180
       }
     ],
     "9.1 Write the `## Step: clean` section of `docs/pipeline.md`": [
@@ -1605,6 +1770,16 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370239177
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401164695
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795421327058
       }
     ],
     "9.2 Add the clean step's line to `README.md`": [
@@ -1632,6 +1807,21 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370239308
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401165020
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795421327382
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795422289828
       }
     ],
     "9.3 Add the doc and README checks to `tests/test_clean_repo.py`": [
@@ -1659,6 +1849,11 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370239411
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401165326
       }
     ],
     "9.4 Run the tests and commit": [
@@ -1686,6 +1881,11 @@
         "executionId": "8684dbc0-5fd6-40f2-8ff9-1a5330b8cbd0",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795370239548
+      },
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795401165758
       }
     ],
     "1. Settings and the `[clean]` config": [
@@ -1728,6 +1928,20 @@
         "executionId": "13d53aca-5a05-457e-b4c7-e960e4915919",
         "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
         "timestamp": 1795366294991
+      }
+    ],
+    "7. splat-transform export, the lockfile and its licences": [
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795403050403
+      }
+    ],
+    "8. Running the step: `run()`, `work()` and the CLI": [
+      {
+        "executionId": "17bce917-4340-4dcd-a12a-947d6d0eed26",
+        "chatSessionId": "sess_60633ca7-b6f6-4eb0-af5f-33824b200197",
+        "timestamp": 1795421294373
       }
     ]
   }
