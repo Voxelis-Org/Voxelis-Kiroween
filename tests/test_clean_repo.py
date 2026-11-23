@@ -30,7 +30,7 @@ the repo root, and none runs the step.
   so they cover __init__.py and __main__.py too (Req 8.5).
 - The docs (Req 9.1 to 9.6, 9.8), read with tests/test_docs.py's own pipeline_parts, doc_parts
   and doc_part, which find a part by its heading. The ## Step: clean section of docs/pipeline.md
-  has its five ### parts, each found by its name, because STEP_LIST is empty and so
+  has its five ### parts, each found by its name, because the clean step isn't in STEP_LIST and so
   tests/test_docs.py doesn't look for this section. Its Files in out/ part states the two-output
   guarantee, and the section names train.ply and binary_little_endian, says every other
   property is carried through and says SOG meta version 2 and 8 GB. The step list says the clean
@@ -239,7 +239,8 @@ def test_the_real_clean_section_holds_the_sixteen_shared_and_the_two_preset_sett
 @pytest.mark.parametrize("preset", list(REAL_PRESETS))
 def test_the_real_clean_section_loads_for_each_preset_and_check_settings_accepts_it(
         preset: str) -> None:
-    """Req 6.14. STEP_LIST is empty, so tests/test_imports.py doesn't load this section."""
+    """Req 6.14. The clean step isn't in STEP_LIST, so tests/test_imports.py doesn't load this
+    section."""
     settings = load_config(REAL_CONFIG).step_settings("clean", preset)
     assert settings == {**REAL_SHARED, **REAL_PRESETS[preset]}
     check_settings(settings)  # raises nothing
@@ -275,9 +276,10 @@ def test_every_key_in_the_real_clean_tables_has_a_comment_on_the_line_directly_a
 # The imports
 
 def test_nothing_under_splatpipe_imports_a_gpu_package() -> None:
-    """Req 6.15. Every *.py under splatpipe/, found with rglob, so splatpipe/clean/ and every step
-    folder added later count too."""
-    found = [(where, name) for path in sorted(SPLATPIPE.rglob("*.py"))
+    """Req 6.15. Every *.py under splatpipe/clean/, found with rglob. The training step's
+    splatpipe/train/gpu.py imports GPU packages on purpose, and tests/test_cloud_imports.py
+    checks every file under splatpipe/."""
+    found = [(where, name) for path in sorted(CLEAN.rglob("*.py"))
              for where, name in imports_of(path) if top(name) in GPU_NAMES]
     assert found == []
 
@@ -392,8 +394,9 @@ def test_the_package_defines_each_entry_point_with_the_parameters_req_8_1_names(
 @pytest.mark.parametrize("title", CLEAN_PARTS)
 def test_the_clean_section_has_each_of_its_five_parts_found_by_its_heading(title: str) -> None:
     """Req 9.1, 9.2. tests/test_docs.py looks for a section for the fake step and for each entry
-    of STEP_LIST, which is empty, so it doesn't look for this one. doc_part fails, naming the
-    section and the heading, unless the section has exactly one ### heading with this title."""
+    of STEP_LIST, and the clean step isn't in it, so it doesn't look for this one. doc_part
+    fails, naming the section and the heading, unless the section has exactly one ### heading
+    with this title."""
     clean_part(title)
 
 
