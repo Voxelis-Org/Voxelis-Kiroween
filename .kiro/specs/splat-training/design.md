@@ -123,7 +123,7 @@ The three warnings, with the values filled in:
 
 - Req 3.11: "The camera solve gave `<P>` points, more than this preset's splat budget of `<max_splats>`, so training started from `<max_splats>` of them, chosen at random."
 - Req 7.8: "Training stopped early, after `<steps_run>` of `<steps>` iterations, to leave time for the clean step before the job's time cap."
-- Req 8.9 and 10.5 (D6): "Training gave back `<n>` splats with a NaN or an infinity, so they were left out of out/train.ply.", where `<n>` is `dropped`.
+- Req 8.9 and 10.5 (D6): "Splats left out of out/train.ply because they held a NaN or an infinity: `<n>`.", where `<n>` is `dropped`.
 
 ### settings.py
 
