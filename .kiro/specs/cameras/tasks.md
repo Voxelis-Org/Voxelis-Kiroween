@@ -1,0 +1,556 @@
+# Implementation Plan: cameras
+
+## Overview
+
+This plan builds the Cameras_Step in `splatpipe/cameras/` in 10 tasks, in the design's build order: the settings, the model files, the levelling, the Frames_Contract with the COLMAP runner and the command lines, the database and the solve flow, the undistortion and the mask, the outputs and the step itself, the integration test with the real COLMAP, the step's section of the Pipeline_Doc with the COLMAP licence row, and last the Step_List entry. Each task writes its code with that code's unit tests and Hypothesis property tests, runs the whole suite and commits. The code is Python 3.11. The step adds no package: numpy and `opencv-python-headless` are already runtime dependencies, and pytest and Hypothesis are already in the dev group.
+
+Three choices in the order matter:
+
+- **The docs before the Step_List.** Once `STEP_LIST` holds `cameras`, the existing check in `tests/test_docs.py` (`test_the_pipeline_doc_has_a_step_section_for_the_fake_step_and_every_listed_step`) needs a `## Step: cameras` section. So task 9 writes that section, and task 10 changes the Step_List together with the "The step list" paragraph that describes it, as D1 asks.
+- **The cameras import check** (Req 12.13, 16.10) goes in task 1, so the test run of every later task checks the new package's imports.
+- **The `run_job` test of both steps** goes in task 10, because it needs the Step_List entry. Task 7 tests the step through its own `run()` and CLI.
+
+COLMAP on the laptop: only two tests use it, the `colmap <command> -h` check in 4.8 and the integration test in task 8. Both skip, with their reason, when `colmap` isn't on the PATH, so every other task runs on a laptop without COLMAP. Homebrew's COLMAP 4.2.1 is enough for both. It's used only for `-h` and these small CPU runs, and the step always passes `use_gpu 0`.
+
+Some files grow over several tasks, so each piece comes with the first task that uses it:
+
+- `splatpipe/cameras/__init__.py`: task 1 makes it with only the package docstring, and task 7 writes the step.
+- `splatpipe/cameras/level.py`: task 1 makes it with only `LevelSettings`, which `settings.py` needs, and task 3 writes the levelling.
+- `tests/conftest.py`: task 1 adds `[cameras]`, `MISSING`, `set_cameras` and the `colmap_options` oracle. Task 4 adds `cameras_job`. Task 5 adds `FakeColmap` and `fake_colmap` for the commands the solve flow runs. Task 7 gives `FakeColmap` the two undistorters and makes `fake_colmap` install it as the step's tools.
+- `tests/test_imports.py`: task 1 adds the cameras import check, and task 10 changes the Step_List check's docstring.
+- `tests/test_docs.py`: task 9 tests the cameras section and the COLMAP row, and task 10 tests "The step list".
+- `docs/pipeline.md`: task 9 adds `## Step: cameras`, and task 10 rewrites "The step list".
+- `tests/test_cameras_step.py`: task 7 writes it, and task 10 adds the `run_job` test of both steps.
+
+## Working rules for every task
+
+- Work on the existing `feat/camera-solve` branch, never on `main`.
+- The only step folder this spec makes is `splatpipe/cameras/`. Of the Skeleton, only the Step_List and its comment in `splatpipe/run.py` change, in task 10. The Frames_Step's code, `pyproject.toml`, `uv.lock` and `.kiro/steering/tech.md` stay as they are.
+- `splatpipe/cameras/` imports only the standard library, numpy, cv2 and `splatpipe`. Nothing imports `cloud/`, boto3, torch, gsplat or pycolmap. `level.py` is pure and imports only the standard library, numpy and the step's `model`.
+- COLMAP runs only as the separate program `colmap`, through `subprocess.run` in `run_colmap` in `colmap.py`. It's never linked or imported, and no other module starts a process.
+- cv2 only decodes and encodes the mask PNGs. It never reads or writes video: no `cv2.VideoCapture` and no `cv2.VideoWriter`.
+- Every number and setting comes from `[cameras]` in `config.toml`, except the design's Fixed_Constants, as its "The Fixed_Constants" table lists them: the program `colmap`, the four log options, `--camera_mode 1`, the feature and matcher types, the GPU and bundle adjustment backend options, `--SequentialMatching.loop_detection 0` and `quadratic_overlap`, `--output_type COLMAP`, the paths, the two Camera_Model names, PINHOLE, the World_Up and +Z, the Mask's 0 and 255, and the layout and names of the Model_Files, the Work_Folder and `out/cameras.json`.
+- Nothing is downloaded while the step runs: SIFT and `SIFT_BRUTEFORCE` only, loop detection off, no vocabulary tree and no model weights.
+- Tests run on the CPU with no network. They build tiny synthetic cameras, points, images and databases themselves, in `tmp_path`. Every Job is made in the temporary Jobs_Folder from `tests/conftest.py`, never in the real `data/` folder, and no image, database or model goes into git.
+- Tests that need COLMAP use `pytest.mark.skipif(shutil.which("colmap") is None, reason="COLMAP isn't installed")`. Only 4.8 and task 8 need it. Every subprocess a test starts itself gets `timeout=60`, and the step's own COLMAP runs take their Time_Limits from the config.
+- Property tests use Hypothesis with at least 100 examples (the default), and each docstring says `Feature: cameras, Property N: <title>`. Each oracle is written in the test with its own code and never calls the function it checks.
+- Every test sub-task is required. None is optional.
+- Nothing here costs money. No task touches AWS, sets `APPROVED_SPEND`, or runs anything paid or in the cloud.
+- The last sub-task of each task is its checkpoint. Run `uv run pytest` and fix what fails until every test passes, `tests/test_guard.py` included. Then stage the task's files by name with `git add <file> ...`, never with `git add -A`, `git add .` or a folder, and commit only those files with `git commit -m "<message>" -- <file> ...`, so nothing else that's staged goes in. Leave `docs/devlog.md` out: the devlog hook adds and commits its own line after each task.
+- If a hook blocks something it shouldn't, say so and fix the hook. Never work around it.
+
+## Tasks
+
+- [ ] 1. Settings, the test config and the import check
+  - Files: `splatpipe/cameras/__init__.py`, `splatpipe/cameras/level.py`, `splatpipe/cameras/settings.py` and `tests/test_cameras_settings.py` (new). `config.toml`, `tests/conftest.py` and `tests/test_imports.py` (changed).
+  - Design: "settings.py", "The `[cameras]` section of `config.toml`", "The settings checks", F13, F14, O1 to O4, O7, O11, C5 and C9, and the `tests/conftest.py` and `tests/test_imports.py` rows of "Changes outside `splatpipe/cameras/`".
+  - COLMAP on the laptop: not needed.
+  - _Requirements: 2.1, 2.3, 4.4, 8.6, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.12, 12.13, 12.14, 12.15, 16.2, 16.4, 16.10, 16.13_
+
+  - [ ] 1.1 Add `[cameras]` and its Preset tables to `config.toml`
+    - Append `[cameras]`, `[cameras.fast]`, `[cameras.default]` and `[cameras.quality]` after `[frames.quality]`, exactly as the design's "The `[cameras]` section of `config.toml`" writes them, with the comment above every key and the group comments. Leave every other section as it is.
+    - That's 190 Shared_Settings. The 173 Option_Keys, `camera_model` included, hold the values of `.kiro/skills/colmap-cli/references/options.md`, with decimal options written as TOML floats (C9). The 17 other Shared_Settings hold the values of O1 to O4 and Req 12.3. Each Preset table holds `near_overlap`: 15, 15 and 25.
+    - _Requirements: 4.4, 8.6, 12.1, 12.2, 12.3, 12.4, 12.5_
+
+  - [ ] 1.2 Write `splatpipe/cameras/settings.py`
+    - Make `splatpipe/cameras/` with an `__init__.py` that holds only the package docstring for now, and a `level.py` that holds only `LevelSettings` with its four levelling settings. Task 7 writes the step, and task 3 the levelling.
+    - `Range`, `OptionKey`, `OPTION_KEYS`, `TIMEOUT_KEYS`, `CamerasSettings` and `read_settings(settings, section, preset)`, as in the design's "settings.py" section. `OPTION_KEYS` holds one `OptionKey` per Option_Key, in `options.md`'s order, each with its COLMAP option, the commands that take it and its Range from "The settings checks". The keys follow O11's naming rule.
+    - Each key is read with `settings[key]`, so a missing key raises the Step_Runner's own message. The kind checks use `type()` exactly, so a bool is never a number, and a whole number must also fit a 32-bit signed int.
+    - Then each Range's own test runs, and then the cross checks, once every single key has passed. A refusal is an `ExpectedFailure` that names the key, its table (`[cameras]`, or `[cameras.<preset>]` for `near_overlap`), COLMAP's option for an Option_Key, and what the value must be, like the design's example message. A cross check names both settings and their values.
+    - `options` keeps each Option_Key's value as Config gave it, so an int stays an int and a float stays a float. `timeouts` maps each COLMAP command to its Time_Limit, and `sequential_matcher`'s applies to both Match_Runs. `min_vcpus` and `min_memory_gb` are checked and kept, and nothing in the step uses them.
+    - The module imports only the standard library, `splatpipe.errors` and the step's `level`.
+    - _Requirements: 2.3, 12.6, 12.7, 12.8, 12.9, 12.10, 12.11_
+
+  - [ ] 1.3 Add `[cameras]`, `set_cameras` and the options oracle to `tests/conftest.py`
+    - `config_text` gains a `[cameras]` section with its three Preset tables: the real config's `[cameras]`, read once from `config.toml` by path with `tomllib`, with `min_placed_frames = 1` and every `*_timeout_seconds` at 60 on top (C5). Each value keeps its TOML type.
+    - A `set_cameras(**values)` fixture rewrites the test config with any `[cameras]` key changed. `near_overlap` takes a dict of the Presets it changes, like `set_frames(base_picks=...)`. The sentinel `MISSING` leaves a key out, and for `near_overlap` it leaves the key out of every Preset table. Like `set_frames`, each call writes the whole file again from `config_text`, so `[frames]` and every `fail` are back to the test config's values too.
+    - A `colmap_options` fixture parses the seven code blocks of `options.md` with its own code into each command's options and value texts, in order. It sorts each option the way the design does: a Fixed_Constant, a path, `--SequentialMatching.overlap`, or an Option_Key with the key that O11's naming rule gives it. It's the oracle of the settings test in 1.4 and of Property 1 in 4.7, and it never reads `settings.py`.
+    - Update the module docstring to name the new fixtures.
+    - _Requirements: 12.15_
+
+  - [ ] 1.4 Write unit tests for the settings in `tests/test_cameras_settings.py`
+    - The real config, read by path as `REPO_ROOT / "config.toml"`, holds exactly the design's 190 keys in `[cameras]` and `near_overlap` in each Preset table. Each Option_Key's value, but for `camera_model`, equals its value in `options.md` from `colmap_options`: a bool as 1 or 0, a number as the same number, a name as the same text. Decimal options hold TOML floats (C9).
+    - The other keys hold the values of O1 to O4 and Req 12.3 and 12.4. `far_overlap` is at least 9, both `multiple_models` keys are true, and `undistortion_blank_pixels` is 0.
+    - `step_settings("cameras", preset)` loads the real config for each of the three Presets.
+    - Parametrised over every key, with the ranges of the design's "The settings checks" written out in the test, not read from `settings.py`: a value of the wrong kind (a bool for a number, a float for a whole number, a str for a number, an unknown name) and a value just outside the range are each refused with an `ExpectedFailure` naming the key, its table and, for an Option_Key, its COLMAP option. The edge values pass, like 2147483647 for a key with no top and -1 where the range allows it, and 2147483648 is refused.
+    - Each of the seven cross checks is refused, naming both settings and their values.
+    - A missing key, read through `StepSettings`, gives the Step_Runner's message with `[cameras]`, `[cameras.<preset>]` and the key.
+    - `read_settings` on the test config gives a `CamerasSettings` with the chosen Preset's `near_overlap`, each Option_Key's value with its own type, the Time_Limits by command, and the `LevelSettings`. `set_cameras` changes one key for one test, `MISSING` leaves one out, and the next test sees the test config's values again.
+    - _Requirements: 4.4, 8.6, 12.1, 12.2, 12.3, 12.4, 12.5, 12.7, 12.8, 12.9, 12.10, 12.11, 12.15, 16.2_
+
+  - [ ] 1.5 Write the cameras import check in `tests/test_imports.py`
+    - A new test reads every `splatpipe/cameras/*.py` with the file's existing `ast` reader and allows only names in `sys.stdlib_module_names`, numpy, cv2 and `splatpipe`, so torch, gsplat, boto3, pycolmap and `cloud/` stay out. A failure gives the file and the line.
+    - The same test finds no `cv2.VideoCapture` and no `cv2.VideoWriter` in those files.
+    - Together with the existing dependency test, this shows the step needs no new package, so `pyproject.toml` and `uv.lock` stay as they are.
+    - The module docstring describes the new test.
+    - _Requirements: 2.1, 12.12, 12.13, 12.14, 16.10_
+
+  - [ ] 1.6 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` and the comment check in `tests/test_config.py` included.
+    - On `feat/camera-solve`: `git add config.toml splatpipe/cameras/__init__.py splatpipe/cameras/level.py splatpipe/cameras/settings.py tests/conftest.py tests/test_cameras_settings.py tests/test_imports.py`, then commit those files with the message "Cameras: settings, the test config and the import check".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 2. The model files
+  - Files: `splatpipe/cameras/model.py` and `tests/test_cameras_model.py`, both new.
+  - Design: "model.py", "The Model_Files", F1 to F5, O10 and Property 7.
+  - COLMAP on the laptop: not needed. Task 8 checks the Model_Writer against COLMAP itself.
+  - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.9, 11.12, 16.2, 16.3, 16.4, 16.13_
+
+  - [ ] 2.1 Write `splatpipe/cameras/model.py`
+    - `CAMERA_MODELS`, `NO_POINT3D`, `NO_ERROR`, `POINT2D`, `TRACK_ELEMENT`, `FILES`, `Camera`, `Image`, `Points`, `Model`, the three encoders and decoders, `read_images()`, `read_model()` and `write_model()`, as in the design's "model.py" section, with the layout of "The Model_Files".
+    - It's our own code, written fresh with `struct` and numpy from the layout tables, with nothing copied from COLMAP's scripts or another repo. The fixed parts of each record go through `struct` with explicit little-endian formats. Each image's 2D points and each point's track go through `np.frombuffer` and `tobytes()` with the two dtypes, so every bit is kept, NaN payloads included.
+    - Decoding walks a `memoryview` with an offset. It refuses, with an `ExpectedFailure` that names the file, says what's wrong and says to check that COLMAP 4.2.1 is installed and to run the step again: a file that ends inside a record or inside its count, an unknown camera model id, a name with no `\0` before the end or that isn't UTF-8, an id given twice, and bytes after the last record.
+    - Encoding writes the cameras and the points in increasing id order and the images in the Model's order (F3). It raises `ValueError`, a bug in our code, for an id given twice, a name holding `\0`, an unknown model id, or a parameter count that doesn't match the model.
+    - `read_model` reads the three files and ignores any others, `rigs.bin` and `frames.bin` included (F4). `write_model` makes the folder and writes exactly the three files with `Path.write_bytes`, and an `OSError` is the Req 11.12 failure naming the file and the reason.
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 11.12_
+
+  - [ ] 2.2 Write unit tests for the model files in `tests/test_cameras_model.py`
+    - A hand-built model with one camera each of PINHOLE, OPENCV and OPENCV_FISHEYE, two images (one with no 2D points, one with NaN coordinates and `NO_POINT3D`) and three points (one with an empty track) encodes to exactly the bytes the test assembles from the design's layout tables with `struct.pack`. Those bytes decode back to the model.
+    - Cameras and points given out of id order come out sorted, and images keep their order. A PINHOLE camera record is 56 bytes, and the image and point records have the sizes the design gives.
+    - `read_model` reads a folder of the three files with a `rigs.bin` and a `frames.bin` beside them, and ignores both. `read_images` gives the images of a folder's `images.bin`.
+    - Each Req 10.4 fault fails, naming the file and what's wrong, with no "Traceback": a missing file, a file that ends inside each kind of record and inside its count, an unknown model id, a name with no `\0`, a name that isn't UTF-8, an id given twice, and bytes after the last record.
+    - The encoders raise `ValueError` for each bug the design lists. `write_model` writes exactly three files. With `Path.write_bytes` patched to raise `OSError(errno.ENOSPC, "No space left on device")`, it fails naming the file and the reason.
+    - _Requirements: 10.1, 10.2, 10.4, 11.12, 16.2_
+
+  - [ ] 2.3 Write the property test for Property 7 in `tests/test_cameras_model.py`, with Hypothesis
+    - **Property 7: The Model_Files round trip**
+    - **Validates: Requirements 10.9**
+    - Draw models with cameras of the three models, images with any Poses, names and 2D points, and points with any positions, colours, errors and tracks. Ids are unique across the whole `uint32` and `uint64` ranges. Floats are any `float64`, NaN payloads and infinities included. Names have up to 30 Unicode characters that UTF-8 can encode, with no `\0`. Each image has 0 to 20 2D points with `NO_POINT3D` common, and each point 0 to 8 track elements.
+    - Decoding what the encoders write gives back the same model, with the cameras and the points in id order. The oracle compares every float bit for bit through its bytes.
+    - _Requirements: 10.9, 16.3_
+
+  - [ ] 2.4 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add splatpipe/cameras/model.py tests/test_cameras_model.py`, then commit those files with the message "Cameras: the model files".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 3. Levelling the scene
+  - Files: `splatpipe/cameras/level.py` (changed) and `tests/test_cameras_level.py` (new).
+  - Design: "level.py (pure)", "The Hypothesis strategies for the levelling", A6, O3, C7 and Properties 4 to 6.
+  - COLMAP on the laptop: not needed. Every test builds its own cameras and points.
+  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.15, 9.16, 9.17, 9.18, 10.6, 10.7, 10.8, 16.1, 16.2, 16.3, 16.4, 16.13_
+
+  - [ ] 3.1 Write the levelling in `splatpipe/cameras/level.py`
+    - `WORLD_UP`, `FORWARD`, `Scene`, `LevelMove`, `Levelling`, the quaternion helpers, `rotation_onto()`, `heading_turn()`, `axis_point()`, `point_median()`, `level()`, `scene_of()` and `move_model()`, as in the design's "level.py (pure)" section, next to task 1's `LevelSettings`.
+    - `scene_of` takes the Placed_Frames in Pick_Number order, using `numbers`, with each camera's R, its centre −Rᵀt, and the points.
+    - `level` follows the design's eight steps: finite input; the Mean_Up against `up_agreement`; `rotation_onto`, with its half turn when a · g < 0; the Heading_Camera, the first Placed_Frame by Pick_Number that has a Heading; the turn to +Z; the Scene_Centre; the translation; and finite output. The Scene_Centre is the Axis_Point when it passes the eigenvalue share and the in-front share, which compares with `Fraction(axis_point_min_front_share)` as C7 says, else the Point_Median along the levelled axes (A6), else the COLMAP_Frame is kept. The eigenvalue test runs before `numpy.linalg.solve`, so cameras whose A is singular, like parallel ones, go to the Point_Median and never reach the solve.
+    - Any exception, or any value that isn't finite, keeps the COLMAP_Frame with the Req 9.12 warning naming the error's type and message, so `level` never raises. A kept COLMAP_Frame gives the identity rotation, a zero translation, and the warning of Req 9.3, 9.7, 9.10 or 9.12, worded as the design gives them.
+    - `move_model` applies the whole Level_Move to every Pose and every point at once: q_R from Shepperd's method, q'_i = normalise(q_i ⊗ q̄_R), t'_i = t_i − R'_i T and X'_j = R X_j + T. The camera, every image's id, camera id, name and 2D points, and every point's id, colour, error and track stay as they are.
+    - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 10.6, 10.7, 10.8_
+
+  - [ ] 3.2 Write unit tests for the levelling in `tests/test_cameras_level.py`
+    - Cameras that agree come out level, facing +Z and centred. Cameras that don't, half of them upside down, keep the COLMAP_Frame with the Req 9.3 warning, which gives the Mean_Up's length and `up_agreement`.
+    - A first Placed_Frame that looks straight down makes the next one the Heading_Camera. Every frame looking straight down keeps the COLMAP_Frame with the Req 9.7 warning. The Heading_Camera is chosen by Pick_Number, also when `images.bin` lists the images in another order.
+    - Cameras on a circle looking at its centre have that centre as their Axis_Point. Exactly parallel cameras, whose A is singular, fail the eigenvalue share, and outward-looking cameras have their Axis_Point behind them, so both use the Point_Median, with no Req 9.12 warning. An in-front share of exactly `axis_point_min_front_share` passes (C7). No points and no well defined Axis_Point keep the COLMAP_Frame with the Req 9.10 warning.
+    - A Mean_Up along (0, 1, 0) takes the half turn and still comes out level. A NaN in a Pose, and an error raised inside the maths with `monkeypatch` on `numpy.linalg.solve`, each keep the COLMAP_Frame with the Req 9.12 warning naming the error.
+    - `rotation_onto` for a = g, a = −g and random a. Shepperd's method gives back each quaternion, up to its sign, checked against the quaternion formula.
+    - `move_model` moves each centre to R C + T and each point to R X + T, and keeps the camera, the images' ids, camera ids, names and 2D points, and the points' ids, colours, errors and tracks. A kept COLMAP_Frame gives exactly the identity rotation and a zero translation.
+    - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 10.6, 10.7, 10.8, 16.1, 16.2_
+
+  - [ ] 3.3 Write the property test for Property 4 in `tests/test_cameras_level.py`, with Hypothesis
+    - **Property 4: The Level_Move keeps every distance**
+    - **Validates: Requirements 9.1, 9.13, 9.15**
+    - Draw scenes with the design's `scenes()`: 1 to 12 cameras with rotations from `rotations()` and centres in [−50, 50]³, 0 to 30 points in [−50, 50]³, and levelling settings across the ranges the design gives.
+    - Apply the Level_Move that `level` gives with `move_model`. The oracle works out the distance between every two of the camera centres and the points, before and after, with its own numpy code. Each distance stays within 1e-9 times (1 + the largest distance).
+    - _Requirements: 9.1, 9.13, 9.15, 16.3_
+
+  - [ ] 3.4 Write the property test for Property 5 in `tests/test_cameras_level.py`, with Hypothesis
+    - **Property 5: The Level_Move's rotation is a proper rotation**
+    - **Validates: Requirements 9.1, 9.16**
+    - For the scenes and settings of Property 4, the Level_Move's rotation R has RᵀR within 1e-12 of I and a determinant within 1e-12 of 1, so its scale is 1.
+    - When the Levelling keeps the COLMAP_Frame, R is exactly the identity and the translation exactly zero.
+    - _Requirements: 9.1, 9.16, 16.3_
+
+  - [ ] 3.5 Write the property test for Property 6 in `tests/test_cameras_level.py`, with Hypothesis
+    - **Property 6: Cameras that agree come out level, facing +Z and centred**
+    - **Validates: Requirements 9.2, 9.4, 9.5, 9.9, 9.11, 9.17, 9.18**
+    - Draw scenes with the design's `agreeing_scenes()`: a level scene whose cameras each tilt at most 28° from one common up, with 1 to 30 points, seen through a random rigid move, with any `up_agreement` up to 0.85 and any `heading_min_degrees` up to 25°.
+    - `level` moves the scene. In the moved scene, the oracle works out again with its own code the Mean_Up, which points along (0, −1, 0) within 1e-9, the Heading_Camera's flattened View_Direction, which points along +Z within 1e-9, and the Scene_Centre of the kind `level` used, which lies within 1e-9 times (1 + the scene's size) of the origin.
+    - _Requirements: 9.2, 9.4, 9.5, 9.9, 9.11, 9.17, 9.18, 16.3_
+
+  - [ ] 3.6 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add splatpipe/cameras/level.py tests/test_cameras_level.py`, then commit those files with the message "Cameras: levelling the scene".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 4. The Frames_Contract, the COLMAP runner and the command lines
+  - Files: `splatpipe/cameras/frames_input.py`, `splatpipe/cameras/colmap.py`, `splatpipe/cameras/commands.py`, `tests/test_cameras_frames_input.py` and `tests/test_cameras_colmap.py` (new). `tests/conftest.py` (changed).
+  - Design: "frames_input.py", "colmap.py", "commands.py" with its table of builders, "The Fixed_Constants", F7, F8, F13, F16, A1, C2, C3 and Property 1.
+  - COLMAP on the laptop: only the `-h` test in 4.8, which skips without it.
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.10, 2.13, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 6.1, 6.2, 6.6, 8.1, 8.3, 11.12, 16.2, 16.3, 16.4, 16.5, 16.7, 16.8, 16.13_
+
+  - [ ] 4.1 Write `splatpipe/cameras/frames_input.py`
+    - `Pick`, `FramesInput` with its `numbers` property, `parse_frames_record()` and `read_frames()`, as in the design's "frames_input.py" section. The names `IMAGES`, `GREY`, `MASK`, `RECORD` and `pick_name` come from `splatpipe/frames/files.py`, the contract between the two steps.
+    - `read_frames` reads `frames.json` with `splatpipe.jsonio.read_json`. `FileNotFoundError` is the Req 1.2 failure, and any other read error is the Req 1.3 failure saying the file can't be read as JSON.
+    - `parse_frames_record` is pure and refuses each fault of the design's list, naming the field. Then every `images/<file>` and `grey/<file>` must be a file, and `mask.png` too when `mask_used` is true, or the Req 1.4 failure names the first missing file.
+    - Every refusal is an `ExpectedFailure` that says to run the Frames_Step, with `uv run python -m splatpipe.frames --job <id>` and the Job's id.
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
+
+  - [ ] 4.2 Write `splatpipe/cameras/colmap.py`
+    - `PROGRAM`, `ColmapRun` with its `value()` method, `RunResult`, `colmap_env()`, `run_colmap()`, `last_error_line()` and `exit_text()`, as in the design's "colmap.py" section. It's the only code that starts COLMAP.
+    - `colmap_env` is pure. It gives the base environment without `TEST_TMPDIR` and without every key that starts with `GLOG_`, and with `TMPDIR` and `TMP` set to the given folder (C2).
+    - `run_colmap` opens the Command_Log for writing in binary, then runs `subprocess.run` with the argument list, `stdin=subprocess.DEVNULL`, stdout to the log, stderr into stdout, the COLMAP_Folder as `cwd`, the run's environment, and its Time_Limit as `timeout`. `TimeoutExpired` gives `exit_code=None`. `FileNotFoundError` is the Req 2.7 failure. A log that can't be opened is the Req 11.12 failure naming it. The seconds come from `time.perf_counter`, and the Last_Error_Line from reading the whole log once, line by line, with `errors="replace"`, so no size limit goes in code.
+    - `last_error_line` takes the log's lines in order, stops at glog's `*** Check failure stack trace: ***` line, keeps the last line before it that isn't empty, and drops glog's prefix (C3). `exit_text` gives `exit code 1`, or `exit code -6 (signal SIGABRT)` for a signal.
+    - _Requirements: 2.1, 2.2, 2.7, 2.8, 2.10, 11.12_
+
+  - [ ] 4.3 Write `splatpipe/cameras/commands.py`
+    - `Paths` with `Paths.of()`, the Fixed_Constants of the command lines, `format_value()`, `fisheye_start()` and the seven builders, as in the design's "commands.py" section and its table. `sequential_matcher(far=...)` gives the Near_Match_Run and the Far_Match_Run.
+    - `format_value` writes a bool as `1` or `0`, an int with `str`, a float with `repr`, and a name as it is. `fisheye_start` gives (f, f, width / 2, height / 2, 0.0, 0.0, 0.0, 0.0) with f = (L / 2) / (θ / 2).
+    - Each builder gives `PROGRAM`, the command, its paths, the four log options and `--default_random_seed`, then the command's options in `options.md`'s order: each Fixed_Constant at its value, and each other option at its Option_Key's value, taking exactly its command's keys from `OPTION_KEYS`, each once. `--SequentialMatching.overlap` comes from `near_overlap` or `far_overlap`. `--ImageReader.camera_params` goes in only for `"OPENCV_FISHEYE"`, and `--ImageReader.camera_mask_path` only with `mask_used`. Both undistorters take the same eleven `undistortion_*` keys.
+    - Every path is absolute. The Feature_Extraction reads `work/frames/grey`, and both mappers and the Undistortion read `work/frames/images`. `global_mapper` takes the database it's given, so the solve flow chooses the Calibration_Copy or the Database. Each run's name, Time_Limit and Time_Limit key, Command_Log, working folder and environment come from the command and `paths`.
+    - No builder passes `--help`, `--project_path`, `--log_path`, a GPU index, an image list, a vocabulary tree, a `--SequentialMatching.loop_detection_*` setting, or an ALIKED, LoMa or LightGlue option.
+    - _Requirements: 1.5, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 6.1, 6.2, 6.6, 8.1, 8.3_
+
+  - [ ] 4.4 Add `cameras_job` to `tests/conftest.py`
+    - A `cameras_job` fixture gives `cameras_job(picks=..., mask_used=..., width=..., height=...)`, which makes a Job with `new_job` and writes a tiny valid `work/frames/` into it: `images/` and `grey/` with one small JPEG per Pick, `mask.png` when `mask_used` is true, and a `frames.json` with every field of the Frames_Record. It gives the Job_Id.
+    - Update the module docstring to name it.
+    - _Requirements: 16.5_
+
+  - [ ] 4.5 Write unit tests for the Frames_Contract in `tests/test_cameras_frames_input.py`
+    - With no `frames.json`, the failure says the Frames_Step hasn't finished for this Job and gives the frames command with the Job's id.
+    - Each Req 1.3 fault fails, naming its field: a record that isn't JSON, each of `pick_width`, `pick_height`, `mask_used` and `picks` missing, a bool where an int belongs, an empty `picks`, a Pick without its `number` or its `file`, a `file` that isn't `pick_name(number)`, and a `number` given twice.
+    - Each missing file of Req 1.4 fails, naming the file: a Colour_Pick, a Grey_Copy, and `mask.png` with `mask_used` true. A missing `mask.png` with `mask_used` false passes.
+    - Every message says to run the Frames_Step and holds no "Traceback". A good record gives the Picks in the record's order, and `numbers` gives each file's Pick_Number.
+    - _Requirements: 1.2, 1.3, 1.4, 1.6, 16.2_
+
+  - [ ] 4.6 Write unit tests for the runner and the command lines in `tests/test_cameras_colmap.py`
+    - Each builder's command line for the real config, read by path, holds its block's options in `options.md`'s order, each reading back as the same value. The differences are only the ones the design gives: `camera_model`, the A1 values, the Preset's `near_overlap` and `far_overlap`, the conditional options for each Camera_Model and each `mask_used`, and every path absolute and inside its folder.
+    - `format_value` gives `1` and `0` for bools, never `True`, and `0.006666666666666667` and `1e-05` for those floats, and each text reads back as the same value. `fisheye_start(1600, 900, 120.0)` gives f = 800 / (π / 3), about 763.944, with cx 800 and cy 450.
+    - `colmap_env` drops `TEST_TMPDIR` and the `GLOG_` keys and sets `TMPDIR` and `TMP`. `ColmapRun.value` gives the argument after an option.
+    - `run_colmap` with `subprocess.run` replaced as `splatpipe.cameras.colmap` sees it, with `monkeypatch`: the call gets an argument list, `stdin=DEVNULL`, the log as stdout with stderr into it, the cwd, the env and the timeout. `TimeoutExpired` gives `exit_code=None`, `FileNotFoundError` gives the Req 2.7 message, and a log that can't be opened gives the Req 11.12 message.
+    - A real child, `sys.executable -c` that prints a line and then sleeps, is stopped at a Time_Limit of 0.2 s, with its line in the Command_Log.
+    - `last_error_line` on glog lines with 4-digit and 8-digit dates and with decimal and hex thread ids, on a crash's stack trace, and on an empty log. `exit_text` for 1 and -6.
+    - _Requirements: 1.5, 2.2, 2.7, 2.8, 2.10, 3.1, 3.4, 4.1, 4.2, 4.3, 6.1, 6.2, 6.6, 8.1, 11.12, 16.2_
+
+  - [ ] 4.7 Write the property test for Property 1 in `tests/test_cameras_colmap.py`, with Hypothesis
+    - **Property 1: Command lines hold the Fixed_Constants and every option once**
+    - **Validates: Requirements 2.3, 2.4, 2.5, 2.6, 2.13, 3.2, 3.3, 3.5, 3.6, 4.1, 4.2, 4.3, 8.3**
+    - Draw settings that `read_settings` accepts, either `mask_used`, either Camera_Model, and Pick_Sizes from 1 × 1 to 4000 × 4000. Each Option_Key's value comes from its Range, with the 32-bit ends of whole numbers and floats like 1e-300 and 1e300 where the range allows them, and the cross-checked pairs put in order.
+    - The oracle is `colmap_options`. Each of the eight command lines starts with `colmap` and its command, holds each Fixed_Constant at its value, and holds every other option of its block exactly once, with text that reads back as its Option_Key's value: a bool as `1` or `0`, an int through `int()`, a float through `float()`, and a name as it is.
+    - `--SequentialMatching.overlap` is `near_overlap` in the Near_Match_Run and `far_overlap` in the Far_Match_Run. `--ImageReader.camera_params` appears only for OPENCV_FISHEYE, and `--ImageReader.camera_mask_path` only with `mask_used`. Both undistorters give each undistortion setting the same value. No option appears twice, and none of the options of Req 2.6 appears.
+    - _Requirements: 2.3, 2.4, 2.5, 2.6, 2.13, 3.2, 3.3, 3.5, 3.6, 4.1, 4.2, 4.3, 8.3, 16.3_
+
+  - [ ] 4.8 Write the `colmap <command> -h` test in `tests/test_cameras_colmap.py`
+    - Skip it with the reason "COLMAP isn't installed" when `colmap` isn't on the PATH.
+    - Run `colmap <command> -h` for each of the seven commands, with `timeout=60`. Check that every option the builders pass for the real config, with and without the Mask and for both Camera_Models, is in that command's list.
+    - _Requirements: 16.7, 16.8, 16.13_
+
+  - [ ] 4.9 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. The `-h` test runs where COLMAP is installed and is skipped, with its reason, where it isn't.
+    - On `feat/camera-solve`: `git add splatpipe/cameras/frames_input.py splatpipe/cameras/colmap.py splatpipe/cameras/commands.py tests/conftest.py tests/test_cameras_frames_input.py tests/test_cameras_colmap.py`, then commit those files with the message "Cameras: frames contract, COLMAP runner and command lines".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 5. The database and the solve flow
+  - Files: `splatpipe/cameras/database.py`, `splatpipe/cameras/solve.py` and `tests/test_cameras_solve.py` (new). `tests/conftest.py` (changed).
+  - Design: "database.py", "solve.py", "The solve flow" with its state table, the `FakeColmap` stand-in under "Stand-ins", F10, F11, F12, O5, O9, C1, C7, C11 and Property 2.
+  - COLMAP on the laptop: not needed. `FakeColmap` stands in for it.
+  - _Requirements: 2.8, 2.9, 2.11, 2.12, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12, 7.1, 7.2, 7.3, 11.12, 13.1, 13.2, 13.3, 16.1, 16.2, 16.3, 16.4, 16.5, 16.9, 16.13_
+
+  - [ ] 5.1 Write `splatpipe/cameras/database.py`
+    - `DatabaseCamera`, `copy_database()`, `read_camera()` and `calibration_failure()`, as in the design's "database.py" section, with Python's built-in `sqlite3`.
+    - `copy_database` copies with `sqlite3`'s backup API (C1). A `sqlite3.Error` or an `OSError` is the Req 11.12 failure naming the Calibration_Copy.
+    - `read_camera` reads the `cameras` table, with `params` as little-endian doubles. Anything but exactly one row, or a database that can't be read, fails, naming the file and saying to check that COLMAP 4.2.1 is installed and to run the step again.
+    - `calibration_failure` is pure. It gives "found no image pairs to calibrate" when the copy's `prior_focal_length` is still false, "rejected its focal length estimate and kept the starting one" when fx and fy are bit for bit the same as before, and `None` when the Calibration worked (O5).
+    - _Requirements: 5.2, 5.4, 11.12_
+
+  - [ ] 5.2 Write `splatpipe/cameras/solve.py`
+    - `Report`, `ModelCount`, `Solved`, `run_timed()`, `run_or_fail()`, `kept_model()`, `placed_needed()`, `model_counts()` and `solve()`, as in the design's "solve.py" section and its state table.
+    - `run_timed` adds the run's timing under its name as soon as the run returns, whatever the result. It fails a Timeout with the Req 2.8 message, which names the command, the limit and its key, and runs no Fallback. `run_or_fail` also fails a non-zero exit with the Req 2.9 message, which gives the exit text, the Last_Error_Line and the Command_Log.
+    - `kept_model` gives the Model with the most Placed_Frames and the lowest number among those with as many, or `None`. `placed_needed` gives max(`min_placed_frames`, ⌈`Fraction(min_placed_share)` × picks⌉), worked out exactly (C7). `model_counts` lists a mapper's numbered Model folders in number order and counts the images whose names are Picks' files (C11).
+    - `solve` follows the state table. It runs the Feature_Extraction, then the Near_Match_Run and the Far_Match_Run inside a `matching` block. Inside a `mapping` block, it makes the Calibration_Copy and runs the Calibration for `"OPENCV"`, or adds the Req 5.3 warning for `"OPENCV_FISHEYE"`. It runs the Global_Run on the Calibration_Copy, or on the Database for the fisheye camera (O9). After a Failed_Calibration, or when the Global_Run gives up, it adds the Req 5.5 or 6.7 warning with its reason and runs the one Fallback on the Database. Both blocks are timed like `StepContext.timed`, so each stage timing is added only when its block finishes.
+    - It makes `colmap/global/` and `colmap/incremental/` before the mapper that writes into each. The Incremental_Run's non-zero exit fails with the Req 6.10 message and the Filming_Advice. An Incremental_Run with no Model counts 0 Placed_Frames. A Final_Model under `placed_needed` fails with the Placed_Failure before any Undistortion, giving the placed Picks, all the Picks, the number needed and the Filming_Advice.
+    - It adds `fallback_ran`, `kept_from_global`, `models_found`, `placed_frames` and `points3d` as ints, and gives back the Final_Model, read whole with `read_model`. Each COLMAP_Command runs at most once, after the one before has returned, and nothing is retried.
+    - _Requirements: 2.8, 2.9, 2.11, 2.12, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 7.1, 7.2, 7.3, 13.1, 13.2, 13.3_
+
+  - [ ] 5.3 Add `FakeColmap` and `fake_colmap` to `tests/conftest.py`
+    - `FakeColmap`, as in the design's "Stand-ins", stands in for the `colmap` program for the commands the solve flow runs. Its `run(colmap_run)` records each run in `runs` and writes the run's Command_Log. Then it follows its script for the run's name: a name in `timeouts` gives `RunResult(None, ...)`, a name in `exits`, mapped to `(code, line)`, writes the line to the Command_Log and gives that code, and every other run exits with 0 after writing what the real command would write.
+    - The Feature_Extraction writes a SQLite `database.db` whose `cameras` table holds one camera of the Camera_Model at the Pick_Size: f = 1.2 × the long edge with `prior_focal_length` 0, or the Fisheye_Start with 1. The Match_Runs write nothing. The Calibration changes the Calibration_Copy as `calibration` says: `"worked"`, `"rejected"` or `"no_pairs"`.
+    - `global_mapper` and `mapper` write one Model folder per count in `global_models` or `incremental_models`, with task 2's Model_Writer, and `None` writes no Model. Model k places the next that many Picks of `--image_path`, with Poses along a walk seen through a fixed rigid move, an OPENCV camera with a little distortion, and a few points.
+    - The `fake_colmap` fixture gives the class, so a test builds one with its script and passes its `run` to `solve`. Update the module docstring to name both.
+    - _Requirements: 16.5_
+
+  - [ ] 5.4 Write unit tests for the database and the solve flow in `tests/test_cameras_solve.py`
+    - Each test runs `solve` with a `FakeColmap` and a real `StepContext` on a `cameras_job` Job.
+    - For OPENCV, the runs are the extractor, the near match, the far match, the Calibration and the Global_Run, in that order. For OPENCV_FISHEYE, there's no Calibration, the Req 5.3 warning names `fisheye_fov_degrees`, and the Global_Run reads the Database. The Calibration_Copy appears only after the Far_Match_Run has returned.
+    - The Calibration reads the Calibration_Copy, and the Database's camera row is unchanged afterwards. A Calibration that worked sends the Global_Run to the copy.
+    - Each kind of Failed_Calibration (exit 1, exit -6, rejected, no pairs) runs no Global_Run and runs the mapper once, on the Database, with the Req 5.5 warning giving the reason.
+    - Each way the Global_Run gives up (exit 1, exit -6, no Model, a Kept_Model under the limit) runs the mapper once, on the Database, with the Req 6.7 warning giving its reason. The Final_Model comes from the run that made it, with `fallback_ran`, `kept_from_global` and `models_found` to match.
+    - A Timeout of each command fails, naming its Time_Limit key, with no Fallback. A non-zero exit of the extractor and of each Match_Run fails with the exit code and the Last_Error_Line. The mapper's non-zero exit fails with the Req 6.10 message, and its exit 0 with no Model gives the Placed_Failure with 0 placed.
+    - Each failed run's report fields hold the counts and timings worked out so far, the failing command's timing included. Every command runs at most once. Each message names what its requirement says and holds no "Traceback".
+    - `placed_needed` and the Placed_Check at the edges: exactly `min_placed_frames` and one fewer, exactly `min_placed_share` of the Picks and one fewer, and 0.3 of 10 Picks needing 3 (C7). `model_counts` ignores folders whose names aren't numbers and images that aren't Picks.
+    - `copy_database`, `read_camera` and `calibration_failure` work on small SQLite files the test writes, and `read_camera` refuses a table with two camera rows.
+    - _Requirements: 2.8, 2.9, 2.11, 2.12, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.9, 6.10, 6.11, 7.1, 7.2, 7.3, 13.1, 13.2, 13.3, 16.1, 16.2, 16.5, 16.9_
+
+  - [ ] 5.5 Write the property test for Property 2 in `tests/test_cameras_solve.py`, with Hypothesis
+    - **Property 2: The Kept_Model has the most Placed_Frames and the lowest number among ties**
+    - **Validates: Requirements 6.8, 6.12**
+    - Draw 1 to 20 Models with unique numbers from 0 to 60 and counts from 0 to 4, so ties are common.
+    - The oracle, a plain loop, checks that the kept Model has at least as many Placed_Frames as every other Model, and a lower number than every other Model with as many.
+    - _Requirements: 6.8, 6.12, 16.3_
+
+  - [ ] 5.6 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add splatpipe/cameras/database.py splatpipe/cameras/solve.py tests/conftest.py tests/test_cameras_solve.py`, then commit those files with the message "Cameras: the database and the solve flow".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 6. Undistortion and the mask
+  - Files: `splatpipe/cameras/undistort.py` and `tests/test_cameras_undistort.py`, both new.
+  - Design: "undistort.py", F7, F8, F9, C8 and Property 3.
+  - COLMAP on the laptop: not needed. The tests build their own models and PNGs.
+  - _Requirements: 8.2, 8.3, 8.4, 8.5, 8.7, 12.14, 16.2, 16.3, 16.4, 16.13_
+
+  - [ ] 6.1 Write `splatpipe/cameras/undistort.py`
+    - `check_undistorted()`, `mask_camera_line()`, `undistorted_mask()` and `read_warped_mask()`, as in the design's "undistort.py" section. cv2 only decodes the warped mask's PNG.
+    - `check_undistorted` gives the Undistorted_Camera after checking that the Undistorted_Model has exactly one camera, that it's PINHOLE, that every image uses it, that its image names are exactly the Placed_Frames' names, and that each image file exists. Each refusal says what the Undistortion got wrong and to run the step again. A camera that isn't PINHOLE also gives the `ba_refine_extra_params` advice of C8.
+    - `mask_camera_line` gives one line: `mask.png`, the model name, the width, the height and each parameter as `repr(float)` (F8).
+    - `undistorted_mask` is pure. From a `uint8` image of 2 dimensions, or of 3 with 1, 3 or 4 channels, it gives one `uint8` channel with 255 where every channel is 255 and 0 everywhere else.
+    - `read_warped_mask` reads the file with `Path.read_bytes` and `cv2.imdecode(..., cv2.IMREAD_UNCHANGED)`. A file that can't be read or decoded, isn't 8-bit, or isn't the Undistorted_Camera's width and height fails, naming the file and what's wrong and saying to run the step again. Otherwise it gives `undistorted_mask` of the image.
+    - _Requirements: 8.2, 8.3, 8.4, 8.5, 12.14_
+
+  - [ ] 6.2 Write unit tests for the undistortion checks and the mask in `tests/test_cameras_undistort.py`
+    - `check_undistorted` refuses, on models the test builds: two cameras, an OPENCV camera, whose message names `mapper_ba_refine_extra_params` and `global_mapper_ba_refine_extra_params`, an image that isn't a Placed_Frame, a Placed_Frame missing from the model, and a missing image file. A good model gives its PINHOLE camera.
+    - `mask_camera_line` for an OPENCV and an OPENCV_FISHEYE camera reads back, split on spaces, to the same name, model, size and parameters, each parameter through `float()`.
+    - `read_warped_mask` fails on a missing file, bytes that aren't an image, a 16-bit PNG and a PNG of the wrong size, each naming the file, with no "Traceback". A three-channel PNG with grey edges and a one-channel PNG each give a mask of only 0 and 255.
+    - `undistorted_mask` on 2-D, one-channel, three-channel and four-channel inputs.
+    - _Requirements: 8.2, 8.3, 8.4, 8.5, 16.2_
+
+  - [ ] 6.3 Write the property test for Property 3 in `tests/test_cameras_undistort.py`, with Hypothesis
+    - **Property 3: The Undistorted_Mask is 255 exactly where every channel is 255**
+    - **Validates: Requirements 8.4, 8.7**
+    - Draw `uint8` images of 1 × 1 to 16 × 16 pixels with 3 channels, with channel values drawn mostly from 0, 1, 254 and 255, so pixels with one channel just below 255 are common.
+    - The oracle checks with its own loop that the result is one `uint8` channel of the same height and width, holds only 0 and 255, and is 255 at exactly the pixels whose three channels are all 255.
+    - _Requirements: 8.4, 8.7, 16.3_
+
+  - [ ] 6.4 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add splatpipe/cameras/undistort.py tests/test_cameras_undistort.py`, then commit those files with the message "Cameras: undistortion and the mask".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 7. The outputs, the step and its CLI
+  - Files: `splatpipe/cameras/outputs.py`, `splatpipe/cameras/__main__.py` and `tests/test_cameras_step.py` (new). `splatpipe/cameras/__init__.py` and `tests/conftest.py` (changed).
+  - Design: "The step's flow (`__init__.py`)", "outputs.py", "The Work_Folder", "`work/cameras/solve.json` (the Solve_Record)", "`out/cameras.json` (the Viewer_Cameras)", "The Cameras_Report", "Error Handling", the undistorters of the `FakeColmap` stand-in, F15, C4, C6 and C10.
+  - COLMAP on the laptop: not needed. `FakeColmap` stands in for it.
+  - _Requirements: 1.1, 1.7, 2.7, 2.9, 7.2, 8.1, 8.2, 8.3, 8.4, 8.5, 9.1, 9.3, 9.7, 9.10, 9.12, 9.13, 9.14, 10.5, 10.6, 10.7, 10.8, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 11.10, 11.11, 11.12, 11.13, 12.8, 12.14, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 14.1, 14.2, 14.10, 16.2, 16.4, 16.5, 16.9, 16.11, 16.13_
+
+  - [ ] 7.1 Write `splatpipe/cameras/outputs.py`
+    - The Work_Folder's names, `copy_training_images()`, `write_training_masks()`, `mean_reprojection_error()`, `solve_record()`, `viewer_cameras()` and `write_record()`, as in the design's "outputs.py" section.
+    - `copy_training_images` copies each name from the Undistortion's `images/` with `shutil.copyfile` (C4). `write_training_masks` encodes the Undistorted_Mask once with `cv2.imencode(".png", ...)` and writes the same bytes as `<stem>.png` for each name. A failed encode or an `OSError` is the Req 11.12 failure naming the file.
+    - `mean_reprojection_error` averages the errors that aren't -1, or gives `None` when there are none (F15). `solve_record` and `viewer_cameras` are pure and give only plain JSON values, with the fields of the design's two tables. `viewer_cameras` lists the Placed_Frames in Pick_Number order and holds no points.
+    - `write_record` writes with `splatpipe.jsonio.write_json`. On an `OSError` it removes the partly written file, then raises the Req 11.12 failure (C6).
+    - _Requirements: 11.2, 11.3, 11.6, 11.7, 11.9, 11.12, 12.14, 13.4_
+
+  - [ ] 7.2 Write the step in `splatpipe/cameras/__init__.py`
+    - `Tools`, `TOOLS`, `run()` and `work()`, as in the design's "The step's flow" section. `run` calls `run_step("cameras", "splatpipe.cameras", ...)`, like the Frames_Step. `work` reads `TOOLS` when it's called, so a test's `monkeypatch` reaches it through `run_step` and the CLI.
+    - `work` runs the design's nine parts in order. It removes an earlier `out/cameras.json` before anything else. It reads the settings, then the Frames_Contract, adding `picks`. It fails with the Req 2.7 message when `find_colmap` gives `None`. It makes `colmap/`, `colmap/tmp/` and `colmap/logs/` and the environment, then runs `solve`.
+    - Inside `step.timed("undistortion")`, it runs the Undistortion through `run_or_fail` and checks its output with `check_undistorted`. With `mask_used`, it writes the camera line of the Final_Model's camera, as the Final_Model holds it before the Undistortion, runs the Mask_Warp, and reads the Undistorted_Mask.
+    - Inside `step.timed("levelling")`, it works out the Level_Move, adds the warning when the COLMAP_Frame is kept, and adds `levelled`. When the Levelling keeps the COLMAP_Frame, the Levelled_Model is the Undistorted_Model unchanged, with no identity move applied (C10).
+    - Inside `step.timed("writing")`, it writes the Training_Images, the Training_Masks with `mask_used`, the Levelled_Model, `solve.json` and `out/cameras.json`, in that order. When writing `out/cameras.json` fails, it removes `solve.json` too before it fails (C6).
+    - Each count is added with `int(...)` as soon as it's known. The step writes only inside `work/cameras/` and to `out/cameras.json`, leaves `work/frames/` as it is, and relies on the Step_Runner emptying `work/cameras/` before it runs.
+    - _Requirements: 1.1, 1.7, 2.7, 2.9, 7.2, 8.1, 8.2, 8.3, 8.4, 8.5, 9.1, 9.3, 9.7, 9.10, 9.12, 9.13, 9.14, 10.5, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.8, 11.10, 11.11, 11.12, 11.13, 12.8, 13.1, 13.2, 13.4, 13.5, 13.6, 14.1, 14.10_
+
+  - [ ] 7.3 Write `splatpipe/cameras/__main__.py`
+    - `main(argv)` calls `step_main("cameras", "splatpipe.cameras", argv)`, and the file ends with `if __name__ == "__main__": sys.exit(main())`.
+    - _Requirements: 14.1, 14.2_
+
+  - [ ] 7.4 Give `FakeColmap` the two undistorters, and install it as the step's tools
+    - The fake `image_undistorter` reads `--input_path` with task 2's Model_Reader. It writes `undistorted/sparse/` with the camera turned PINHOLE and 2 pixels smaller each way, and a tiny JPEG per image in `undistorted/images/`. Flags make it keep the camera's model, add a second camera, or leave out an image.
+    - The fake `image_undistorter_standalone` reads `mask_camera.txt` and writes `mask_undistorted/mask.png` as a three-channel PNG at the size the fake undistorter gives, with a grey edge around every black region, like bilinear sampling.
+    - A flag makes the fake mappers write every other camera upside down, so the Levelling keeps the COLMAP_Frame.
+    - `fake_colmap` now also installs each `FakeColmap` it builds with `monkeypatch.setattr("splatpipe.cameras.TOOLS", ...)`, with `find_colmap` giving a fake path, or `None` when it's built with `installed=False`. The step reads `TOOLS` each time it runs, so a run through `splatpipe.cameras.run`, `run_step` or the CLI in this process uses the stand-in.
+    - Update the module docstring.
+    - _Requirements: 16.5_
+
+  - [ ] 7.5 Write unit tests for a done run in `tests/test_cameras_step.py`
+    - Each test runs the step through `splatpipe.cameras.run` with `FakeColmap` on a `cameras_job` Job, so the Step_Runner and the real report are part of each test.
+    - The Work_Folder holds exactly `colmap/`, `images/`, `sparse/` and `solve.json`, plus `masks/` with `mask_used`. `images/` holds exactly the names in `sparse/images.bin`. `masks/` holds one PNG per Placed_Frame, at the Undistorted_Camera's size, with only 0 and 255. `colmap/logs/` holds a Command_Log for each run.
+    - `sparse/` holds exactly the three Model_Files. They read back as one PINHOLE camera that every image uses, the Placed_Frames with the Undistorted_Model's image ids, camera id, names and 2D points, and every point with its id, colour, error and track.
+    - With the fake mappers' upside-down flag, the Levelling keeps the COLMAP_Frame. Then `sparse/`'s Poses and points equal the Undistorted_Model's bit for bit (C10), the report holds the Req 9.3 warning, `levelled` is 0, and `solve.json` gives the reason.
+    - The Mask_Warp's camera line is the Final_Model's camera before the Undistortion, and its command line holds the Undistortion's undistortion settings.
+    - `solve.json` and `out/cameras.json` pass `check_json_value` and hold every field of the design's two tables. `out/cameras.json` lists the Placed_Frames in Pick_Number order with the Poses in `sparse/images.bin`, and holds no points. `mean_reprojection_error` skips errors of -1 and gives `None` when there are none.
+    - The report holds every count of Req 13.1 as an int, every command timing and stage timing of Req 13.2, the warnings that apply, and in `settings` every key of `[cameras]` and the Preset's `near_overlap`.
+    - After the run, nothing new is in `out/` but `cameras.json` and the report, and `work/frames/` is unchanged, by hash. A second run on the same Job leaves only its own files.
+    - _Requirements: 1.7, 8.3, 8.4, 9.13, 9.14, 10.5, 10.6, 10.7, 10.8, 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.11, 11.13, 13.1, 13.2, 13.4, 13.5, 13.6, 16.2, 16.5_
+
+  - [ ] 7.6 Write unit tests for failed runs and the CLI in `tests/test_cameras_step.py`
+    - An earlier `out/cameras.json` is removed when the step starts, also when the step then fails on a setting.
+    - A bad setting fails the step before the step reads `frames.json`, also when `work/frames/` is broken, and before `FakeColmap` records any run. A broken Frames_Contract fails before any run, and so does a missing `colmap`, with `installed=False`.
+    - A failure in the Placed_Check, in the Undistortion (each flag of the fake undistorter), and in writing a Training_Image (with a write patched to raise `OSError(errno.ENOSPC, "No space left on device")`) leaves no `solve.json` and no `out/cameras.json`. The Placed_Check's failure runs no undistorter.
+    - A failed `out/cameras.json` write removes `solve.json` too, and its Readable_Error names the file and the reason.
+    - A non-zero exit of the Undistortion and of the Mask_Warp each fails with the Req 2.9 message.
+    - Every failed report has `expected: true` and a `readable` that names what its requirement says and holds no "Traceback".
+    - `splatpipe.cameras.__main__.main(["--job", job_id])` prints `cameras: done` and returns 0 for a done run, and prints the Readable_Error on stderr and returns 1 for a failed one.
+    - _Requirements: 1.1, 2.7, 2.9, 7.2, 8.2, 11.6, 11.10, 11.12, 12.8, 13.3, 14.2, 14.10, 16.5, 16.9, 16.11_
+
+  - [ ] 7.7 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add splatpipe/cameras/outputs.py splatpipe/cameras/__init__.py splatpipe/cameras/__main__.py tests/conftest.py tests/test_cameras_step.py`, then commit those files with the message "Cameras: the outputs, the step and its CLI".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 8. The integration test with the real COLMAP
+  - Files: `tests/test_cameras_real.py`, new.
+  - Design: "The real COLMAP tests", item 1, F5 and O6.
+  - COLMAP on the laptop: yes. The test skips, with its reason, where `colmap` isn't on the PATH.
+  - _Requirements: 1.7, 10.2, 10.5, 10.6, 11.1, 16.4, 16.6, 16.8, 16.13_
+
+  - [ ] 8.1 Write the synthetic scene and its picks in `tests/test_cameras_real.py`
+    - The scene: three textured rectangles meeting at a corner, a floor, a back wall and a side wall, about 4 m across, so the scene isn't planar. Each has its own texture from a fixed numpy seed: smoothed noise at three scales, plus random rectangles and discs.
+    - The camera: a pinhole camera with f = 260 px at 320 × 240 and no distortion. It moves 2 m sideways at a constant height, with no pitch and no roll, and turns to keep looking at the corner, over 30 frames.
+    - The render: numpy ray casting. Each pixel's ray hits the nearest rectangle, whose texture is sampled bilinearly.
+    - The picks go into the Job's `work/frames/`: `images/NNNNNN.jpg` at JPEG quality 95, `grey/NNNNNN.jpg` from `splatpipe.frames.files.grey_copy`, a black 32 × 24 corner painted into every frame with a `mask.png` that blacks it out, and a `frames.json` with every Frames_Record field and `mask_used` true. Nothing is written outside `tmp_path`.
+    - _Requirements: 16.6, 16.13_
+
+  - [ ] 8.2 Write the integration test in `tests/test_cameras_real.py`
+    - Skip it with the reason "COLMAP isn't installed" when `colmap` isn't on the PATH.
+    - Make the Job with `new_job`, write the picks of 8.1, and run `splatpipe.cameras.run` with the real `TOOLS`. `set_cameras` puts `min_placed_frames` back at the real 20 and sets each Time_Limit to 600 s, so every other value is the real config's.
+    - The report is done, and at least 24 of the 30 picks are placed. The Work_Folder matches Req 11.1. `sparse/` holds exactly three files, which our reader reads as one PINHOLE camera that every image uses.
+    - `colmap model_analyzer --path work/cameras/sparse` exits with 0 and reports `Cameras: 1`, the placed count as `Registered images:` and the `points3d` count as `Points:`. `colmap model_converter --output_type BIN` from `sparse/` into a folder the test makes first writes a `cameras.bin`, an `images.bin` and a `points3D.bin` equal to ours byte for byte (O6). Both runs get `timeout=60`.
+    - `masks/` holds one PNG per Placed_Frame at the camera's size, with only 0 and 255 and the painted corner at 0.
+    - The levelled cameras' mean up is (0, −1, 0) within 1e-9. Their centres' heights spread by less than 2 % of the path's length, because the true path is level and the cameras have no pitch or roll. The Heading_Camera that `solve.json` names has its flattened view along +Z.
+    - `out/cameras.json` matches `sparse/`, and `work/frames/` is unchanged.
+    - _Requirements: 1.7, 10.2, 10.5, 10.6, 11.1, 16.6, 16.8, 16.13_
+
+  - [ ] 8.3 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. The integration test runs where COLMAP is installed and is skipped, with its reason, where it isn't.
+    - On `feat/camera-solve`: `git add tests/test_cameras_real.py`, then commit that file with the message "Cameras: integration test with the real COLMAP".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 9. The cameras section of the pipeline doc and the COLMAP licence row
+  - Files: `docs/pipeline.md`, `docs/third-party-licences.md` and `tests/test_docs.py`, all changed.
+  - Design: the `docs/pipeline.md`, `docs/third-party-licences.md` and `tests/test_docs.py` rows of "Changes outside `splatpipe/cameras/`", with its `## Step: cameras` and COLMAP row parts, "The Work_Folder", "The Model_Files", the two records' tables and "The Cameras_Report".
+  - COLMAP on the laptop: not needed.
+  - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.8, 16.4, 16.12, 16.13_
+
+  - [ ] 9.1 Write `## Step: cameras` in `docs/pipeline.md`
+    - Put it after `## Step: frames`. It opens with the CLI, `uv run python -m splatpipe.cameras --job <id> [--preset P]`, the plain function `splatpipe.cameras.run(job_id, preset=None)` and the order of the work, then has the Frames_Step's five parts.
+    - What it reads: `work/frames/frames.json` and the fields the step uses, `images/`, `grey/` and `mask.png`. The Feature_Extraction reads the Grey_Copies, while the mappers and the Undistortion read the Colour_Picks, which share their names. The Job's machine image needs COLMAP 4.2.1 built as `.kiro/steering/tech.md` says.
+    - What it writes: the Work_Folder tree, the Model_Files' layout tables and the Pose convention, the one PINHOLE camera, the names that match `work/cameras/images/`, the Training_Masks only with `mask_used`, the World_Up (0, −1, 0), the Heading along +Z and the Scene_Centre at the origin. It says the Training_Step reads these files with its own reader, with no COLMAP or pycolmap, and gives what the COLMAP_Folder holds and the Solve_Record's fields.
+    - Config section: a table of every key in `[cameras]` and its Preset tables, with the COLMAP option each Option_Key sets, its value and what it does; the Fixed_Constants; and the Machine_Needs, at least 16 vCPUs and 16 GB of memory on the Job's cloud machine, which the step itself never checks.
+    - Step report fields: every count and timing of the Cameras_Report, and when each warning appears.
+    - Files in out/: `out/cameras.json` and its fields. The step removes an earlier one when its own code starts and writes a new one last of all, so a run that fails in the step's code leaves none. A run that the step runner stops before the step's code starts leaves the earlier run's `work/cameras/` and `out/cameras.json` in place, next to a failed report.
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6_
+
+  - [ ] 9.2 Rewrite the COLMAP row in `docs/third-party-licences.md`
+    - "How we use it" becomes the design's text. The cameras step runs `feature_extractor`, `sequential_matcher`, `view_graph_calibrator`, `global_mapper`, `mapper`, `image_undistorter` and `image_undistorter_standalone` as separate command line processes on our private machine image, built without CUDA, OpenGL, the GUI, CGAL and LSD, never vendored or linked, and with no pycolmap. On laptops, Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD, is used only for `-h` and small CPU tests, always with `use_gpu 0`.
+    - "Installed" becomes "Yes, on the laptop through Homebrew. Not yet on the machine image." The licence stays BSD-3-Clause.
+    - _Requirements: 15.8_
+
+  - [ ] 9.3 Write the doc tests for the cameras section and the COLMAP row in `tests/test_docs.py`
+    - `## Step: cameras` comes after `## Step: frames` and after the Skeleton's headings, with its five `###` parts.
+    - What it reads names `frames.json`, `images/`, `grey/` and `mask.png`, says which COLMAP commands read the Grey_Copies and which the Colour_Picks, and names COLMAP 4.2.1 and `.kiro/steering/tech.md`.
+    - What it writes names every part of the Work_Folder, the three Model_Files, PINHOLE, (0, −1, 0), +Z, the origin and pycolmap. It also names every top-level field of the Solve_Record, taken from what `outputs.solve_record` gives for a small example, the way the frames tests take the Frames_Record's fields from `frames_record`.
+    - Config section names every key of the real `[cameras]`, read by path, and `near_overlap`, and states 16 vCPUs, 16 GB and that the step never checks the machine.
+    - Step report fields names every count and timing of the Cameras_Report.
+    - Files in out/ names `out/cameras.json` and every field of the Viewer_Cameras, taken from what `outputs.viewer_cameras` gives, says the file is removed when the step starts and written last, and says that a run the step runner stops before the step's code starts leaves the earlier one in place.
+    - The COLMAP row names the seven commands, "never vendored or linked", pycolmap, Homebrew's COLMAP 4.2.1, SiftGPU, CGAL and LSD, `-h` and `use_gpu 0`. Its Installed cell says the laptop has it through Homebrew and the machine image doesn't yet.
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.8, 16.12_
+
+  - [ ] 9.4 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add docs/pipeline.md docs/third-party-licences.md tests/test_docs.py`, then commit those files with the message "Cameras: pipeline doc section and the COLMAP licence row".
+    - _Requirements: 16.4, 16.13_
+
+- [ ] 10. The cameras step joins the step list
+  - Files: `splatpipe/run.py`, `tests/test_run.py`, `tests/test_frames_step.py`, `tests/test_imports.py`, `tests/test_docs.py`, `tests/test_cameras_step.py`, `docs/pipeline.md` and `.kiro/specs/frames/requirements.md`, all changed.
+  - Design: the `splatpipe/run.py`, `tests/test_run.py`, `tests/test_frames_step.py`, `tests/test_imports.py`, `tests/test_docs.py` and frames spec rows of "Changes outside `splatpipe/cameras/`", and its "The step list" words.
+  - COLMAP on the laptop: not needed. The `run_job` test uses `FakeColmap`, and the real ffmpeg test runs the frames entry alone.
+  - D1 also names `tests/conftest.py`. It already has `[cameras]` from task 1, so a Job that runs the whole Step_List gets the cameras settings, and it needs no change here.
+  - _Requirements: 14.3, 14.4, 14.5, 14.6, 14.7, 14.8, 14.9, 15.7, 16.4, 16.13_
+
+  - [ ] 10.1 Change the Step_List in `splatpipe/run.py`
+    - `STEP_LIST = (StepEntry("frames", "splatpipe.frames", True), StepEntry("cameras", "splatpipe.cameras", True))`. The comment above it says the Cameras_Step is the second entry and each later step spec adds its own entry after it, in order, and keeps the words that the Fake_Step stays out.
+    - `_NO_STEPS` and the refusal of an empty list stay as they are.
+    - _Requirements: 14.3_
+
+  - [ ] 10.2 Update `tests/test_run.py`
+    - `test_the_step_list_holds_the_frames_step_and_is_the_default_list` gets a name for the new list, like `test_the_step_list_holds_the_frames_and_cameras_steps_and_is_the_default_list`, and asserts the list of 10.1. Its comment names the cameras spec's Req 14.3.
+    - _Requirements: 14.5_
+
+  - [ ] 10.3 Update `tests/test_frames_step.py`
+    - The real ffmpeg `run_job` test passes `steps=[entry for entry in STEP_LIST if entry.name == "frames"]`, so it still checks the Frames_Step on its own, and the Job is done once that step is.
+    - The module docstring and the test's comment say the test runs the Step_List's frames entry alone, no longer that the Frames_Step is the only entry.
+    - _Requirements: 14.6_
+
+  - [ ] 10.4 Update `tests/test_imports.py`
+    - The docstring of `test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section` says the check loads `[frames]` and `[cameras]` from the real config for each of the three Presets, and no longer describes the Frames_Step as the only entry. Its loop already goes through every entry, so it loads `[cameras]` with no code change.
+    - _Requirements: 14.7_
+
+  - [ ] 10.5 Rewrite "The step list" in `docs/pipeline.md`, with its test
+    - In place of the paragraph about the frames step, write the design's words: "The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done." Keep the list of planned steps.
+    - In `tests/test_docs.py`, the test of "The step list" gets a name that fits and checks the phrases "The list holds the frames step and then the cameras step, both required", "Each later step spec adds its own entry after the cameras step" and "Until the training spec adds its entry, a job is done once the cameras step is done". It checks that "Until the camera solve spec adds its entry", "The list starts empty" and "No steps are set up yet" are gone. The existing Step_List check now finds `## Step: cameras`, and its docstring says so.
+    - _Requirements: 14.8, 15.7_
+
+  - [ ] 10.6 Add the notes to the frames spec's requirements
+    - Under Requirement 11, criteria 3 and 4, and under Requirement 12, criterion 5, of `.kiro/specs/frames/requirements.md`, add the design's note: "The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it." Leave the criteria's own words as they are.
+    - _Requirements: 14.9_
+
+  - [ ] 10.7 Write the `run_job` test of both steps in `tests/test_cameras_step.py`
+    - Make a Job with `new_job`, install `FakeTools` for the Frames_Step and `FakeColmap` for the Cameras_Step, and run `run_job(job_id)` with the real Step_List.
+    - The Job_Status is `done`, both steps are done, `work/frames/` and `work/cameras/` have their designs' layouts, and `out/cameras.json` is written.
+    - _Requirements: 14.4_
+
+  - [ ] 10.8 Run the tests and commit
+    - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
+    - On `feat/camera-solve`: `git add splatpipe/run.py tests/test_run.py tests/test_frames_step.py tests/test_imports.py tests/test_docs.py tests/test_cameras_step.py docs/pipeline.md .kiro/specs/frames/requirements.md`, then commit those files with the message "Cameras: second entry in the step list".
+    - _Requirements: 16.4, 16.13_
+
+## Notes
+
+- Every test sub-task is required, as `.kiro/steering/rules.md` asks. None is marked optional.
+- The last sub-task of each task is its checkpoint: the whole suite, then the commit. So the plan has no separate checkpoint tasks and stays at 10 tasks.
+- Every acceptance criterion in `requirements.md` is named by at least one task. Each of the design's 7 correctness properties has its own property test sub-task: Property 7 in task 2, Properties 4 to 6 in task 3, Property 1 in task 4, Property 2 in task 5 and Property 3 in task 6. Properties 4, 5 and 6 are the levelling properties the user asked for: every distance kept, a scale of 1, and an up of (0, −1, 0) when the cameras agree.
+- Only 4.8 and task 8 need COLMAP, and both skip without it. Every other test uses `FakeColmap` or no COLMAP at all, so the suite passes on a laptop without it.
+- The design's choices O1 to O11 and C1 to C11 are still waiting for review. These tasks follow the design as it stands, and the review phase updates them if a choice changes.
+- Two placements differ from the design's text, each because of where the code lives. The bit for bit check of a kept COLMAP_Frame (C10) is in the step tests of 7.5, because `__init__.py` makes that choice, though the design's test table lists it with the levelling tests. `FakeColmap` comes in two parts: task 5 writes the commands the solve flow runs, and task 7 adds the undistorters and the installing, because `Tools` comes with the step.
+- Three small test helpers aren't named in the design: the `colmap_options` oracle in `tests/conftest.py`, shared by the settings test and Property 1 so that `options.md` is parsed in one place; the `FakeColmap` flag that writes every other camera upside down, for the kept COLMAP_Frame in 7.5; and the check in 1.5 that no file uses `cv2.VideoCapture` or `cv2.VideoWriter`, for Req 12.14.
+- The graph runs the tasks in order, one at a time, so each task's test run and commit see only finished work. Inside a task, sub-tasks that write different files share a wave.
+
+## Task Dependency Graph
+
+```json
+{
+  "waves": [
+    { "id": 0, "tasks": ["1.1", "1.2", "1.3"] },
+    { "id": 1, "tasks": ["1.4", "1.5"] },
+    { "id": 2, "tasks": ["1.6"] },
+    { "id": 3, "tasks": ["2.1"] },
+    { "id": 4, "tasks": ["2.2"] },
+    { "id": 5, "tasks": ["2.3"] },
+    { "id": 6, "tasks": ["2.4"] },
+    { "id": 7, "tasks": ["3.1"] },
+    { "id": 8, "tasks": ["3.2"] },
+    { "id": 9, "tasks": ["3.3"] },
+    { "id": 10, "tasks": ["3.4"] },
+    { "id": 11, "tasks": ["3.5"] },
+    { "id": 12, "tasks": ["3.6"] },
+    { "id": 13, "tasks": ["4.1", "4.2", "4.4"] },
+    { "id": 14, "tasks": ["4.3", "4.5"] },
+    { "id": 15, "tasks": ["4.6"] },
+    { "id": 16, "tasks": ["4.7"] },
+    { "id": 17, "tasks": ["4.8"] },
+    { "id": 18, "tasks": ["4.9"] },
+    { "id": 19, "tasks": ["5.1", "5.3"] },
+    { "id": 20, "tasks": ["5.2"] },
+    { "id": 21, "tasks": ["5.4"] },
+    { "id": 22, "tasks": ["5.5"] },
+    { "id": 23, "tasks": ["5.6"] },
+    { "id": 24, "tasks": ["6.1"] },
+    { "id": 25, "tasks": ["6.2"] },
+    { "id": 26, "tasks": ["6.3"] },
+    { "id": 27, "tasks": ["6.4"] },
+    { "id": 28, "tasks": ["7.1", "7.3"] },
+    { "id": 29, "tasks": ["7.2", "7.4"] },
+    { "id": 30, "tasks": ["7.5"] },
+    { "id": 31, "tasks": ["7.6"] },
+    { "id": 32, "tasks": ["7.7"] },
+    { "id": 33, "tasks": ["8.1"] },
+    { "id": 34, "tasks": ["8.2"] },
+    { "id": 35, "tasks": ["8.3"] },
+    { "id": 36, "tasks": ["9.1", "9.2"] },
+    { "id": 37, "tasks": ["9.3"] },
+    { "id": 38, "tasks": ["9.4"] },
+    { "id": 39, "tasks": ["10.1", "10.5", "10.6"] },
+    { "id": 40, "tasks": ["10.2", "10.3", "10.4", "10.7"] },
+    { "id": 41, "tasks": ["10.8"] }
+  ]
+}
+```
