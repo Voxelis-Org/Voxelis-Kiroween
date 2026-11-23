@@ -119,3 +119,4 @@ What the test found, and how the rules block it:
 - 2026-11-23 13:54+05:30 | feat/clean | clean 9.2 Add the clean step's line to `README.md` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, README.md
 - 2026-11-23 17:13+05:30 | feat/clean | clean 9.1 Write the `## Step: clean` section of `docs/pipeline.md` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, README.md, docs/pipeline.md
 - 2026-11-23 17:24+05:30 | feat/clean | clean 9.3 Add the doc and README checks to `tests/test_clean_repo.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, docs/pipeline.md, tests/test_clean_repo.py
+- 2026-11-23 17:28+05:30 | feat/clean | clean 9.4 Run the tests and commit | docs/pipeline.md, tests/test_clean_repo.py, .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json
