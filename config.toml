@@ -273,3 +273,99 @@ base_picks = 150
 [frames.quality]
 # Fewest picks the step aims for.
 base_picks = 200
+
+[train]
+# Longest edge of the images the step trains at, in pixels. A smaller camera isn't scaled up.
+long_edge = 1600
+# A training pixel whose mask value, from 0 to 255, is below this is left out of the loss.
+mask_threshold = 128
+# Seed for the random subset of points, the image order and torch's random numbers.
+seed = 42
+# Iterations between each rise of the spherical harmonics degree, which stops at 3.
+sh_degree_interval = 1000
+# The scene's size is this times the cameras' largest distance from their mean position.
+scene_extent_factor = 1.1
+# The renderer leaves out splats nearer a camera than this times the points' median depth.
+near_plane_factor = 0.03
+# Opacity every splat starts at, above 0 and below 1.
+start_opacity = 0.5
+# A splat's starting size is this times the RMS distance to its nearest other points.
+start_scale_factor = 0.1
+# How many nearest other points set a splat's starting size.
+start_scale_neighbours = 3
+# Most point pairs one chunk of the nearest-point search holds on the GPU (about 400 MB).
+neighbour_chunk_pairs = 100000000
+# Starting learning rate of the splats' positions, times the scene's size.
+means_lr = 0.00016
+# Share of its start the positions' learning rate has fallen to after the last iteration.
+means_lr_final = 0.01
+# Learning rate of the splats' log scales.
+scales_lr = 0.005
+# Learning rate of the splats' rotations.
+quats_lr = 0.001
+# Learning rate of the splats' opacity logits.
+opacities_lr = 0.05
+# Learning rate of the splats' band-0 colours.
+sh_dc_lr = 0.0025
+# Learning rate of the splats' higher spherical harmonics.
+sh_rest_lr = 0.000125
+# Adam's epsilon, for every optimiser.
+adam_eps = 1e-15
+# Learning rate of each image's exposure fix.
+exposure_lr = 0.001
+# Weight of the L1 colour loss. 0 turns it off.
+l1_weight = 0.8
+# Weight of the SSIM loss. 0 turns it off.
+ssim_weight = 0.2
+# Weight of the splats' mean opacity, which fades splats the images don't need. 0 turns it off.
+opacity_reg = 0.01
+# Weight of the splats' mean scale, which keeps them small. 0 turns it off.
+scale_reg = 0.01
+# Weight of the effective-rank term against needle-shaped splats. 0 turns it off.
+erank_reg = 0.01
+# Small number inside the effective-rank term's log, so the term stays finite.
+erank_epsilon = 1e-5
+# Share of the iterations after which the effective-rank term is on: the float nearest 7/30.
+erank_start_fraction = 0.23333333333333334
+# Iteration after which MCMC starts moving and adding splats.
+refine_start_step = 500
+# Iterations between MCMC's refines.
+refine_every = 100
+# Iteration at which MCMC stops refining, at the latest.
+refine_stop_step = 25000
+# MCMC also stops refining at this share of the iterations, when that comes first.
+refine_stop_fraction = 0.9
+# Minutes before the job's cap deadline that the splat must be written and checked, for the clean step.
+clean_reserve_minutes = 10
+# Minutes before that time that the last iteration may start, to save and check the splat.
+save_margin_minutes = 5
+# Share of the preset's GPU memory the GPU must report, since a "24 GB" card reports a little less.
+gpu_memory_slack = 0.9
+# Fewest vCPUs the job's cloud machine needs for this step. The step never checks it.
+min_vcpus = 4
+# Least memory the job's cloud machine needs for this step, in GB. The step never checks it.
+min_memory_gb = 32
+
+[train.fast]
+# Iterations the step trains for.
+steps = 7000
+# Most splats the step trains, MCMC's cap.
+max_splats = 1000000
+# Least GPU memory the job's machine needs for this step, in GB. The step checks it.
+min_gpu_memory_gb = 24
+
+[train.default]
+# Iterations the step trains for.
+steps = 15000
+# Most splats the step trains, MCMC's cap.
+max_splats = 2000000
+# Least GPU memory the job's machine needs for this step, in GB. The step checks it.
+min_gpu_memory_gb = 24
+
+[train.quality]
+# Iterations the step trains for.
+steps = 30000
+# Most splats the step trains, MCMC's cap.
+max_splats = 3000000
+# Least GPU memory the job's machine needs for this step, in GB. The step checks it.
+min_gpu_memory_gb = 48

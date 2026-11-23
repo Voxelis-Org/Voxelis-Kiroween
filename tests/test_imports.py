@@ -23,11 +23,17 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
 - The Frames_Step's imports (frames spec, Req 9.9, 13.10): every splatpipe/frames/*.py imports
   only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, so torch, gsplat, boto3 and
   cloud/ stay out.
-- The dependencies (frames spec, Req 9.8): numpy and opencv-python-headless are runtime
-  dependencies in pyproject.toml and in the project's own entry in uv.lock, and no package in
-  either file is plain opencv-python, torch, gsplat or an nvidia-* or cuda-* package. Names are
-  compared as PEP 503 normalises them. The check neither requires nor refuses scipy, so the
-  clean-export spec can decide scipy without changing it.
+- The Train_Step's imports (splat-training spec, Req 9.11, 9.13, 14.7): every
+  splatpipe/train/*.py but gpu.py imports only names in sys.stdlib_module_names, numpy, cv2 and
+  splatpipe, and gpu.py, the GPU_Module, imports only those and torch, gsplat and fused_ssim, so
+  boto3 and cloud/ stay out of all of them. The files are found with glob, so each new file is
+  checked as soon as it lands.
+- The dependencies (frames spec, Req 9.8, and splat-training spec, Req 9.10): numpy and
+  opencv-python-headless are runtime dependencies in pyproject.toml and in the project's own
+  entry in uv.lock, and no package in either file is plain opencv-python, torch, gsplat,
+  fused-ssim or an nvidia-* or cuda-* package. Names are compared as PEP 503 normalises them.
+  The check neither requires nor refuses scipy, so the clean-export spec can decide scipy
+  without changing it.
 
 Each import check's failure lists the file and the line of every import it found, and the
 dependency check's failure lists the file of every package it found.
@@ -63,14 +69,21 @@ LOADED_BY_RUN = ("import json, sys, splatpipe.run; "
 # The top-level names a splatpipe/frames/*.py may import besides the standard library (frames
 # spec, Req 9.9).
 FRAMES_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+# The top-level names a splatpipe/train/*.py may import besides the standard library, and the
+# GPU_Module's file, which may import torch, gsplat and fused_ssim too (splat-training spec,
+# Req 9.11).
+TRAIN_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+GPU_MODULE_FILE = SPLATPIPE / "train" / "gpu.py"
+GPU_MODULE_IMPORTS = TRAIN_IMPORTS | {"torch", "gsplat", "fused_ssim"}
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 # The runtime dependencies the Frames_Step needs (frames spec, Req 9.8).
 FRAMES_DEPENDENCIES = frozenset({"numpy", "opencv-python-headless"})
 # The packages that never go in pyproject.toml or uv.lock, by their normalised names: plain
 # opencv-python, which installs the same cv2 module as the headless one, and the GPU packages,
-# which only go in the cloud machine image (frames spec, Req 9.8).
-NEVER_PACKAGES = frozenset({"opencv-python", "torch", "gsplat"})
+# which only go in the cloud machine image (frames spec, Req 9.8, and splat-training spec,
+# Req 9.10).
+NEVER_PACKAGES = frozenset({"opencv-python", "torch", "gsplat", "fused-ssim"})
 NEVER_PREFIXES = ("nvidia-", "cuda-")
 # The first character of a requirement like "numpy>=2.4.6" that can't be part of its package name.
 NAME_END = re.compile(r"[^A-Za-z0-9._-]")
@@ -233,6 +246,18 @@ def test_the_frames_step_imports_only_the_standard_library_numpy_cv2_and_splatpi
     allowed = sys.stdlib_module_names | FRAMES_IMPORTS
     found = [(where, name) for path in sorted(SPLATPIPE.glob("frames/*.py"))
              for where, name in imports_of(path) if top(name) not in allowed]
+    assert found == []
+
+
+def test_the_train_step_imports_only_the_standard_library_numpy_cv2_and_splatpipe() -> None:
+    """Splat-training spec, Req 9.11, 9.13, 14.7. gpu.py, the GPU_Module, may import torch, gsplat
+    and fused_ssim as well, and no other file may. The files are found with glob, so each file a
+    later task adds is checked as it lands."""
+    found: list[tuple[str, str]] = []
+    for path in sorted(SPLATPIPE.glob("train/*.py")):
+        allowed = sys.stdlib_module_names | (
+            GPU_MODULE_IMPORTS if path == GPU_MODULE_FILE else TRAIN_IMPORTS)
+        found += [(where, name) for where, name in imports_of(path) if top(name) not in allowed]
     assert found == []
 
 

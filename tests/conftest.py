@@ -1,14 +1,20 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_frames, which changes its [frames] settings, work_calls, which records whose Fake_Step work
-runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg.
+set_frames and set_train, which change its [frames] and [train] settings, work_calls, which
+records whose Fake_Step work runs, fake_tools, which puts a FakeTools in place of the
+Frames_Step's ffprobe and ffmpeg, and no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out of
+every test.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
-a Job in the real data/ folder (Req 14.2). The test config also has [frames] with its three
-Preset tables, so a test that runs the Frames_Step without a Config of its own gets settings
-(frames spec, Req 9.11).
+a Job in the real data/ folder (Req 14.2). The test config also has [frames] and [train], each
+with its three Preset tables, so a test that runs the Frames_Step or the Train_Step without a
+Config of its own gets settings (frames spec, Req 9.11; training spec, Req 9.15).
+
+The autouse fixture no_cap_deadline removes SPLATPIPE_CAP_DEADLINE from the environment before
+every test, so a Cap_Deadline left in the shell or by another test can't change one. A test that
+needs it sets it with monkeypatch.setenv (training spec, Req 14.11).
 
 FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
 one on demand, and records what the step asked for. It can also report that ffmpeg has no
@@ -101,6 +107,55 @@ FRAMES = {
 # for the same reason as min_picks.
 BASE_PICKS = {"fast": 2, "default": 3, "quality": 4}
 
+# The test config's 35 [train] Shared_Settings: the real values (training spec, Req 9.2). Each
+# value has the TOML type it has in the real config.
+TRAIN = {
+    "long_edge": 1600,
+    "mask_threshold": 128,
+    "seed": 42,
+    "sh_degree_interval": 1000,
+    "scene_extent_factor": 1.1,
+    "near_plane_factor": 0.03,
+    "start_opacity": 0.5,
+    "start_scale_factor": 0.1,
+    "start_scale_neighbours": 3,
+    "neighbour_chunk_pairs": 100000000,
+    "means_lr": 0.00016,
+    "means_lr_final": 0.01,
+    "scales_lr": 0.005,
+    "quats_lr": 0.001,
+    "opacities_lr": 0.05,
+    "sh_dc_lr": 0.0025,
+    "sh_rest_lr": 0.000125,
+    "adam_eps": 1e-15,
+    "exposure_lr": 0.001,
+    "l1_weight": 0.8,
+    "ssim_weight": 0.2,
+    "opacity_reg": 0.01,
+    "scale_reg": 0.01,
+    "erank_reg": 0.01,
+    "erank_epsilon": 1e-5,
+    "erank_start_fraction": 0.23333333333333334,
+    "refine_start_step": 500,
+    "refine_every": 100,
+    "refine_stop_step": 25000,
+    "refine_stop_fraction": 0.9,
+    "clean_reserve_minutes": 10,
+    "save_margin_minutes": 5,
+    "gpu_memory_slack": 0.9,
+    "min_vcpus": 4,
+    "min_memory_gb": 32,
+}
+
+# The test config's [train] Preset_Settings, by Preset. steps and max_splats are tiny, so the
+# GPU_Stand_In's work stays tiny and a test of a dozen points fits the budget. min_gpu_memory_gb
+# keeps its real values, so the GPU_Fit_Check's byte counts mean what they do on the machine.
+TRAIN_PRESETS = {
+    "fast": {"steps": 6, "max_splats": 50, "min_gpu_memory_gb": 24},
+    "default": {"steps": 8, "max_splats": 60, "min_gpu_memory_gb": 24},
+    "quality": {"steps": 10, "max_splats": 70, "min_gpu_memory_gb": 48},
+}
+
 
 def toml_value(value: object) -> str:
     """`value` as a TOML value: a bool as true or false, text in double quotes as JSON writes it,
@@ -127,17 +182,36 @@ def frames_text(frames: Mapping[str, Any]) -> str:
                       for preset, value in base_picks.items()))
 
 
+def train_text(train: Mapping[str, Any]) -> str:
+    """[train] and its three Preset tables as TOML, with each key in `train` set to its value
+    and every other key at its value in TRAIN or TRAIN_PRESETS.
+
+    A Shared_Setting takes its new value, like {"seed": 7}. A Preset_Setting, steps, max_splats
+    or min_gpu_memory_gb, takes a dict of the Presets it changes, like {"max_splats": {"fast": 4}},
+    and the other Presets keep theirs.
+    """
+    preset_keys = TRAIN_PRESETS["fast"].keys()  # every Preset table has the same keys
+    shared = {**TRAIN, **{key: value for key, value in train.items() if key not in preset_keys}}
+    presets = {f"train.{preset}": {key: train.get(key, {}).get(preset, value)
+                                   for key, value in table.items()}
+               for preset, table in TRAIN_PRESETS.items()}
+    return "".join(f"\n[{name}]\n"
+                   + "".join(f"{key} = {toml_value(value)}\n" for key, value in table.items())
+                   for name, table in {"train": shared, **presets}.items())
+
+
 def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
-                frames: Mapping[str, Any] | None = None) -> str:
+                frames: Mapping[str, Any] | None = None,
+                train: Mapping[str, Any] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [frames] comes last, with the keys in `frames` changed
-    as frames_text says. The Jobs_Folder is written with forward slashes, so a Windows backslash
-    can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames] and then [train] come last, with the keys in
+    `frames` and `train` changed as frames_text and train_text say. The Jobs_Folder is written
+    with forward slashes, so a Windows backslash can't become a TOML escape."""
     modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
     fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
-    return jobs + fakes + frames_text(frames or {})
+    return jobs + fakes + frames_text(frames or {}) + train_text(train or {})
 
 
 @pytest.fixture(autouse=True)
@@ -155,15 +229,27 @@ def temp_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def no_cap_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove SPLATPIPE_CAP_DEADLINE from the environment for every test, so a Cap_Deadline left
+    in the shell or by another test can't reach one (training spec, Req 14.11). A test that needs
+    it sets it with monkeypatch.setenv.
+
+    The name is written out, not taken from splatpipe.train, so this file imports no
+    splatpipe.train.
+    """
+    monkeypatch.delenv("SPLATPIPE_CAP_DEADLINE", raising=False)
+
+
 @pytest.fixture
 def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     """Give set_fail(**modes), which rewrites the test config with `fail` set to the given value
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. [frames] is back to the test config's values
-    too. load_config() reads the file each time it's called, so the next run that loads the config
-    sees the change.
+    fail = "none", and set_fail() sets them all back. [frames] and [train] are back to the test
+    config's values too. load_config() reads the file each time it's called, so the next run that
+    loads the config sees the change.
     """
     def rewrite(**modes: str) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", fail=modes), encoding="utf-8")
@@ -178,12 +264,30 @@ def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     its own of, takes a dict of the Presets to change, like set_frames(base_picks={"fast": 50}).
 
     Like set_fail, each call writes the whole file again from config_text, so every key it doesn't
-    name is back to the test config's value, and every fail is back to "none". The next run that
-    loads the config sees the change. Each test gets a new test config, so the next test sees the
-    test config's values again.
+    name is back to the test config's value, in [train] too, and every fail is back to "none". The
+    next run that loads the config sees the change. Each test gets a new test config, so the next
+    test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_train(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_train(**values), which rewrites the test config with each [train] key it names
+    set to the given value, like set_train(seed=7). steps, max_splats and min_gpu_memory_gb,
+    which each Preset has its own of, take a dict of the Presets to change, like
+    set_train(max_splats={"fast": 4}).
+
+    Like set_fail and set_frames, each call writes the whole file again from config_text, so
+    every key it doesn't name is back to the test config's value, in [frames] too, and every fail
+    is back to "none". The next run that loads the config sees the change. Each test gets a new
+    test config, so the next test sees the test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", train=values), encoding="utf-8")
 
     return rewrite
 
