@@ -271,7 +271,8 @@ def _iterate(run: _Training, i: int, view: _View, erank_on: bool) -> None:
     fix = run.exposure[view.index]
     corrected = render @ fix[:, :3].T + fix[:, 3]  # A·c + b at every pixel (Req 6.2)
     target = view.pixels.float() / 255
-    terms, loss = _loss(corrected, target, view, run.params, run.settings, erank_on)
+    terms, loss = _loss(corrected, target, view, run.params, run.settings, run.scene.extent,
+                        erank_on)
     # The loss has no gradient when no term was worked out, as when every weight is 0. Then the
     # backward pass is skipped, and the optimisers step with no gradients, which leaves the
     # splats as they are.
@@ -311,7 +312,7 @@ def _render(run: _Training, i: int, view: _View) -> tuple[torch.Tensor, dict[str
 
 
 def _loss(corrected: torch.Tensor, target: torch.Tensor, view: _View,
-          params: torch.nn.ParameterDict, settings: TrainSettings,
+          params: torch.nn.ParameterDict, settings: TrainSettings, extent: float,
           erank_on: bool) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
     """Each Loss_Term's own value, before its weight, by name, and the loss, the sum of each
     weight × its term (Req 5.1).
@@ -327,7 +328,7 @@ def _loss(corrected: torch.Tensor, target: torch.Tensor, view: _View,
         if weight == 0 or (name == "erank" and not erank_on):
             terms[name] = zero
         else:
-            terms[name] = term(corrected, target, view, params, settings)
+            terms[name] = term(corrected, target, view, params, settings, extent)
             loss = loss + weight * terms[name]
     return terms, loss
 
@@ -358,16 +359,19 @@ def _result(run: _Training, steps_run: int) -> TrainResult:
 
 
 # The Loss_Terms. Each takes the Iteration's Corrected_Render and Training_Image, [H, W, 3]
-# floats from 0 to 1, the view, the splats and the settings, and gives the term's own value.
+# floats from 0 to 1, the view, the splats, the settings and the Scene_Extent, and gives the
+# term's own value.
 
 def _l1(corrected: torch.Tensor, target: torch.Tensor, view: _View,
-        params: torch.nn.ParameterDict, settings: TrainSettings) -> torch.Tensor:
+        params: torch.nn.ParameterDict, settings: TrainSettings,
+        extent: float) -> torch.Tensor:
     """The mean absolute difference over the kept pixels' 3 channels (Req 5.2, 5.4)."""
     return _kept_mean((corrected - target).abs(), view)
 
 
 def _ssim(corrected: torch.Tensor, target: torch.Tensor, view: _View,
-          params: torch.nn.ParameterDict, settings: TrainSettings) -> torch.Tensor:
+          params: torch.nn.ParameterDict, settings: TrainSettings,
+          extent: float) -> torch.Tensor:
     """1 − the mean of fused-ssim's SSIM map, with "same" padding, over the kept pixels' 3
     channels, once every Masked_Pixel is 0 in both images (Req 5.3, 5.4). Only img1, the
     render, gets a gradient."""
@@ -377,36 +381,41 @@ def _ssim(corrected: torch.Tensor, target: torch.Tensor, view: _View,
 
 
 def _opacity_reg(corrected: torch.Tensor, target: torch.Tensor, view: _View,
-                 params: torch.nn.ParameterDict, settings: TrainSettings) -> torch.Tensor:
+                 params: torch.nn.ParameterDict, settings: TrainSettings,
+                 extent: float) -> torch.Tensor:
     """The mean of every splat's opacity, the sigmoid of its logit (Req 5.5)."""
     return torch.sigmoid(params["opacities"]).mean()
 
 
 def _scale_reg(corrected: torch.Tensor, target: torch.Tensor, view: _View,
-               params: torch.nn.ParameterDict, settings: TrainSettings) -> torch.Tensor:
-    """The mean of every splat's three scales, the exponentials of its log scales (Req 5.5)."""
-    return torch.exp(params["scales"]).mean()
+               params: torch.nn.ParameterDict, settings: TrainSettings,
+               extent: float) -> torch.Tensor:
+    """The mean of every splat's three scales, the exponentials of its log scales, each divided by
+    the Scene_Extent (Req 5.5, D7)."""
+    return (torch.exp(params["scales"]) / extent).mean()
 
 
 def _erank(corrected: torch.Tensor, target: torch.Tensor, view: _View,
-           params: torch.nn.ParameterDict, settings: TrainSettings) -> torch.Tensor:
+           params: torch.nn.ParameterDict, settings: TrainSettings,
+           extent: float) -> torch.Tensor:
     """The Effective_Rank_Term, written fresh from D3's formula (Req 5.6, 5.8, 5.9).
 
     With s the splat's three scales, q = s² / Σ s², and log q is log_softmax(2 · log s), which is
     finite for any finite log scale. So q · log q is 0 where q underflows to 0, and so is its
     gradient. erank = exp(−Σ q log q) is at least 1, so erank − 1 + erank_epsilon is at least
     erank_epsilon and its log is finite. The term is the mean over splats of
-    max(−log(erank − 1 + erank_epsilon), 0) + the splat's smallest scale.
+    max(−log(erank − 1 + erank_epsilon), 0) + the splat's smallest scale divided by the
+    Scene_Extent (D7).
     """
     log_scales = params["scales"]
     log_q = torch.log_softmax(2 * log_scales, dim=-1)
     erank = torch.exp(-(log_q.exp() * log_q).sum(dim=-1))
     penalty = torch.clamp(-torch.log(erank - 1 + settings.erank_epsilon), min=0)
-    return (penalty + torch.exp(log_scales).min(dim=-1).values).mean()
+    return (penalty + torch.exp(log_scales).min(dim=-1).values / extent).mean()
 
 
-_Term = Callable[[torch.Tensor, torch.Tensor, _View, torch.nn.ParameterDict, TrainSettings],
-                 torch.Tensor]
+_Term = Callable[[torch.Tensor, torch.Tensor, _View, torch.nn.ParameterDict, TrainSettings,
+                  float], torch.Tensor]
 # The named Loss_Terms, each with the setting that holds its weight (Req 5.1). A depth prior adds
 # a row (Req 5.10).
 _TERMS: tuple[tuple[str, str, _Term], ...] = (

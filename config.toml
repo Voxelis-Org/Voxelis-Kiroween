@@ -333,7 +333,7 @@ l1_weight = 0.8
 ssim_weight = 0.2
 # Weight of the splats' mean opacity, which fades splats the images don't need. 0 turns it off.
 opacity_reg = 0.01
-# Weight of the splats' mean scale, which keeps them small. 0 turns it off.
+# Weight of the splats' mean scale in units of the scene extent, which keeps them small. 0 turns it off.
 scale_reg = 0.01
 # Weight of the effective-rank term against needle-shaped splats. 0 turns it off.
 erank_reg = 0.01

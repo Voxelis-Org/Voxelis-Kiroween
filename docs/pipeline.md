@@ -741,7 +741,7 @@ Every value is plain JSON, and floats keep full precision.
 | `l1_weight` | `[train]` | `0.8` | The weight of the L1 colour loss between the image and its render after the exposure fix, with the masked pixels left out. 0 turns it off. |
 | `ssim_weight` | `[train]` | `0.2` | The weight of the SSIM loss, 1 − SSIM between the image and its render after the exposure fix, with the masked pixels left out. 0 turns it off. |
 | `opacity_reg` | `[train]` | `0.01` | The weight of the splats' mean opacity, which fades splats the images don't need. 0 turns it off. |
-| `scale_reg` | `[train]` | `0.01` | The weight of the splats' mean scale, which keeps them small. 0 turns it off. |
+| `scale_reg` | `[train]` | `0.01` | The weight of the splats' mean scale in units of the scene extent, which keeps them small. 0 turns it off. |
 | `erank_reg` | `[train]` | `0.01` | The weight of the effective-rank term, which keeps splats from turning into needles. 0 turns it off. |
 | `erank_epsilon` | `[train]` | `1e-5` | A small number inside the effective-rank term's log, so the term stays finite. |
 | `erank_start_fraction` | `[train]` | `0.23333333333333334` | The share of the iterations from which the effective-rank term is on, the float nearest 7/30. |
