@@ -208,12 +208,14 @@ def test_the_pillow_row_notes_the_libraries_its_wheels_bundle() -> None:
 # --- Task 9: the doc, steering and skill checks (Req 15) ---------------------------------------
 
 # The per-Step Step_Needs plan of Requirement 2's note, as {Step: substrings the row must contain}.
+# The training spec (Req 13.10, 13.15) gave the Training row its needs and renamed the clean
+# step's row Clean.
 STEP_NEEDS_PLAN = {
     "Picking frames": ("16 vCPUs", "16 GB RAM"),
     "Solving cameras": ("16 vCPUs", "16 GB RAM"),
     "Depth priors": ("GPU", "16 GB VRAM"),
-    "Training": ("GPU", "32 GB RAM"),
-    "Clean and export": ("8 vCPUs", "8 GB RAM"),
+    "Training": ("4 vCPUs", "32 GB RAM", "24 GB", "48 GB"),
+    "Clean": ("8 vCPUs", "8 GB RAM"),
 }
 
 

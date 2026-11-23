@@ -2,9 +2,12 @@
 
 The real config is read by path, because tests/conftest.py points CONFIG_PATH at a test config.
 The comment check in tests/test_config.py reads every key of the real config, [train] included,
-so no test here checks the comments. Every other test reads the test config, whose [train] has
-the real Shared_Settings, steps 6, 8 and 10, max_splats 50, 60 and 70, and the real
-min_gpu_memory_gb, 24, 24 and 48. The set_train fixture changes it for one test (Req 9.15).
+so no test here checks the comments. The Fallback_List test reads the real config's [cloud] too,
+with cloud.config's own loader, and checks that, with the needs the Start_Command works out for
+the real Step_List, select_candidates keeps every type on each Preset's Fallback_List (Req 9.9,
+14.9). Every other test reads the test config, whose [train] has the real Shared_Settings,
+steps 6, 8 and 10, max_splats 50, 60 and 70, and the real min_gpu_memory_gb, 24, 24 and 48. The
+set_train fixture changes it for one test (Req 9.15).
 """
 
 import tomllib
@@ -14,8 +17,11 @@ from typing import Any
 
 import pytest
 
+from cloud.config import load_cloud_config
+from cloud.select import select_candidates, step_needs_over
 from splatpipe.config import REPO_ROOT, StepSettings, load_config
 from splatpipe.errors import ExpectedFailure, PipelineError
+from splatpipe.run import STEP_LIST
 from splatpipe.train.settings import TrainSettings, read_settings
 
 # Read by path, so these tests still read it once CONFIG_PATH points at a test config.
@@ -195,6 +201,17 @@ def test_the_real_train_section_loads_exactly_the_38_keys_for_each_preset(preset
     settings = load_config(REAL_CONFIG).step_settings("train", preset)
     assert typed(settings) == typed({**REAL_SHARED, **REAL_PRESETS[preset]})
     assert asdict(read(settings)) == settings  # and the real values pass the step's checks
+
+
+@pytest.mark.parametrize("preset", PRESET_NAMES)
+def test_every_type_on_each_presets_fallback_list_meets_the_step_needs_of_the_real_step_list(
+        preset: str) -> None:
+    """Req 9.9, 14.9. The needs come from the Start_Command's own step_needs_over over the real
+    Step_List's names, as cloud/start.py works them out, so the train step's needs count."""
+    cloud_config = load_cloud_config(REAL_CONFIG)
+    needs = step_needs_over([entry.name for entry in STEP_LIST], load_config(REAL_CONFIG), preset)
+    fallback = list(cloud_config.preset_plan(preset).fallback)
+    assert select_candidates(preset, needs, cloud_config) == fallback  # every type is kept
 
 
 # The test config

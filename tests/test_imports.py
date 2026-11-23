@@ -43,8 +43,8 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
   opencv-python-headless are runtime dependencies in pyproject.toml and in the project's own
   entry in uv.lock, and no package in either file is plain opencv-python, torch, gsplat,
   fused-ssim or an nvidia-* or cuda-* package. Names are compared as PEP 503 normalises them.
-  The check neither requires nor refuses scipy, so the clean-export spec can decide scipy
-  without changing it.
+  The check neither requires nor refuses scipy, so the clean spec can decide scipy without
+  changing it.
 
 Each import check's failure lists the file and the line of every import it found, and the
 dependency check's failure lists the file of every package it found.
@@ -277,8 +277,9 @@ def test_importing_splatpipe_run_loads_only_skeleton_modules() -> None:
 
 
 def test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section() -> None:
-    """The Frames_Step is the first entry, so this loads [frames] from the real config for each
-    of the three Presets (frames spec, Req 11.7)."""
+    """The entries are the Frames_Step and then the Train_Step, so this loads [frames] and
+    [train] from the real config for each of the three Presets (frames spec, Req 11.7, and
+    splat-training spec, Req 14.9)."""
     config = load_config(REAL_CONFIG)
     for entry in STEP_LIST:
         assert check_step_name(entry.name) == entry.name
@@ -359,8 +360,8 @@ def test_importing_splatpipe_train_and_its_cpu_modules_loads_no_gpu_package() ->
 
 
 def test_pyproject_and_uv_lock_hold_numpy_and_headless_opencv_and_no_gpu_or_plain_opencv() -> None:
-    """Frames spec, Req 9.8. scipy is neither required nor refused, so the clean-export spec can
-    decide it without changing this test."""
+    """Frames spec, Req 9.8. scipy is neither required nor refused, so the clean spec can decide
+    it without changing this test."""
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     lock = {package["name"]: package
             for package in tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))["package"]}

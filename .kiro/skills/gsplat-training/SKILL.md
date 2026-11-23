@@ -397,7 +397,7 @@ export_splats(
 - So read the example for how it's put together, and write our trainer on gsplat's library API, with no viewer, no trajectory videos and no LPIPS. Anything it needs that the image doesn't have gets its line in `docs/third-party-licences.md` in the commit that adds it.
 - The training step reads `SPLATPIPE_CAP_DEADLINE`, the UTC time by which it should have saved and stopped (`docs/pipeline.md`, "The cap deadline"). The example has no deadline, so our loop has to check the clock and write the PLY in time.
 - The frames step writes `mask.png`, where black means ignore, for COLMAP and the training loss (`docs/pipeline.md`). The example never reads it, and fused-ssim takes no mask. Masking the way the example masks fisheye images means setting both the render and the photo to 0 where the mask is black.
-- The clean-export step reads `out/splat.ply` as a binary PLY in the usual 3DGS layout (its requirements, A1), and `export_splats(format="ply")` writes that layout. An MCMC splat has at most `cap_max` Gaussians, and clean-export refuses one with more than its `max_source_splats`, so keep the cap at or under that setting.
+- The clean step reads `out/train.ply`, which the training step writes, as a binary PLY in the usual 3DGS layout (its requirements, A1), and `export_splats(format="ply")` writes that layout. An MCMC splat has at most `cap_max` Gaussians, and the clean step refuses one with more than its `max_source_splats`, 8,000,000, so keep the cap at or under that setting.
 - Every number, like the step count, the cap, the learning rates and the loss weights, goes in `config.toml` (python.md).
 - Checkpoints, PLYs and TensorBoard logs go in `data/`, never in git (rules.md).
 
