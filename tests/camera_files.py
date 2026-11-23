@@ -27,6 +27,28 @@ With no camera, images or points given, it writes the default scene: one 8 x 6 P
 and 12 points on a small grid around the origin, at least 0.85 in front of every camera. Each image
 holds a keypoint at the projection of every point, and each point a track entry for every image.
 The records are frozen dataclasses, so a test makes a variant with dataclasses.replace.
+
+write_camera_solve_output(job_folder, camera, images, points) writes the whole Camera_Solve_Output
+into job_folder/work/cameras, laid out as the training spec's "The Camera_Solve_Output" gives it:
+the model in sparse/ with write_model, each image as images/<name>, and each mask as
+masks/<stem>.png, where <stem> is the image's name without ".jpg". An image is a JPEG of one solid
+colour, IMAGE_BGR, at the camera's size. A mask is a grey PNG at its image's size, holding only 0
+(MASKED, left out) and 255 (KEPT), and it leaves out the image's left half, its first width // 2
+columns. Both are encoded with cv2.imencode and written with Path.write_bytes, and cv2 never
+touches video. With no scene given, it writes the default scene above, 3 images of 8 x 6 pixels
+and 12 points, and only the first image gets a mask. images/ is always made, and masks/ only when
+a file goes in it. Its keyword arguments, each keyed by an image's name, like "000000.jpg", break
+one thing at a time for the refusal tests (training spec, Req 1.12 to 1.17):
+
+    masked         the images that get a mask, the first image if not given. An image named in
+                   mask_sizes or fully_masked gets one too.
+    left_out       images that images.bin names but images/ doesn't hold.
+    junk           images whose file holds JUNK, bytes that aren't a JPEG.
+    image_sizes    an image's (width, height) in place of the camera's.
+    mask_sizes     a mask's (width, height) in place of its image's.
+    fully_masked   images whose mask masks every pixel.
+    extra_images   file names to add to images/ that images.bin doesn't name, each holding JUNK.
+    extra_masks    the same for masks/.
 """
 
 from __future__ import annotations
@@ -36,6 +58,9 @@ import struct
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+import cv2
+import numpy as np
 
 CAMERAS_BIN = "cameras.bin"
 IMAGES_BIN = "images.bin"
@@ -163,3 +188,79 @@ def write_model(sparse: Path, camera: CameraRecord = DEFAULT_CAMERA,
         drop = cut.get(name, 0)
         data = data[:len(data) - drop] + (b"\x00" if name in trailing_byte else b"")
         (sparse / name).write_bytes(data)
+
+
+# The Camera_Solve_Output's folder in a Job_Folder and the three folders in it. They're written out
+# here rather than imported from splatpipe.train, so the tests check the step against the contract.
+CAMERA_SOLVE = Path("work", "cameras")
+IMAGES_FOLDER, MASKS_FOLDER, SPARSE_FOLDER = "images", "masks", "sparse"
+
+# Every image's one colour, in OpenCV's BGR order. Its blue and red differ, so RGB order shows.
+# JPEG is lossy, so a decoded pixel is close to this colour rather than equal to it.
+IMAGE_BGR = (40, 120, 220)
+
+# A mask's two values: black leaves a pixel out of the loss and white keeps it.
+MASKED, KEPT = 0, 255
+
+# What a junk image and every extra file hold.
+JUNK = b"not a JPEG or a PNG"
+
+
+def write_camera_solve_output(
+        job_folder: Path, camera: CameraRecord = DEFAULT_CAMERA,
+        images: Sequence[ImageRecord] = DEFAULT_IMAGES,
+        points: Sequence[PointRecord] = DEFAULT_POINTS, *,
+        masked: Collection[str] | None = None, left_out: Collection[str] = (),
+        junk: Collection[str] = (), image_sizes: Mapping[str, tuple[int, int]] | None = None,
+        mask_sizes: Mapping[str, tuple[int, int]] | None = None,
+        fully_masked: Collection[str] = (), extra_images: Collection[str] = (),
+        extra_masks: Collection[str] = ()) -> Path:
+    """Write the Camera_Solve_Output into `job_folder`/work/cameras and give back that folder.
+
+    The keyword arguments are the module docstring's. Sizes are (width, height) in pixels.
+    """
+    cameras = job_folder / CAMERA_SOLVE
+    write_model(cameras / SPARSE_FOLDER, camera, images, points)
+    image_folder, mask_folder = cameras / IMAGES_FOLDER, cameras / MASKS_FOLDER
+    image_folder.mkdir(exist_ok=True)
+    image_sizes, mask_sizes = image_sizes or {}, mask_sizes or {}
+    names = [image.name for image in images]
+    with_mask = set(names[:1] if masked is None else masked) | set(mask_sizes) | set(fully_masked)
+    for name in names:
+        width, height = image_sizes.get(name, (camera.width, camera.height))
+        if name not in left_out:
+            data = JUNK if name in junk else _encoded(".jpg", _solid_image(width, height))
+            _write(image_folder / name, data)
+        if name in with_mask:
+            mask = _mask(*mask_sizes.get(name, (width, height)), every_pixel=name in fully_masked)
+            _write(mask_folder / (name.removesuffix(".jpg") + ".png"), _encoded(".png", mask))
+    for folder, extras in ((image_folder, extra_images), (mask_folder, extra_masks)):
+        for name in extras:
+            _write(folder / name, JUNK)
+    return cameras
+
+
+def _solid_image(width: int, height: int) -> np.ndarray:
+    """A BGR image of `width` x `height` pixels, every one IMAGE_BGR."""
+    return np.full((height, width, 3), IMAGE_BGR, dtype=np.uint8)
+
+
+def _mask(width: int, height: int, *, every_pixel: bool) -> np.ndarray:
+    """A grey mask that leaves out its left half, or every pixel."""
+    mask = np.full((height, width), KEPT, dtype=np.uint8)
+    mask[:, :width if every_pixel else width // 2] = MASKED
+    return mask
+
+
+def _encoded(extension: str, pixels: np.ndarray) -> bytes:
+    """`pixels` encoded by cv2.imencode as a ".jpg" or ".png" file's bytes."""
+    ok, data = cv2.imencode(extension, pixels)
+    if not ok:
+        raise ValueError(f"OpenCV couldn't encode a {extension} of shape {pixels.shape}")
+    return data.tobytes()
+
+
+def _write(path: Path, data: bytes) -> None:
+    """Write `data` to `path`, making its folder if need be."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
