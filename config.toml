@@ -383,3 +383,55 @@ steps = 30000
 max_splats = 3000000
 # Least GPU memory the job's machine needs for this step, in GB. The step checks it.
 min_gpu_memory_gb = 48
+
+[clean]
+# File in out/ that the training step writes and the clean step reads.
+train_ply = "train.ply"
+# File in out/ that the clean step writes: the clean splat, a binary PLY. Must end in .ply.
+clean_ply = "clean.ply"
+# File in out/ that the clean step writes: the small copy for the web viewer. Must end in .sog.
+clean_sog = "clean.sog"
+# Real opacity, 0 to 1, below which a Gaussian is faint and judged with the rest of its cube.
+min_opacity = 0.005
+# Cube side for the faint filter: the trimmed box's longest side divided by this, a whole number above 0.
+faint_cube_divisions = 128
+# Fewest faint Gaussians a cube must hold to keep them.
+faint_min_per_cube = 8
+# A cube keeps its faint Gaussians only if they paint more than this share of the cube, 0 up to 1.
+faint_min_paint_share = 0.10
+# Percent of the centres trimmed from each end of each axis for the trimmed box, 0 up to 50.
+extent_trim_percent = 1
+# Number of nearest other Gaussians the isolated filter looks at.
+neighbours = 8
+# Drop a Gaussian whose mean neighbour distance is over this many times its neighbours' median.
+isolation_ratio = 8.0
+# Largest share of the Gaussians the faint and isolated filters may drop before the step stops.
+max_removed_fraction = 0.70
+# Fewest Gaussians the clean splat may hold. Fewer fails the step.
+min_kept_splats = 10000
+# Warn when the clean splat keeps less than this share of the trained splat's Gaussians.
+warn_kept_fraction = 0.5
+# Most Gaussians the step takes in. Their data is a quarter of the job machine's 8 GB.
+max_source_splats = 8000000
+# Worker threads for the neighbour search and splat-transform, 0 to 8. 0 runs splat-transform inline.
+max_workers = 4
+# Longest time splat-transform may take to write the viewer copy, in seconds.
+splat_transform_timeout_seconds = 3600
+
+[clean.fast]
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
+sog_sh_bands = 3
+# Iterations of splat-transform's spherical harmonic compression.
+sh_iterations = 10
+
+[clean.default]
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
+sog_sh_bands = 3
+# Iterations of splat-transform's spherical harmonic compression.
+sh_iterations = 10
+
+[clean.quality]
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
+sog_sh_bands = 3
+# Iterations of splat-transform's spherical harmonic compression.
+sh_iterations = 20

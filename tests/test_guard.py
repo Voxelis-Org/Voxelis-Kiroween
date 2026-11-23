@@ -125,6 +125,59 @@ def test_the_hook_command_exits_2_with_one_line() -> None:
     assert result.stderr.decode().splitlines() == [guard.FORCE]
 
 
+# config.toml as a merge leaves it when both sides changed the same lines. The three
+# marker lines are built in code, so git diff --check and marker searches don't flag this file.
+CONFLICTED_CONFIG = "\n".join([
+    "[git]",
+    'main_branch = "main"',
+    "",
+    "<" * 7 + " HEAD",
+    "[clean]",
+    "voxel_size = 0.02",
+    "=" * 7,
+    "[frames]",
+    "count = 200",
+    ">" * 7 + " origin/main",
+    "",
+])
+
+
+def conflicted_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A repo root on main whose config.toml holds git's merge markers, with the guard pointed at it."""
+    root = fake_repo(tmp_path, "main")
+    (root / "config.toml").write_text(CONFLICTED_CONFIG, encoding="utf-8")
+    monkeypatch.setattr(guard, "ROOT", str(root))
+    return root
+
+
+def hook_input(command: str, cwd: Path) -> bytes:
+    event = {"hook_event_name": "PreToolUse", "cwd": str(cwd), "tool_name": "execute_pwsh",
+             "tool_input": {"command": command}}
+    return json.dumps(event).encode()
+
+
+def test_main_lets_read_only_git_run_when_config_toml_has_merge_markers(tmp_path, monkeypatch, capsys) -> None:
+    root = conflicted_repo(tmp_path, monkeypatch)
+    assert run_main(monkeypatch, capsys, hook_input("git status", root)) == (0, "")
+
+
+def test_main_still_blocks_a_push_on_main_when_config_toml_has_merge_markers(tmp_path, monkeypatch, capsys) -> None:
+    root = conflicted_repo(tmp_path, monkeypatch)
+    assert run_main(monkeypatch, capsys, hook_input("git push", root)) == (2, guard.MAIN.format("main") + "\n")
+
+
+@pytest.mark.parametrize("command", [
+    "aws sts get-caller-identity --profile kiroween-read --region us-east-1",
+    "aws ec2 run-instances --image-id ami-123",
+])
+def test_main_blocks_every_aws_call_when_config_toml_has_merge_markers(tmp_path, monkeypatch, capsys,
+                                                                      command: str) -> None:
+    root = conflicted_repo(tmp_path, monkeypatch)
+    code, err = run_main(monkeypatch, capsys, hook_input(command, root))
+    assert code == 2 and err.count("\n") == 1
+    assert err.startswith("guard: blocked an aws call because config.toml can't be read (TOMLDecodeError: ")
+
+
 # Property tests
 
 SAFE = string.ascii_letters + string.digits + "-._/=:,@%+"
