@@ -1,5 +1,6 @@
 """The import checks (Req 12) and the dependency check: they read the Pipeline's files with ast,
-and pyproject.toml and uv.lock with tomllib, and run no Step (Req 12.5).
+the GPU_Module's as text too, and pyproject.toml and uv.lock with tomllib, and run no Step
+(Req 12.5).
 
 `imports_in` collects every module name a file imports, with its line: each `import`, each
 `from ... import`, and each `import_module` or `__import__` call whose first argument is a
@@ -28,6 +29,16 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
   splatpipe, and gpu.py, the GPU_Module, imports only those and torch, gsplat and fused_ssim, so
   boto3 and cloud/ stay out of all of them. The files are found with glob, so each new file is
   checked as soon as it lands.
+- The GPU_Module (splat-training spec, Req 2.2, 4.14, 4.15, 8.2, 9.11, 9.12, 14.7): gpu.py is
+  read as text and with ast and never imported, because torch, gsplat and fused_ssim exist only
+  on the Machine_Image. It starts with the Apache-2.0 note that the gsplat-training skill gives
+  for code adapted from gsplat's example trainer, with the note's copyright and licence lines
+  before its first import, and its text, comments and docstrings included, names none of
+  rasterization_inria_wrapper, rasterization_2dgs_inria_wrapper and export_splats. It's the only
+  splatpipe/train/*.py that imports torch, gsplat or fused_ssim, and it imports all three.
+  gpu_api.GPU_MODULE, the module load_gpu imports, names that file. A fresh process that imports
+  splatpipe.train and each of its other modules, found with glob, holds none of torch, gsplat
+  and fused_ssim in sys.modules.
 - The dependencies (frames spec, Req 9.8, and splat-training spec, Req 9.10): numpy and
   opencv-python-headless are runtime dependencies in pyproject.toml and in the project's own
   entry in uv.lock, and no package in either file is plain opencv-python, torch, gsplat,
@@ -52,6 +63,7 @@ from typing import Any
 from splatpipe.config import PRESETS, REPO_ROOT, load_config
 from splatpipe.run import STEP_LIST
 from splatpipe.step import check_step_name
+from splatpipe.train.gpu_api import GPU_MODULE
 
 SPLATPIPE = REPO_ROOT / "splatpipe"
 # The real config, read by path, because conftest.py points CONFIG_PATH at a test config.
@@ -74,7 +86,42 @@ FRAMES_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
 # Req 9.11).
 TRAIN_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
 GPU_MODULE_FILE = SPLATPIPE / "train" / "gpu.py"
-GPU_MODULE_IMPORTS = TRAIN_IMPORTS | {"torch", "gsplat", "fused_ssim"}
+GPU_MODULE_SHOWN = GPU_MODULE_FILE.relative_to(REPO_ROOT).as_posix()  # as imports_of shows it
+# The GPU packages, by the top-level names the GPU_Module imports them as.
+GPU_NAMES = frozenset({"torch", "gsplat", "fused_ssim"})
+GPU_MODULE_IMPORTS = TRAIN_IMPORTS | GPU_NAMES
+# The licence note that the gsplat-training skill gives for code adapted from gsplat's
+# examples/simple_trainer.py, which gpu.py starts with (splat-training spec, Req 4.15).
+GSPLAT_NOTE = (
+    "# Adapted from gsplat v1.5.3, examples/simple_trainer.py",
+    "# https://github.com/nerfstudio-project/gsplat/blob/v1.5.3/examples/simple_trainer.py",
+    "#",
+    "# Copyright 2025 Nerfstudio Team",
+    "#",
+    '# Licensed under the Apache License, Version 2.0 (the "License");',
+    "# you may not use this file except in compliance with the License.",
+    "# You may obtain a copy of the License at",
+    "#",
+    "#     http://www.apache.org/licenses/LICENSE-2.0",
+    "#",
+    "# Unless required by applicable law or agreed to in writing, software",
+    '# distributed under the License is distributed on an "AS IS" BASIS,',
+    "# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.",
+    "# See the License for the specific language governing permissions and",
+    "# limitations under the License.",
+)
+# The gsplat functions gpu.py never names, comments and docstrings included: the two wrappers run
+# Inria's rasterizer, or 2DGS's, which is based on it, and the step writes its splat with its own
+# PLY_Writer (splat-training spec, Req 4.14, 8.2).
+NEVER_IN_GPU_MODULE = ("rasterization_inria_wrapper", "rasterization_2dgs_inria_wrapper",
+                       "export_splats")
+# Run in a fresh process with module names as its arguments: it imports splatpipe.train, then
+# each module it's given, and prints the name of every module in sys.modules.
+LOADED_BY_TRAIN = ("import importlib, json, sys\n"
+                   "import splatpipe.train\n"
+                   "for name in sys.argv[1:]:\n"
+                   "    importlib.import_module(name)\n"
+                   "print(json.dumps(sorted(sys.modules)))\n")
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 # The runtime dependencies the Frames_Step needs (frames spec, Req 9.8).
@@ -259,6 +306,56 @@ def test_the_train_step_imports_only_the_standard_library_numpy_cv2_and_splatpip
             GPU_MODULE_IMPORTS if path == GPU_MODULE_FILE else TRAIN_IMPORTS)
         found += [(where, name) for where, name in imports_of(path) if top(name) not in allowed]
     assert found == []
+
+
+def test_gpu_py_starts_with_the_apache_note_of_gsplats_example_trainer() -> None:
+    """Splat-training spec, Req 4.15. gpu.py is read as text and never imported, and the note's
+    copyright and licence lines come before its first import."""
+    text = GPU_MODULE_FILE.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    assert tuple(lines[:len(GSPLAT_NOTE)]) == GSPLAT_NOTE
+    first_import = imports_in(text, "splatpipe.train")[0][0]
+    before_imports = lines[:first_import - 1]
+    assert "# Copyright 2025 Nerfstudio Team" in before_imports
+    assert any(line.startswith("# Licensed under the Apache License, Version 2.0")
+               for line in before_imports)
+
+
+def test_gpu_py_names_no_inria_wrapper_and_no_export_splats() -> None:
+    """Splat-training spec, Req 4.14, 8.2: anywhere in its text, comments and docstrings
+    included."""
+    text = GPU_MODULE_FILE.read_text(encoding="utf-8")
+    assert [name for name in NEVER_IN_GPU_MODULE if name in text] == []
+
+
+def test_gpu_py_is_the_only_train_file_that_imports_torch_gsplat_or_fused_ssim() -> None:
+    """Splat-training spec, Req 9.11, 14.7: and gpu.py imports all three."""
+    found = [(where, name) for path in sorted(SPLATPIPE.glob("train/*.py"))
+             for where, name in imports_of(path) if top(name) in GPU_NAMES]
+    assert {where.rpartition(":")[0] for where, _ in found} == {GPU_MODULE_SHOWN}, found
+    assert {top(name) for _, name in found} == GPU_NAMES, found
+
+
+def test_the_module_load_gpu_imports_is_the_file_these_checks_read() -> None:
+    """Splat-training spec, Req 2.2: gpu_api.GPU_MODULE with its dots turned into folders, plus
+    .py, is splatpipe/train/gpu.py."""
+    assert GPU_MODULE.replace(".", "/") + ".py" == GPU_MODULE_SHOWN
+
+
+def test_importing_splatpipe_train_and_its_cpu_modules_loads_no_gpu_package() -> None:
+    """Splat-training spec, Req 9.12, 14.7. The CPU modules are every splatpipe/train/*.py but
+    __init__.py and gpu.py, found with glob, so a module a later task adds is imported as it
+    lands. On a laptop, where torch, gsplat and fused_ssim aren't installed, a CPU module that
+    imported one would fail the fresh process."""
+    modules = [f"splatpipe.train.{path.stem}" for path in sorted(SPLATPIPE.glob("train/*.py"))
+               if path != GPU_MODULE_FILE and path.stem != "__init__"]
+    result = subprocess.run([sys.executable, "-c", LOADED_BY_TRAIN, *modules], cwd=REPO_ROOT,
+                            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                            capture_output=True, encoding="utf-8", timeout=60)
+    assert result.returncode == 0, result.stderr
+    loaded = json.loads(result.stdout)
+    assert {"splatpipe.train", *modules} <= set(loaded)
+    assert [name for name in loaded if top(name) in GPU_NAMES] == []
 
 
 def test_pyproject_and_uv_lock_hold_numpy_and_headless_opencv_and_no_gpu_or_plain_opencv() -> None:
