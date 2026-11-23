@@ -136,12 +136,13 @@ def test_the_pipeline_doc_has_a_step_section_for_the_fake_step_and_every_listed_
 
 def test_the_step_list_part_names_the_frames_step_as_the_first_required_entry() -> None:
     """Frames spec, Req 12.5. Training spec, Req 13.8, 13.14: the list holds the frames step and
-    then the train step, and the frames spec's three sentences are gone."""
+    the train step, then the clean step, and the frames spec's three sentences and the old one
+    on a later spec adding the clean step's entry are gone."""
     step_list = doc_part(pipeline_parts(), 2, "The step list")
-    phrases = ("The list holds the frames step and then the train step, both required",
-               "The camera solve spec puts its entry between the two, and a later spec adds the "
-               "clean step's optional entry after the train step's, so the order becomes frames, "
-               "cameras, train, clean",
+    phrases = ("The list holds the frames step and the train step, both required, and then the "
+               "clean step, optional",
+               "The camera solve spec puts its entry between the frames step and the train step, "
+               "so the order becomes frames, cameras, train, clean",
                "Until the camera solve spec adds its entry, a job runs the frames step and then "
                "fails at the train step, because the camera solve output is missing")
     missing = [words for words in phrases if words not in step_list]
@@ -149,7 +150,8 @@ def test_the_step_list_part_names_the_frames_step_as_the_first_required_entry() 
     gone = ("The list holds the frames step as its first, required entry",
             "Each later step spec adds its own entry after the frames step",
             "a job is done once the frames step is done",
-            "The list starts empty", "No steps are set up yet")
+            "The list starts empty", "No steps are set up yet",
+            "a later spec adds the clean step's optional entry")
     left = [words for words in gone if words in step_list]
     assert not left, f"The part headed The step list should no longer say {left}"
 

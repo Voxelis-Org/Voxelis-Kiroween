@@ -13,7 +13,7 @@ The package is built like the Fake_Step, and this file holds its two entry point
 - `work(step)`, the step's own code. The Step_Runner calls it once it has emptied work/clean/.
 
 The CLI, `uv run python -m splatpipe.clean --job <id> [--preset <name>]`, is __main__.py. The
-step isn't in STEP_LIST yet, so it runs only through these.
+step is STEP_LIST's last entry, an optional one, and it also runs on its own through these.
 
 `work` runs in four phases, and what out/ holds after a failure depends only on the phase it
 stopped in (Req 4.8 to 4.13):

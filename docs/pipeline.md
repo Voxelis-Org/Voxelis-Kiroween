@@ -148,12 +148,10 @@ A step name has lowercase ASCII letters, digits and underscores, and starts with
 
 The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner runs, in order. Each entry is a `StepEntry(name, module, required)`. When a required step fails, the job fails. When an optional step fails, the job goes on without it. The fake step isn't in the list, so it never runs on real jobs. The tests pass their own lists.
 
-The list holds the frames step and then the train step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("train", "splatpipe.train", True)`. The camera solve spec puts its entry between the two, and a later spec adds the clean step's optional entry after the train step's, so the order becomes frames, cameras, train, clean. Until the camera solve spec adds its entry, a job runs the frames step and then fails at the train step, because the camera solve output is missing. The planned steps are:
+The list holds the frames step and the train step, both required, and then the clean step, optional: `StepEntry("frames", "splatpipe.frames", True)`, `StepEntry("train", "splatpipe.train", True)` and `StepEntry("clean", "splatpipe.clean", False)`. The camera solve spec puts its entry between the frames step and the train step, so the order becomes frames, cameras, train, clean. Until the camera solve spec adds its entry, a job runs the frames step and then fails at the train step, because the camera solve output is missing. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
 - Optional steps: depth priors and clean.
-
-The clean step isn't in `STEP_LIST` yet. A later spec adds its entry after the training step's, last, as an optional step.
 
 Running a job in the cloud comes in its own spec, and it isn't a step.
 
@@ -811,7 +809,7 @@ Its report, `out/reports/train.json`, comes from the step runner, like every ste
 
 ## Step: clean
 
-The clean step is in `splatpipe/clean/`. It reads the splat the training step wrote, drops the Gaussians a viewer shouldn't see and writes the rest as the clean splat, a binary PLY. Then it makes the viewer copy, a small `.sog` for the web viewer, from the clean splat with PlayCanvas splat-transform. These two files are what the person who filmed the place gets back. The step is built like the fake step. It isn't in the step list yet, as "The step list" says, so run it on its own.
+The clean step is in `splatpipe/clean/`. It reads the splat the training step wrote, drops the Gaussians a viewer shouldn't see and writes the rest as the clean splat, a binary PLY. Then it makes the viewer copy, a small `.sog` for the web viewer, from the clean splat with PlayCanvas splat-transform. These two files are what the person who filmed the place gets back. The step is built like the fake step. It's the step list's last entry, an optional one, and it also runs on its own.
 
 Its CLI is `uv run python -m splatpipe.clean --job <id> [--preset P]`, and its plain function is `splatpipe.clean.run(job_id, preset=None)`.
 
@@ -845,7 +843,7 @@ The step works in this order, and each filter gets what the one before it kept:
 7. `work/clean/<clean_sog>`, the viewer copy: splat-transform 3.8.0 makes it from the clean splat, as one bundled `.sog` file that keeps at most `sog_sh_bands` bands of spherical harmonics. The step writes splat-transform's whole output to `work/clean/splat-transform.log`.
 8. Then it moves both into `out/`, as "Files in out/" says.
 
-When the step fails, the trained splat is still in `out/`, as it was. The clean step goes in the step list as an optional step, so once it's there, a failed clean ends the job done with warnings.
+When the step fails, the trained splat is still in `out/`, as it was. The clean step is an optional step in the step list, so a failed clean ends the job done with warnings.
 
 Every part of the step is CPU work. The Python side uses numpy and scipy, and splat-transform runs with `-g cpu`, which puts its GPU work on the CPU. The step is sized for the 8 vCPUs and 8 GB a step gets on the job machine: `max_workers` is at most 8, and `max_source_splats` keeps the trained splat's data, at 62 float32 properties a Gaussian, under a quarter of the 8 GB.
 

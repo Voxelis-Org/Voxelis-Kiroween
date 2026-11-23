@@ -219,13 +219,14 @@ def test_a_step_entry_holds_the_name_the_module_and_whether_the_step_is_required
     assert (entry.name, entry.module, entry.required) == ("fake_a", "splatpipe.fake", False)
 
 
-def test_the_step_list_holds_the_frames_and_train_steps_and_is_the_default_list(
+def test_the_step_list_holds_the_frames_train_and_clean_steps_and_is_the_default_list(
         new_job: Callable[..., str], work_calls: list[str],
         monkeypatch: pytest.MonkeyPatch) -> None:
-    # The Frames_Step, then the Train_Step, both required (Req 8.2, frames spec, Req 11.3, and
-    # splat-training spec, Req 11.4, 11.9).
+    # The Frames_Step and the Train_Step, both required (Req 8.2, frames spec, Req 11.3, and
+    # splat-training spec, Req 11.4, 11.9), then the Clean_Step, optional (clean spec, Req 8.4).
     assert STEP_LIST == (StepEntry("frames", "splatpipe.frames", REQUIRED),
-                         StepEntry("train", "splatpipe.train", REQUIRED))
+                         StepEntry("train", "splatpipe.train", REQUIRED),
+                         StepEntry("clean", "splatpipe.clean", OPTIONAL))
     job_id = new_job()
     monkeypatch.setattr("splatpipe.run.STEP_LIST", tuple(fake_steps(REQUIRED)))
     run_job(job_id)  # with no steps given, the Step_List in code runs (Req 8.3)

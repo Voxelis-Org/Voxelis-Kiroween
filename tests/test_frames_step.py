@@ -823,7 +823,7 @@ def test_run_job_with_the_real_step_list_fails_at_train_once_the_frames_step_is_
     set_frames(**TINY)
     summary = run_job(job_id)  # with no steps given, the real Step_List runs
     assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
-        ("frames", "done"), ("train", "failed")]
+        ("frames", "done"), ("train", "failed"), ("clean", "not_run")]
     assert (summary["status"], summary["failed_step"]) == ("failed", "train")
     # No camera solve has run, so the Train_Step finds no work/cameras/images/.
     images = folder_of(job_id).resolve() / "work" / "cameras" / "images"

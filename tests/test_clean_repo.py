@@ -30,13 +30,14 @@ the repo root, and none runs the step.
   so they cover __init__.py and __main__.py too (Req 8.5).
 - The docs (Req 9.1 to 9.6, 9.8), read with tests/test_docs.py's own pipeline_parts, doc_parts
   and doc_part, which find a part by its heading. The ## Step: clean section of docs/pipeline.md
-  has its five ### parts, each found by its name, because the clean step isn't in STEP_LIST and so
-  tests/test_docs.py doesn't look for this section. Its Files in out/ part states the two-output
-  guarantee, and the section names train.ply and binary_little_endian, says every other
-  property is carried through and says SOG meta version 2 and 8 GB. The step list says the clean
-  step isn't in STEP_LIST yet, and README.md's Install part names npm ci and Node 22. Each
-  statement is checked with a short phrase from the doc, matched case-insensitively, so a small
-  rewording still passes but a missing statement fails, naming the part and the phrase.
+  has its five ### parts, each found by its name, because tests/test_docs.py finds the section of
+  each STEP_LIST entry, the clean step's included, but doesn't look for all five of its parts.
+  Its Files in out/ part states the two-output guarantee, and the section names train.ply and
+  binary_little_endian, says every other property is carried through and says SOG meta version 2
+  and 8 GB. The step list says the clean step is in STEP_LIST as an optional step, and
+  README.md's Install part names npm ci and Node 22. Each statement is checked with a short
+  phrase from the doc, matched case-insensitively, so a small rewording still passes but a
+  missing statement fails, naming the part and the phrase.
 """
 
 import importlib
@@ -137,8 +138,8 @@ FILES_IN_OUT_PHRASES = (
 # property is carried through unchanged (Req 9.4), and it says SOG version 2 and 8 GB (Req 9.6).
 SECTION_PHRASES = ("train.ply", "binary_little_endian", "every other property through",
                    "SOG meta version 2", "8 GB")
-# The step list says the clean step isn't in STEP_LIST yet (Req 9.5).
-STEP_LIST_PHRASE = "clean step isn't in `STEP_LIST`"
+# The step list says the clean step is in STEP_LIST as an optional step, by its entry (Req 9.5).
+STEP_LIST_PHRASE = 'StepEntry("clean", "splatpipe.clean", False)'
 # README.md's Install part names npm ci and Node 22 (Req 9.8).
 README_PHRASES = ("npm ci", "Node 22")
 
@@ -239,8 +240,8 @@ def test_the_real_clean_section_holds_the_sixteen_shared_and_the_two_preset_sett
 @pytest.mark.parametrize("preset", list(REAL_PRESETS))
 def test_the_real_clean_section_loads_for_each_preset_and_check_settings_accepts_it(
         preset: str) -> None:
-    """Req 6.14. The clean step isn't in STEP_LIST, so tests/test_imports.py doesn't load this
-    section."""
+    """Req 6.14. The clean step is in STEP_LIST, so tests/test_imports.py also loads this
+    section, but it doesn't check the values or run check_settings, as this test does."""
     settings = load_config(REAL_CONFIG).step_settings("clean", preset)
     assert settings == {**REAL_SHARED, **REAL_PRESETS[preset]}
     check_settings(settings)  # raises nothing
@@ -394,9 +395,9 @@ def test_the_package_defines_each_entry_point_with_the_parameters_req_8_1_names(
 @pytest.mark.parametrize("title", CLEAN_PARTS)
 def test_the_clean_section_has_each_of_its_five_parts_found_by_its_heading(title: str) -> None:
     """Req 9.1, 9.2. tests/test_docs.py looks for a section for the fake step and for each entry
-    of STEP_LIST, and the clean step isn't in it, so it doesn't look for this one. doc_part
-    fails, naming the section and the heading, unless the section has exactly one ### heading
-    with this title."""
+    of STEP_LIST, the clean step included, but not for each of this section's five parts.
+    doc_part fails, naming the section and the heading, unless the section has exactly one ###
+    heading with this title."""
     clean_part(title)
 
 
@@ -414,7 +415,7 @@ def test_the_clean_section_states_the_training_contract_sog_version_2_and_8_gb(
     assert says(clean_section(), phrase), f"{CLEAN_WHERE} should say {phrase!r}"
 
 
-def test_the_step_list_says_the_clean_step_isnt_in_step_list_yet() -> None:
+def test_the_step_list_says_the_clean_step_is_in_step_list_as_an_optional_step() -> None:
     """Req 9.5."""
     step_list = doc_part(pipeline_parts(), 2, "The step list")
     assert says(step_list, STEP_LIST_PHRASE), (
