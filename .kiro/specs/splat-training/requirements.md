@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This spec builds the Train_Step, which trains the 3D Gaussian splat on the Job's GPU machine: a 24 GB GPU (an NVIDIA A10G or L4) for the `fast` and `default` Presets, a 48 GB L40S for `quality`, and at least 32 GB of memory. The step reads the levelled cameras, the sparse points and the undistorted frames that the Camera_Solve_Step writes to `work/cameras/`. It trains with our own small trainer on gsplat 1.5.3's `rasterization()` and its MCMC strategy, and writes the Trained_Splat to `out/train.ply` in the standard 3DGS PLY layout. The Clean_Export_Step reads the splat from there, and when that step fails, `out/train.ply` is the Job's result.
+This spec builds the Train_Step, which trains the 3D Gaussian splat on the Job's GPU machine: a 24 GB GPU (an NVIDIA A10G or L4) for the `fast` and `default` Presets, a 48 GB L40S for `quality`, and at least 32 GB of memory. The step reads the levelled cameras, the sparse points and the undistorted frames that the Camera_Solve_Step writes to `work/cameras/`. It trains with our own small trainer on gsplat 1.5.3's `rasterization()` and its MCMC strategy, and writes the Trained_Splat to `out/train.ply` in the standard 3DGS PLY layout. The Clean_Step reads the splat from there, and when that step fails or doesn't run, `out/train.ply` is the Job's result.
 
 The Train_Step is a Required_Step and the second entry in the Step_List, after the Frames_Step. It uses the Job_Folder, the Step_Runner, the Step_Report and the Presets of the pipeline-core spec, and it's built like the Fake_Step and the Frames_Step. On the cloud side it follows the cloud-jobs spec: its Step_Needs go in `[train]` for the Start_Command, it reads the Cap_Deadline that the Cloud_Runner sets, and the Smoke_Test gains a check for it.
 
@@ -22,7 +22,7 @@ Out of scope:
 
 - The Camera_Solve_Step. This spec only reads the files it will write, and states that contract in the Pipeline_Doc.
 - Depth priors, and any code for them.
-- The clean-export spec's files, which this spec leaves as they are (D4).
+- The clean spec's files, and the Clean_Step's Step_List entry. The Clean_Step stays out of `STEP_LIST` for now, and a later spec adds its entry after the Train_Step's (D5).
 - Any change to the Project_File, `uv.lock` or the Machine_Image (A1).
 - Running the Smoke_Test or anything else that costs money. No task of this spec is a paid run (A12).
 - Evaluation images and scores (PSNR, SSIM, LPIPS), pose optimisation, per-image appearance beyond the Exposure_Fix, bilateral grids, the antialiased and 3DGUT modes, checkpoints, resuming a stopped training run, TensorBoard, the viewer and trajectory videos.
@@ -39,21 +39,20 @@ The user chose these when asked, before the requirements were written.
 - **D1 (Requirement 2): The GPU memory check.** Before the step loads anything, it reads the GPU's total memory from torch and refuses with an Expected_Failure when that memory is below the Preset's `min_gpu_memory_gb` times a slack setting in `[train]`, `gpu_memory_slack = 0.9`. GB means 10⁹ bytes, as in `gpu_memory_gb` in `[cloud.types]`. The slack is there because a "24 GB" A10G or L4 reports a little under 24 GB: nvidia-smi shows about 23,028 MiB, and about 46,068 MiB for an L40S. So `quality`, which needs 48 GB, refuses every 24 GB card. The comparison is a pure function of a byte count, so it's tested without a GPU. There is no trial Iteration. `min_vcpus` and `min_memory_gb` stay cloud-only Step_Needs that the step never checks, like the Frames_Step's.
 - **D2 (Requirements 3 and 5): The loss and the start scale.** The photometric loss is 0.8 × L1 + 0.2 × (1 − SSIM), as gsplat's `ssim_lambda` of 0.2 makes it. Each Start_Splat's scale is 0.1 times the root mean square of the point's distances to its 3 nearest other points, the same on all three axes, stored as a log.
 - **D3 (Requirement 5): The Effective_Rank_Term.** The term is 0.01 times the mean over splats of max(−log(erank − 1 + 10⁻⁵), 0) plus the splat's smallest scale in linear units, where erank = exp(−Σᵢ qᵢ log qᵢ) and qᵢ = sᵢ² / Σⱼ sⱼ² over the splat's three scales sᵢ. The term is on from 7/30 of the Planned_Iterations.
-- **D4 (Requirement 13): The clean-export spec's out-of-date points.** The clean-export spec's files stay as they are. This spec records the contract in the Pipeline_Doc's new `## Step: train` section (`out/train.ply`, its fields and the largest Splat_Budget, 3,000,000 splats) and lists there the points the clean-export spec has to change before it's built:
-  - its A1 and Requirement 1, criterion 1, which name `out/splat.ply`, so its `source_ply` must be `train.ply`;
-  - its A4 and Requirement 8, criterion 3, because `STEP_LIST` isn't empty any more;
-  - its Requirement 6, criterion 13, whose test that no file under `splatpipe/` imports torch would fail once `splatpipe/train/` exists, so the test should leave out the GPU_Module;
-  - its Requirement 3, criterion 4, because `max_source_splats` must be at least 3,000,000.
+- **D4 (Requirement 13): The contract the Clean_Step reads.** This spec records the contract the Clean_Step reads in the Pipeline_Doc's new `## Step: train` section: `out/train.ply`, its fields, and the largest Splat_Budget, 3,000,000 splats, which is within the 8,000,000 splats the Clean_Step takes (its `max_source_splats`).
+- **D5 (Requirements 1, 11 and 13): The Step_List until the camera solve lands.** `STEP_LIST` gains `StepEntry("train", "splatpipe.train", True)` after the Frames_Step. The camera solve spec puts its entry between the two when it lands, and a later spec adds the Clean_Step's entry after the Train_Step's, so the order becomes frames, cameras, train, clean. Until the camera solve lands, a real Job runs the Frames_Step and then fails at the Train_Step, with a Readable_Error saying that the camera solve output is missing.
 
-  Its Step_Name is `clean_export`, and the user calls it "clean".
-- **D5 (Requirements 1, 11 and 13): The Step_List until the camera solve lands.** `STEP_LIST` gains `StepEntry("train", "splatpipe.train", True)` after the Frames_Step. The camera solve spec puts its entry between the two when it lands, so the order becomes frames, cameras, train, clean_export. Until then, a real Job runs the Frames_Step and then fails at the Train_Step, with a Readable_Error saying that the camera solve output is missing.
+### Decisions made at review
+
+The user reviewed the draft and chose these.
+
+- **D6 (Requirements 8, 10, 12 and 14): Splats with a NaN or an infinity.** After the Mean_Exposure is baked in, which can overflow a value to an infinity, the Train_Step drops every splat that has a NaN or an infinity in any field before it writes `out/train.ply`, and adds a warning with the count to the Train_Report, rather than failing the step. The PLY_Check still refuses any file with a NaN or an infinity. A run with no splat left still fails, at the PLY_Check's existing "no splats" refusal, and the failed report holds the warning with the count. The Train_Smoke_Check drops nothing, so it still fails on any splat with a NaN or an infinity, because its tiny scene should never make one. gsplat's `export_splats` also drops such splats, but with no warning, and in 1.5.3 one non-finite opacity makes it drop every splat.
 
 ### Assumptions to confirm at review
 
 The user didn't decide these. Each is the recommended answer, marked in the requirement it belongs to, and each is a small change if the review decides otherwise.
 
 - **A1 (Requirements 3, 9 and 14): No new Python package.** This spec adds no package to the Project_File or `uv.lock`, because changing `uv.lock` makes the Machine_Image stale, which costs an Image_Build of about 75 minutes and about $2, then a Smoke_Test. So the search for each Start_Splat's 3 nearest neighbours runs with torch on the GPU, and only the formula on top of the distances is a numpy function. torch, gsplat and fused-ssim are imported only by the GPU_Module, and the Train_Step imports the GPU_Module only inside its own code, when it runs, so every other module of the step imports on a laptop. Nothing new is installed, so the Licence_List gains no line.
-- **A2 (Requirement 8): No splat is dropped.** A splat with a NaN or an infinity in any field fails the PLY_Check, and so the step, rather than being dropped. The alternative is to drop such splats and add a warning. gsplat's `export_splats` drops them with no warning, and in 1.5.3 one non-finite opacity makes it drop every splat.
 - **A3 (Requirement 10): The Train_Record.** The numbers that aren't whole, and so can't be Step_Report counts, go in the Train_Record, `work/train/train.json`: the Near_Plane, the Median_Scene_Depth, the Scene_Extent, the starting Means_LR, the ratios of the Training_Size's width and height to the Shared_Camera's, the Mean_Exposure, the Cap_Deadline and the Stop_Time.
 - **A4 (Requirements 7 and 9): The save margin and an empty deadline.** `save_margin_minutes = 5`: the Trainer stops 5 minutes before the Train_Deadline, which leaves time to copy the splats off the GPU and to write and check a Trained_Splat of up to about 708 MB (3,000,000 splats of 236 bytes). An empty `SPLATPIPE_CAP_DEADLINE` counts as malformed rather than unset, because the User_Data leaves the variable empty only when working out the deadline failed.
 - **A5 (Requirements 1 and 13): Masks, one image at a time.** Each Mask_File is optional on its own: an image with a Mask_File leaves out its Masked_Pixels, and an image without one trains on every pixel. Files in `images/` and `masks/` that `images.bin` doesn't name are ignored. A Mask_File that masks every pixel of its image is refused, because the image would have no pixel left for the Loss_Terms.
@@ -65,7 +64,7 @@ The user didn't decide these. Each is the recommended answer, marked in the requ
 - **A11 (Requirement 12): The training check's numbers.** The Train_Smoke_Check uses the `[train]` settings of the Preset that `[jobs].default_preset` names (`fast`), except for seven new `[cloud.smoke]` keys: `train_images = 4`, `train_points = 200`, `train_splats = 400`, `train_steps = 30`, `train_refine_start_step = 10`, `train_refine_every = 10` and `train_sh_degree_interval = 5`. Its images are `image_pixels` (64) pixels square. With these numbers the 30 Iterations turn the Effective_Rank_Term on at Iteration 7, reach SH_Degree 3 at Iteration 15, and include one MCMC refine, at Iteration 20, which also adds splats.
 - **A12 (Requirement 12): The Smoke_Marker gate.** The Smoke_Command uploads the Code_Archive, so the Train_Smoke_Check runs on the current Machine_Image with no rebuild. But the Start_Command's gate looks only for a Smoke_Marker for the image's id, and a marker written before this spec still passes it. So the team runs the Smoke_Test again, a paid run that needs the person's yes, before the first training Job. Making the marker record which checks ran is left out.
 - **A13 (Requirement 13): The frames section's mask sentence.** The Pipeline_Doc's frames section says of `work/frames/mask.png` that "the training loss reads the same file", and a test in `tests/test_docs.py` looks for that phrase. The Train_Step reads only the Camera_Solve_Output, so the sentence changes to say that the camera solve step passes the Mask on to training as one mask per image in `work/cameras/masks/`, and the test's phrase changes with it.
-- **A14 (Requirement 14): Checks from other built specs.** Two checks from other built specs change, and those specs' requirements files stay as they are, as D4 does for clean-export. The cloud-jobs spec's Requirement 16, criterion 7 test in `tests/test_cloud_imports.py` refuses torch, gsplat and fused-ssim in every file under `splatpipe/`, so the GPU_Module would fail it. The frames spec's Requirement 12, criterion 5 sentence in the Pipeline_Doc says that a Job is done after the Frames_Step alone, and `tests/test_docs.py` looks for that sentence.
+- **A14 (Requirement 14): Checks from other built specs.** Two checks from other built specs change, and those specs' requirements files stay as they are. The cloud-jobs spec's Requirement 16, criterion 7 test in `tests/test_cloud_imports.py` refuses torch, gsplat and fused-ssim in every file under `splatpipe/`, so the GPU_Module would fail it. The frames spec's Requirement 12, criterion 5 sentence in the Pipeline_Doc says that a Job is done after the Frames_Step alone, and `tests/test_docs.py` looks for that sentence.
 
 ### Open question (resolved)
 
@@ -75,7 +74,7 @@ The user didn't decide these. Each is the recommended answer, marked in the requ
 
 - **Train_Step**: the Step this spec builds, in `splatpipe/train/`. Its Step_Name is `train`, so its Config section is `[train]`, its Work_Folder is `work/train/` and its Step_Report is `out/reports/train.json`.
 - **Camera_Solve_Step**: the Step that goes between the Frames_Step and the Train_Step, built in its own spec, whose Step_Name is `cameras`. It writes the Camera_Solve_Output.
-- **Clean_Export_Step**: the clean-export spec's Step, whose Step_Name is `clean_export` and which the user calls "clean". It reads the Trained_Splat.
+- **Clean_Step**: the clean spec's Step, whose Step_Name is `clean`. It reads the Trained_Splat.
 - **Camera_Solve_Output**: the files the Train_Step reads from `work/cameras/`: the Training_Images, the Mask_Files and the Sparse_Model.
 - **Training_Image**: one undistorted colour frame, `work/cameras/images/<name>.jpg`, where `<name>.jpg` is the image's name in `images.bin`.
 - **Mask_File**: an image's optional mask, `work/cameras/masks/<stem>.png`, where `<stem>` is the image's name without `.jpg`. Black means ignore.
@@ -108,7 +107,7 @@ The user didn't decide these. Each is the recommended answer, marked in the requ
 - **Mean_Exposure**: [Ā | b̄], the element-wise mean of every Training_Image's Exposure_Fix.
 - **Exposure_Bake**: the numpy function that writes the Mean_Exposure into the splats' colours (Requirement 6, criterion 5).
 - **SH_C0**: 0.28209479177387814, the band-0 spherical harmonic constant, 1 / (2√π).
-- **Train_Deadline**: the Cap_Deadline minus `clean_reserve_minutes`: the time by which the Trained_Splat is written and checked, leaving that many minutes for the Clean_Export_Step.
+- **Train_Deadline**: the Cap_Deadline minus `clean_reserve_minutes`: the time by which the Trained_Splat is written and checked, leaving that many minutes for the Clean_Step.
 - **Stop_Time**: the Train_Deadline minus `save_margin_minutes`. The Trainer starts no Iteration at or after it.
 - **Trained_Splat**: `out/train.ply`, the splat the Train_Step writes.
 - **Splat_Layout**: the Trained_Splat's file layout (Requirement 8, criterion 3).
@@ -296,7 +295,7 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 
 **User Story:** As a team member building the clean step, I want the trained splat in one known layout, checked before the step calls itself done, so that my step can read it without guessing and never gets a broken file.
 
-**Assumptions (to confirm at review):** A2 (criterion 9).
+**Decided:** D6 (criterion 9).
 
 #### Acceptance Criteria
 
@@ -308,10 +307,10 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 6. WHEN the PLY_Writer has written `work/train/train.ply`, THE Train_Step SHALL run the PLY_Check on the written file, which passes only a file whose header is exactly the Splat_Layout's, with an N of 1 or more, whose size is the header's size plus N × 236 bytes, and whose every value is finite.
 7. IF the PLY_Check fails, THEN THE Train_Step SHALL fail with an Expected_Failure whose Readable_Error names the file and what failed: no splats, a header that differs from the Splat_Layout's, with the fields missing or out of place, a size that doesn't match N, or how many splats hold a NaN or an infinity and in which fields.
 8. WHEN the PLY_Check passes, THE Train_Step SHALL move `work/train/train.ply` to `out/train.ply` with one rename on the same file system, so `out/` never holds a half-written Trained_Splat.
-9. THE Train_Step SHALL write every splat the Trainer gives back, so a splat with a NaN or an infinity fails the PLY_Check rather than being dropped (A2).
+9. WHEN the Mean_Exposure is baked in, THE Train_Step SHALL drop every splat that has a NaN or an infinity in any of the splat's 59 fields, with a numpy function that imports no torch, keeping the other splats in their order, before the PLY_Writer writes `work/train/train.ply`, and SHALL add a warning to the Train_Report that gives how many splats the Train_Step dropped, when the Train_Step dropped any (D6). The drop comes after the bake because a baked value can overflow to an infinity. The Train_Report's `splats` count stays the number of splats written. When the Train_Step drops every splat, the PLY_Writer writes a file of 0 splats, which the PLY_Check refuses with criterion 7's existing "no splats" Expected_Failure, and the failed Train_Report already holds the warning with the count, so the report says why.
 10. IF writing or moving the Trained_Splat fails because the disk is full or the file can't be written, THEN THE Train_Step SHALL fail with an Expected_Failure whose Readable_Error names the file and the reason.
 11. THE Train_Step SHALL write only inside `work/train/` and to `out/train.ply` in the Job_Folder, beside the Train_Report that the Step_Runner writes.
-12. THE Train_Step SHALL leave `out/train.ply` unchanged once the step is done, so the Clean_Export_Step reads the Trained_Splat from there, and `out/train.ply` stays the Job's result when the Clean_Export_Step fails or doesn't run.
+12. THE Train_Step SHALL leave `out/train.ply` unchanged once the step is done, so the Clean_Step reads the Trained_Splat from `out/train.ply`, and `out/train.ply` stays the Job's result when the Clean_Step fails or doesn't run.
 13. THE PLY_Reader SHALL read a file in the Splat_Layout back into one float32 array for each field.
 14. FOR ALL sets of 1 or more splats with finite float32 values, THE PLY_Check SHALL pass the file that the PLY_Writer writes from those splats (property).
 15. FOR ALL files that the PLY_Writer writes from 1 or more splats with finite values, THE PLY_Check SHALL refuse the file once any one value in the file is set to NaN, to positive infinity or to negative infinity (property).
@@ -346,7 +345,7 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 
 **User Story:** As a team member, I want the step's report to say what the training started from, how far it got and how much GPU memory it used, so that I can tell a good run from a cut-short one and tune the presets.
 
-**Assumptions (to confirm at review):** A3 (criterion 7).
+**Decided:** D6 (criterion 5). **Assumptions (to confirm at review):** A3 (criterion 7).
 
 #### Acceptance Criteria
 
@@ -354,7 +353,7 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 2. WHEN the Train_Step is done, THE Train_Report SHALL hold the timings `load` (reading the Camera_Solve_Output and setting up the scene and the Start_Splats), `train`, `write_ply` and `check_ply`, each in seconds.
 3. WHEN the Train_Step fails, THE Train_Report SHALL hold exactly the counts and timings of criteria 1 and 2 that the step had worked out before the step failed.
 4. THE Train_Step SHALL add each count as a whole number given as an int and each timing as a number of seconds, so the Step_Runner's checks never refuse one.
-5. WHERE the step warns under Requirement 3, criterion 11 or Requirement 7, criterion 8, THE Train_Report SHALL hold that warning.
+5. WHERE the step warns under Requirement 3, criterion 11, Requirement 7, criterion 8 or Requirement 8, criterion 9, THE Train_Report SHALL hold that warning. The warning of Requirement 8, criterion 9 reads "Training gave back `<n>` splats with a NaN or an infinity, so they were left out of out/train.ply.", where `<n>` is the number of splats dropped (D6).
 6. THE Train_Report SHALL be the Step_Runner's ordinary Step_Report, written to `out/reports/train.json`, with the 38 settings of Requirement 9, criteria 2 and 3, which the Step_Runner puts there itself.
 7. WHEN the Trained_Splat is in `out/`, THE Train_Step SHALL write the Train_Record, `work/train/train.json`, holding only JSON_Values: the Near_Plane, the Median_Scene_Depth, the Scene_Extent, the starting Means_LR, the ratios of the Training_Size's width and height to the Shared_Camera's, the Mean_Exposure as 3 rows of 4 numbers, and the Cap_Deadline and the Stop_Time as ISO 8601 UTC times, both `null` when no Cap_Deadline was set (A3).
 
@@ -382,7 +381,7 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 
 **User Story:** As a team member, I want the smoke test to run the real trainer on the GPU for a few iterations, so that a broken image or a bug in the training code shows up in a short smoke test and not an hour into a job.
 
-**Assumptions (to confirm at review):** A11 (criteria 3 to 6) and A12 (criterion 12).
+**Decided:** D6 (criterion 7). **Assumptions (to confirm at review):** A11 (criteria 3 to 6) and A12 (criterion 12).
 
 #### Acceptance Criteria
 
@@ -392,7 +391,7 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 4. THE `[cloud.smoke]` table SHALL gain `train_images = 4`, `train_points = 200`, `train_splats = 400`, `train_steps = 30`, `train_refine_start_step = 10`, `train_refine_every = 10` and `train_sh_degree_interval = 5`, each with a comment (A11).
 5. THE Cloud_Config SHALL gain a field in `SmokeChecks` for each new key, which the loader in `cloud/config.py` reads and checks as a whole number above 0, refusing a bad value with the loader's Readable_Error that names the key (A11).
 6. THE `[cloud.smoke]` numbers SHALL make the Train_Smoke_Check's run turn the `erank` Loss_Term on, reach SH_Degree 3 and include at least one MCMC refine, which the Test_Suite checks on the CPU with the Schedules and the real Config (A11).
-7. WHEN the Trainer returns, THE Train_Smoke_Check SHALL bake the Mean_Exposure in, write the splats with the PLY_Writer into the check's scratch folder and run the PLY_Check on the file.
+7. WHEN the Trainer returns, THE Train_Smoke_Check SHALL bake the Mean_Exposure in, write every splat the Trainer gave back into the check's scratch folder with the PLY_Writer, dropping none, and run the PLY_Check on the file, so a splat with a NaN or an infinity fails the PLY_Check and so the Train_Smoke_Check, because the Smoke_Scene should never make one (D6).
 8. THE Train_Smoke_Check SHALL pass only when the Trainer ran every planned Iteration and the PLY_Check passed, and SHALL give back a line for the log with the Iterations run, the splats written and the SH_Degree reached.
 9. IF the Trainer or the PLY_Check fails, THEN THE Train_Smoke_Check SHALL raise an error whose message says what failed, so the Smoke_Test reports the check as failed and goes on with the other checks.
 10. THE Train_Smoke_Check SHALL import the GPU_Module inside the check's own function, as the other GPU checks import torch, so `cloud/smoke_runner.py` still imports on a laptop.
@@ -414,13 +413,13 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 4. THE `### What it writes` part SHALL give the Splat_Layout, the Work_Folder's files and the Train_Record's fields.
 5. THE `### Config section` part SHALL give every key of `[train]` and its Preset tables, with the key's table, value and meaning, and SHALL state the Step_Needs: 4 vCPUs, 32 GB of memory, and a 24 GB GPU for `fast` and `default` or a 48 GB one for `quality`, of which the step itself checks only the GPU's memory, against the GPU_Need.
 6. THE `### Step report fields` part SHALL give the counts, the timings, the warnings and the kinds of Expected_Failure of Requirements 10 and 11.
-7. THE `### Files in out/` part SHALL say that the step removes `out/train.ply` when the step starts and writes the file whole once the PLY_Check passes, that the Clean_Export_Step reads the file from there, that the file is the Job's result when the Clean_Export_Step fails, and that the largest Splat_Budget is 3,000,000 splats, and SHALL list the clean-export spec's points that D4 names (D4).
-8. THE Pipeline_Doc's "The step list" section SHALL say that the list holds the Frames_Step and then the Train_Step, both required, that the camera solve spec puts its entry between the two, so the order becomes frames, cameras, train, clean_export, and that until then a Job runs the Frames_Step and fails at the Train_Step because the camera solve output is missing, in place of the sentence that says a Job is done once the Frames_Step is done (D5).
+7. THE `### Files in out/` part SHALL say that the step removes `out/train.ply` when the step starts and writes the file whole once the PLY_Check passes, that the Clean_Step reads the file from there, that the file is the Job's result when the Clean_Step fails or doesn't run, and that the largest Splat_Budget is 3,000,000 splats, which is within the 8,000,000 splats the Clean_Step takes (D4).
+8. THE Pipeline_Doc's "The step list" section SHALL say that the list holds the Frames_Step and then the Train_Step, both required, that the camera solve spec puts its entry between the two and a later spec adds the Clean_Step's entry after the Train_Step's, so the order becomes frames, cameras, train, clean, and that until the camera solve spec's entry is there a Job runs the Frames_Step and fails at the Train_Step because the camera solve output is missing, in place of the sentence that says a Job is done once the Frames_Step is done (D5).
 9. THE Pipeline_Doc's "The cap deadline" part SHALL say that the Train_Step reads `SPLATPIPE_CAP_DEADLINE` and stops training early so that `out/train.ply` is written and checked `clean_reserve_minutes` before the Cap_Deadline, in place of "No current step reads it; the training spec will."
 10. THE Pipeline_Doc's Step_Needs table SHALL give Training as 4 vCPUs, 32 GB RAM and a GPU with 24 GB (fast and default) or 48 GB (quality), in place of "a GPU, 32 GB RAM".
 11. THE Pipeline_Doc's "The smoke test" part SHALL list the Train_Smoke_Check among the checks and say that the check's numbers are in `[cloud.smoke]`.
 12. THE Pipeline_Doc's frames section SHALL say that the camera solve step passes the Mask on to training as one mask per image in `work/cameras/masks/`, in place of "the training loss reads the same file" (A13).
-13. THE gsplat-training skill's line that says the clean-export step reads `out/splat.ply` SHALL name `out/train.ply`, which the Train_Step writes.
+13. THE gsplat-training skill's line that says the clean step reads `out/splat.ply` SHALL say that the Clean_Step reads `out/train.ply`, which the Train_Step writes, and that the Clean_Step takes at most 8,000,000 splats, the Clean_Step's `max_source_splats`, so the MCMC strategy's `cap_max` stays at or under that number.
 14. THE `tests/test_docs.py` SHALL check the step list sentence of criterion 8 in place of the old one, the frames phrase of criterion 12 in place of the old one, and that the `## Step: train` section's parts name every key of the real `[train]`, every count and timing of Requirement 10, and `out/train.ply`.
 15. THE `tests/test_cloud_docs.py` row check for Training SHALL look for "4 vCPUs", "32 GB RAM", "24 GB" and "48 GB".
 16. THE Licence_List's `opencv-python-headless` row SHALL say in its "How we use it" cell that the Train_Step decodes the Camera_Solve_Output's JPEG frames and PNG masks and scales them down, and SHALL still say that it never reads or writes video, which `tests/test_docs.py` checks.
@@ -429,14 +428,14 @@ Terms it uses as the cloud-jobs spec defines them: Cloud_Runner, Cap_Deadline, U
 
 **User Story:** As a team member, I want the step's CPU parts tested on a laptop with tiny made-up data, so that the tests are quick, free and safe to run anywhere, and the GPU only runs code that is already tested.
 
-**Assumptions (to confirm at review):** A1 (criterion 7) and A14 (criterion 8).
+**Decided:** D6 (criteria 1 and 4). **Assumptions (to confirm at review):** A1 (criterion 7) and A14 (criterion 8).
 
 #### Acceptance Criteria
 
-1. THE Test_Suite SHALL test with unit tests, on the CPU with tiny synthetic data and no GPU: the Schedules (the SH_Degree, the Means_LR, the Refine_Stop and the Erank_Start, the examples of Requirement 4, criterion 8 and Requirement 5, criterion 7 included), the Training_Size and the scaled camera, the Masked_Pixels and the mask scaling, the Camera_Centres, the Scene_Extent, the Median_Scene_Depth and the Near_Plane (cameras with no point in front included), the start log scales (Start_Distances of 0 included), the subset of Sparse_Points, the Mean_Exposure and the Exposure_Bake, the PLY_Writer, the PLY_Reader and the PLY_Check, the Model_Reader with a small writer of COLMAP's binary model in the tests, the setting checks, the Cap_Deadline's two forms and its refusals, the Stop_Time and the stop decision with a fake clock, the GPU_Fit_Check with the byte counts of Requirement 2, and the report fields.
+1. THE Test_Suite SHALL test with unit tests, on the CPU with tiny synthetic data and no GPU: the Schedules (the SH_Degree, the Means_LR, the Refine_Stop and the Erank_Start, the examples of Requirement 4, criterion 8 and Requirement 5, criterion 7 included), the Training_Size and the scaled camera, the Masked_Pixels and the mask scaling, the Camera_Centres, the Scene_Extent, the Median_Scene_Depth and the Near_Plane (cameras with no point in front included), the start log scales (Start_Distances of 0 included), the subset of Sparse_Points, the Mean_Exposure and the Exposure_Bake, the drop of Requirement 8, criterion 9, which keeps exactly the splats that are finite in every field, in their order, and gives the count dropped, the PLY_Writer, the PLY_Reader and the PLY_Check, the Model_Reader with a small writer of COLMAP's binary model in the tests, the setting checks, the Cap_Deadline's two forms and its refusals, the Stop_Time and the stop decision with a fake clock, the GPU_Fit_Check with the byte counts of Requirement 2, and the report fields.
 2. THE Test_Suite SHALL hold the property tests of Requirement 1, criterion 21, Requirement 3, criterion 16, Requirement 4, criteria 19 and 20, Requirement 6, criterion 8, and Requirement 8, criteria 14 to 17, written with Hypothesis.
 3. THE Test_Suite's unit tests and property tests SHALL both be required, never optional.
-4. THE Test_Suite SHALL run the Train_Step through `run()` on the CPU with a GPU_Stand_In, to test the order of the step's work, every Expected_Failure that needs no GPU, a done run that leaves a checked Trained_Splat in `out/` and the Train_Record in `work/train/`, an early stop's warning, and that a failed run leaves no `out/train.ply` from an earlier run.
+4. THE Test_Suite SHALL run the Train_Step through `run()` on the CPU with a GPU_Stand_In, to test the order of the step's work, every Expected_Failure that needs no GPU, a done run that leaves a checked Trained_Splat in `out/` and the Train_Record in `work/train/`, an early stop's warning, the drop of a NaN splat from the GPU_Stand_In with the warning of Requirement 8, criterion 9 in a run that is done with a checked `out/train.ply`, the failure of a run in which every splat has a NaN or an infinity with the PLY_Check's "no splats" Expected_Failure, that warning in the Train_Report and no `out/train.ply`, and that a failed run leaves no `out/train.ply` from an earlier run (D6).
 5. THE Test_Suite SHALL check, by listing the Job_Folder before and after a run with the GPU_Stand_In, that the Train_Step writes nothing outside `work/train/`, `out/train.ply` and the Train_Report.
 6. THE Test_Suite SHALL check that each Readable_Error of the step's Expected_Failures names what the requirement says the Readable_Error names and holds no traceback.
 7. THE Test_Suite SHALL check that every file in `splatpipe/train/` other than the GPU_Module imports only names in the standard library, numpy, `cv2` and `splatpipe`, that the GPU_Module imports, besides those, only torch, gsplat and fused_ssim, and that `import splatpipe.train` in a fresh process loads no torch, gsplat or fused_ssim (A1).
