@@ -151,7 +151,9 @@ The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner run
 The list starts empty, and each step's spec adds its own entry. Until then, `splatpipe.run` refuses with "No steps are set up yet", so run one step on its own. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
-- Optional steps: depth priors, plain walls, and clean and export.
+- Optional steps: depth priors, plain walls and clean.
+
+The clean step isn't in `STEP_LIST` yet. The first spec with a step worth running adds the entries, and puts the clean step's last, as an optional step.
 
 Running a job in the cloud comes in its own spec, and it isn't a step.
 
@@ -355,3 +357,98 @@ The real `config.toml` keeps `fail = "none"`, with a comment above every key. Te
 - `out/fake.txt`: one UTF-8 line, like `The fake step ran on job 20261119-142530-7f3a9c with the fast preset.` A done run replaces it. A failed run writes none and leaves an earlier one in place.
 
 Its report, `out/reports/fake.json`, comes from the step runner, like every step's.
+
+## Step: clean
+
+The clean step is in `splatpipe/clean/`. It reads the splat the training step wrote, drops the Gaussians a viewer shouldn't see and writes the rest as the clean splat, a binary PLY. Then it makes the viewer copy, a small `.sog` for the web viewer, from the clean splat with PlayCanvas splat-transform. These two files are what the person who filmed the place gets back. The step is built like the fake step. It isn't in the step list yet, as "The step list" says, so run it on its own.
+
+Its CLI is `uv run python -m splatpipe.clean --job <id> [--preset P]`, and its plain function is `splatpipe.clean.run(job_id, preset=None)`.
+
+### What it reads
+
+- `out/<train_ply>`, which is `out/train.ply` with the real config: the splat the training step writes. This is the contract between the two steps: the training step writes it as a standard 3DGS binary PLY, `binary_little_endian` with float32 values, whose `vertex` element has one row per Gaussian and these properties:
+  - `x`, `y` and `z`, the centre.
+  - `f_dc_0` to `f_dc_2`, the base colour.
+  - `f_rest_*`, the higher spherical harmonics: 45 of them at SH degree 3, or 0, 9 or 24 at a lower degree.
+  - `opacity`, stored before the sigmoid.
+  - `scale_0` to `scale_2`, stored as logarithms.
+  - `rot_0` to `rot_3`, the rotation quaternion.
+  - Sometimes `nx`, `ny` and `nz`, which nothing uses.
+- Its settings, from `[clean]` and from the job's preset table, like `[clean.fast]`.
+
+The step reads meaning only into `x`, `y`, `z`, `opacity`, `scale_0` to `scale_2` and `rot_0` to `rot_3`. It carries every other property through to the clean splat unchanged, a NaN or an infinity in a colour included. It never writes `out/<train_ply>`, so the trained splat survives a failed clean.
+
+### What it writes
+
+The step works in this order, and each filter gets what the one before it kept:
+
+1. It fails when the trained splat holds more than `max_source_splats` (8,000,000) Gaussians, before it reads their rows.
+2. The broken filter drops every Gaussian with a NaN or an infinity in `x`, `y`, `z`, `opacity`, `scale_0` to `scale_2` or `rot_0` to `rot_3`, or with a rotation of zero length, because nothing can draw one. It looks at no other property.
+3. The faint filter judges every faint Gaussian together with the rest of its cube. A Gaussian is faint when its real opacity, the sigmoid of its `opacity`, is below `min_opacity` (0.005). Every Gaussian that isn't faint is kept, and no Gaussian is dropped for its opacity alone. Space is cut into cubes whose side is the trimmed extent divided by `faint_cube_divisions` (128). The trimmed extent is the longest side of the box that leaves out `extent_trim_percent` (1%) of the centres at each end of each axis, so a few far-off Gaussians can't make the cubes huge. A cube keeps all its faint Gaussians when it holds at least `faint_min_per_cube` (8) of them and they paint more than `faint_min_paint_share` (10%) of what the whole cube paints, and drops them all otherwise. A Gaussian's paint is its real opacity × π × its two largest real scales, the exponentials of its `scale_*`. So a sheet of faint Gaussians that together paint a visible surface stays, and scattered faint specks go.
+4. The isolated filter drops every Gaussian whose mean distance to its `neighbours` (8) nearest other Gaussians is more than `isolation_ratio` (8) times the median of that number over those neighbours. The test is a local ratio, so the sky and the far background, sparse but even, survive.
+5. The limits, all checked before either output is written, in this order:
+   - The removal cap. The faint and isolated filters together may remove at most `max_removed_fraction` (70%) of the trained splat's Gaussians. Broken Gaussians are always removed and don't count toward the cap. Past the cap, the step fails and writes neither output, rather than trim the removals back to the cap.
+   - Fewer than `min_kept_splats` (10,000) Gaussians left fails the step the same way.
+   - Keeping less than `warn_kept_fraction` (50%) of the trained splat's Gaussians adds a warning, and the step goes on.
+6. `work/clean/<clean_ply>`, the clean splat: the kept Gaussians as a `binary_little_endian` PLY, with every property of the trained splat in the same order and with the same type, and the trained splat's `comment` lines.
+7. `work/clean/<clean_sog>`, the viewer copy: splat-transform 3.8.0 makes it from the clean splat, as one bundled `.sog` file that keeps at most `sog_sh_bands` bands of spherical harmonics. The step writes splat-transform's whole output to `work/clean/splat-transform.log`.
+8. Then it moves both into `out/`, as "Files in out/" says.
+
+When the step fails, the trained splat is still in `out/`, as it was. The clean step goes in the step list as an optional step, so once it's there, a failed clean ends the job done with warnings.
+
+Every part of the step is CPU work. The Python side uses numpy and scipy, and splat-transform runs with `-g cpu`, which puts its GPU work on the CPU. The step is sized for the 8 vCPUs and 8 GB a step gets on the job machine: `max_workers` is at most 8, and `max_source_splats` keeps the trained splat's data, at 62 float32 properties a Gaussian, under a quarter of the 8 GB.
+
+The viewer copy is SOG meta version 2, because splat-transform is pinned at 3.8.0, so the web viewer has to be checked against the version 2 spec.
+
+The step needs Node 22 or newer, and `npm ci` at the repo root, which installs splat-transform 3.8.0 into `node_modules/`.
+
+### Config section
+
+| Key | Table | Value | What it is |
+|---|---|---|---|
+| `train_ply` | `[clean]` | `"train.ply"` | The trained splat's file in `out/`, which the training step writes and this step reads. |
+| `clean_ply` | `[clean]` | `"clean.ply"` | The clean splat's file in `out/`. It must end in `.ply`. |
+| `clean_sog` | `[clean]` | `"clean.sog"` | The viewer copy's file in `out/`. It must end in `.sog`. |
+| `min_opacity` | `[clean]` | `0.005` | The real opacity below which a Gaussian is faint. |
+| `faint_cube_divisions` | `[clean]` | `128` | The side of the faint filter's cubes is the trimmed extent divided by this. |
+| `faint_min_per_cube` | `[clean]` | `8` | The fewest faint Gaussians a cube must hold to keep them. |
+| `faint_min_paint_share` | `[clean]` | `0.10` | A cube keeps its faint Gaussians only when they paint more than this share of what the cube paints. |
+| `extent_trim_percent` | `[clean]` | `1` | The percent of the centres left out at each end of each axis for the trimmed extent. |
+| `neighbours` | `[clean]` | `8` | How many nearest other Gaussians the isolated filter looks at. |
+| `isolation_ratio` | `[clean]` | `8.0` | The isolated filter drops a Gaussian whose mean distance to its nearest neighbours is more than this many times the median of that number over those neighbours. |
+| `max_removed_fraction` | `[clean]` | `0.70` | The removal cap: the largest share of the trained splat's Gaussians that the faint and isolated filters may remove together. |
+| `min_kept_splats` | `[clean]` | `10000` | The fewest Gaussians the clean splat may hold. Fewer fails the step. |
+| `warn_kept_fraction` | `[clean]` | `0.5` | The step warns when it keeps less than this share of the trained splat's Gaussians. |
+| `max_source_splats` | `[clean]` | `8000000` | The most Gaussians the step takes in. More fails the step before it reads their rows. |
+| `max_workers` | `[clean]` | `4` | The worker threads for the isolated filter's neighbour search and for splat-transform, at most 8. At 0, splat-transform encodes inline and the search uses 1. |
+| `splat_transform_timeout_seconds` | `[clean]` | `3600` | The longest time splat-transform may take to make the viewer copy, in seconds. Past it, the step stops splat-transform and fails. |
+| `sog_sh_bands` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `3`, `3` and `3` | The bands of higher spherical harmonics the viewer copy keeps, from 0 to 3. |
+| `sh_iterations` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `10`, `10` and `20` | The iterations of splat-transform's spherical harmonic compression. |
+
+All three presets clean the splat the same way, and only `sh_iterations` differs between their viewer copies. The real `config.toml` has a comment on the line directly above every key.
+
+### Step report fields
+
+- `counts.source_splats`: the Gaussians in the trained splat.
+- `counts.dropped_broken`, `counts.dropped_faint` and `counts.dropped_isolated`: the Gaussians each filter dropped.
+- `counts.kept_splats`: the Gaussians left after the three filters.
+- `counts.clean_ply_bytes` and `counts.clean_sog_bytes`: the sizes of the clean splat and the viewer copy, in bytes.
+- `timings.read_ply`, `timings.clean`, `timings.write_ply` and `timings.export_sog`: the seconds it took to read the trained splat, run the three filters, write the clean splat and run splat-transform.
+- `warnings`, which gets a warning in each of these cases:
+  - When the step keeps less than `warn_kept_fraction` of the trained splat's Gaussians. The warning gives both counts and the share the faint and isolated filters removed.
+  - When the preset's `sog_sh_bands` is more than the bands the trained splat has. The warning names both numbers, and the viewer copy keeps the trained splat's bands.
+
+There's no `removed_percent` count, because `step.add_count` takes only whole numbers. The share the faint and isolated filters removed is in the first warning and in the readable error of a run that stops at the removal cap.
+
+### Files in out/
+
+- `out/<clean_ply>`, which is `out/clean.ply` with the real config: the clean splat.
+- `out/<clean_sog>`, which is `out/clean.sog` with the real config: the viewer copy, made from that clean splat.
+
+A done run replaces both. Once its settings pass their checks, the step removes both from `out/`, the viewer copy first, before it writes either. It makes the new ones in `work/clean/` and moves them into `out/` only once both are whole, the clean splat first and the viewer copy straight after. Each move is a rename, so `out/` never holds a half-written file. So:
+
+- A failure after that removal leaves neither file in `out/`, an earlier run's pair included. That holds for an expected failure, a bug and Ctrl+C alike. When a failure falls between the two moves, the step removes the clean splat it had already moved.
+- A hard stop the step can't see, like a killed process or a power cut, can leave a whole clean splat alone in `out/`: this run's, between the two moves into `out/`, or the earlier one, between the two removals. No done report goes with it, and the next run of the step removes it first.
+- A viewer copy never sits in `out/` without the clean splat it was made from, because the viewer copy is removed first and moved last.
+
+Trust the pair only when the step's report, `out/reports/clean.json`, says done. That report comes from the step runner, like every step's.

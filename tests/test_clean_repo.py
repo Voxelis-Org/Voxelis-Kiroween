@@ -28,6 +28,15 @@ the repo root, and none runs the step.
   defines main, each with the parameters Req 8.1 names, read with inspect.signature, so a missing
   entry point or a renamed parameter fails. The import checks read splatpipe/clean/ with rglob,
   so they cover __init__.py and __main__.py too (Req 8.5).
+- The docs (Req 9.1 to 9.6, 9.8), read with tests/test_docs.py's own pipeline_parts, doc_parts
+  and doc_part, which find a part by its heading. The ## Step: clean section of docs/pipeline.md
+  has its five ### parts, each found by its name, because STEP_LIST is empty and so
+  tests/test_docs.py doesn't look for this section. Its Files in out/ part states the two-output
+  guarantee, and the section names train.ply and binary_little_endian, says every other
+  property is carried through and says SOG meta version 2 and 8 GB. The step list says the clean
+  step isn't in STEP_LIST yet, and README.md's Install part names npm ci and Node 22. Each
+  statement is checked with a short phrase from the doc, matched case-insensitively, so a small
+  rewording still passes but a missing statement fails, naming the part and the phrase.
 """
 
 import importlib
@@ -45,7 +54,7 @@ from splatpipe.clean.settings import check_settings
 from splatpipe.config import REPO_ROOT, load_config
 
 from test_config import is_comment_line, split_statements
-from test_docs import LICENCE_LIST, licence_row
+from test_docs import LICENCE_LIST, doc_part, doc_parts, licence_row, pipeline_parts
 from test_imports import imports_of, top
 
 SPLATPIPE = REPO_ROOT / "splatpipe"
@@ -105,6 +114,33 @@ SPLAT_TRANSFORM_VERSION = "3.8.0"
 NODE_ROW = "Node.js"
 SPLAT_TRANSFORM_ROW = "PlayCanvas splat-transform 3.8.0 (`@playcanvas/splat-transform`)"
 NPM_ROW = "npm"
+# README.md, read by path, as tests/test_docs.py reads docs/pipeline.md (Req 9.8).
+README = REPO_ROOT / "README.md"
+# How tests/test_docs.py names a step section in its failures, and the five ### parts of the
+# ## Step: clean section, by their headings' names, as the Fake_Step's section has them (Req 9.1).
+CLEAN_WHERE = "The ## Step: clean section"
+CLEAN_PARTS = ("What it reads", "What it writes", "Config section", "Step report fields",
+               "Files in out/")
+# Short phrases from docs/pipeline.md and README.md as sub-tasks 9.1 and 9.2 wrote them, each
+# matched case-insensitively, so a small rewording still passes but a missing statement fails.
+# The clean section's Files in out/ part: a phrase for each guarantee of Req 9.3, and two for the
+# last, whose sentence names the report in its middle.
+FILES_IN_OUT_PHRASES = (
+    "before it writes either",            # both outputs are removed first
+    "after that removal leaves neither",  # a failure after that leaves neither
+    "whole clean splat alone",            # a hard stop can leave a whole clean splat alone
+    "viewer copy never sits",             # a viewer copy never sits there without its clean splat
+    "trust the pair only when",           # and to trust the pair only when the report,
+    "out/reports/clean.json",             # out/reports/clean.json, says done
+)
+# The whole clean section: it names train.ply and binary_little_endian and says every other
+# property is carried through unchanged (Req 9.4), and it says SOG version 2 and 8 GB (Req 9.6).
+SECTION_PHRASES = ("train.ply", "binary_little_endian", "every other property through",
+                   "SOG meta version 2", "8 GB")
+# The step list says the clean step isn't in STEP_LIST yet (Req 9.5).
+STEP_LIST_PHRASE = "clean step isn't in `STEP_LIST`"
+# README.md's Install part names npm ci and Node 22 (Req 9.8).
+README_PHRASES = ("npm ci", "Node 22")
 
 
 def real_clean_section() -> dict[str, Any]:
@@ -173,6 +209,22 @@ def bare_parameters(signature: inspect.Signature) -> str:
     bare = [parameter.replace(annotation=empty, default=empty)
             for parameter in signature.parameters.values()]
     return str(signature.replace(parameters=bare, return_annotation=empty))
+
+
+def clean_section() -> str:
+    """The ## Step: clean section of docs/pipeline.md, read and found by its heading with
+    tests/test_docs.py's own helpers."""
+    return doc_part(pipeline_parts(), 2, "Step: clean")
+
+
+def clean_part(title: str) -> str:
+    """The ### part of the ## Step: clean section with this title, found by its heading."""
+    return doc_part(doc_parts(clean_section()), 3, title, CLEAN_WHERE)
+
+
+def says(text: str, phrase: str) -> bool:
+    """Whether the text holds the phrase, matched case-insensitively."""
+    return phrase.lower() in text.lower()
 
 
 # The real config.toml
@@ -333,3 +385,41 @@ def test_the_package_defines_each_entry_point_with_the_parameters_req_8_1_names(
     signature = inspect.signature(function)
     assert bare_parameters(signature) == parameters
     assert {key: signature.parameters[key].default for key in defaults} == defaults
+
+
+# The pipeline doc and the README
+
+@pytest.mark.parametrize("title", CLEAN_PARTS)
+def test_the_clean_section_has_each_of_its_five_parts_found_by_its_heading(title: str) -> None:
+    """Req 9.1, 9.2. tests/test_docs.py looks for a section for the fake step and for each entry
+    of STEP_LIST, which is empty, so it doesn't look for this one. doc_part fails, naming the
+    section and the heading, unless the section has exactly one ### heading with this title."""
+    clean_part(title)
+
+
+@pytest.mark.parametrize("phrase", FILES_IN_OUT_PHRASES)
+def test_the_clean_files_in_out_part_states_the_two_output_guarantee(phrase: str) -> None:
+    """Req 9.3."""
+    assert says(clean_part("Files in out/"), phrase), (
+        f"{CLEAN_WHERE}'s ### Files in out/ part should say {phrase!r}")
+
+
+@pytest.mark.parametrize("phrase", SECTION_PHRASES)
+def test_the_clean_section_states_the_training_contract_sog_version_2_and_8_gb(
+        phrase: str) -> None:
+    """Req 9.4, 9.6."""
+    assert says(clean_section(), phrase), f"{CLEAN_WHERE} should say {phrase!r}"
+
+
+def test_the_step_list_says_the_clean_step_isnt_in_step_list_yet() -> None:
+    """Req 9.5."""
+    step_list = doc_part(pipeline_parts(), 2, "The step list")
+    assert says(step_list, STEP_LIST_PHRASE), (
+        f"docs/pipeline.md's ## The step list part should say {STEP_LIST_PHRASE!r}")
+
+
+@pytest.mark.parametrize("phrase", README_PHRASES)
+def test_the_readme_install_part_names_npm_ci_and_node_22(phrase: str) -> None:
+    """Req 9.8. The Install part, because the README says it next to how the rest is installed."""
+    install = doc_part(doc_parts(README.read_text(encoding="utf-8")), 2, "Install", "README.md")
+    assert says(install, phrase), f"README.md's ## Install part should say {phrase!r}"
