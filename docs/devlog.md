@@ -117,3 +117,4 @@ What the test found, and how the rules block it:
 - 2026-11-23 13:33+05:30 | feat/clean | clean 8.6 Write the memory test in `tests/test_clean_step.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, splatpipe/clean/__init__.py, tests/splats.py, tests/test_clean_repo.py, splatpipe/clean/__main__.py, tests/test_clean_step.py
 - 2026-11-23 13:38+05:30 | feat/clean | clean 8.8 Run the tests and commit | splatpipe/clean/__init__.py, splatpipe/clean/__main__.py, tests/splats.py, tests/test_clean_repo.py, tests/test_clean_step.py, .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json
 - 2026-11-23 13:54+05:30 | feat/clean | clean 9.2 Add the clean step's line to `README.md` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, README.md
+- 2026-11-23 17:13+05:30 | feat/clean | clean 9.1 Write the `## Step: clean` section of `docs/pipeline.md` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, README.md, docs/pipeline.md
