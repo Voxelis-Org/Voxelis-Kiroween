@@ -211,6 +211,20 @@ scene_gaussians = 256
 image_pixels = 64
 # Length of the test video the smoke machine makes its fake-step job from, in seconds. At least [jobs].min_used_seconds.
 video_seconds = 4
+# Images in the smoke machine's tiny training scene, each image_pixels square.
+train_images = 4
+# Points the smoke machine's training scene starts from.
+train_points = 200
+# Most splats the smoke machine's training may grow to, its splat budget.
+train_splats = 400
+# Iterations the smoke machine trains for.
+train_steps = 30
+# Iteration after which the smoke training's MCMC starts refining.
+train_refine_start_step = 10
+# Iterations between the smoke training's refines.
+train_refine_every = 10
+# Iterations between each rise of the smoke training's spherical harmonics degree.
+train_sh_degree_interval = 5
 [cloud.image]
 # Expected run time in minutes, for the money quote.
 expected_minutes = 75

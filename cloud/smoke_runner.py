@@ -5,7 +5,8 @@ It's separate from the laptop's Smoke_Command, `cloud.smoke`, which only launche
 `run_smoke_test` runs each check in SMOKE_CHECKS, a few seconds each (Req 11.2): torch sees the GPU,
 gsplat renders a tiny synthetic scene forwards and backwards, fused-ssim runs forwards and
 backwards, ffmpeg has the zscale and tonemap filters, COLMAP, Node and splat-transform run, the
-MoGe-2 weights match their pinned sha256, and the Cloud_Runner runs a tiny Fake_Step Job end to end.
+MoGe-2 weights match their pinned sha256, the Trainer trains the tiny Smoke_Scene on the GPU and the
+PLY it gives passes the PLY_Check, and the Cloud_Runner runs a tiny Fake_Step Job end to end.
 For that last check it makes the Job from a test video, uploads its input, and runs `run_cloud_job`,
 which downloads the input again, runs the Step and uploads the results. A failing check doesn't stop
 the others. The results are printed on the console and put, Account_Redacted, at
@@ -18,10 +19,11 @@ here, starting with training (Req 11.5). A check is a function that gets a Smoke
 back a short line for the log, or raises when the check fails. Its numbers come from
 `[cloud.smoke]`.
 
-The GPU checks import torch, gsplat and fused-ssim inside their functions, so this module imports on
-a laptop. There the Test_Suite runs `run_smoke_test` with stand-in checks, and the checks that need
-no GPU, on the CPU with the Fake_AWS. A cloud module may import `splatpipe` to call its public
-functions; `splatpipe` never imports `cloud`. This module imports no boto3 of its own.
+The GPU checks import torch, gsplat and fused-ssim inside their functions, and the training check
+imports the GPU_Module inside its function with `load_gpu`, so this module imports on a laptop.
+There the Test_Suite runs `run_smoke_test` with stand-in checks, and the checks that need no GPU,
+on the CPU with the Fake_AWS. A cloud module may import `splatpipe` to call its public functions;
+`splatpipe` never imports `cloud`. This module imports no boto3 of its own.
 """
 
 from __future__ import annotations
@@ -47,6 +49,8 @@ from splatpipe.frames.ffmpeg import has_filters
 from splatpipe.jobs import check_job_id, job_folder, remove_tree
 from splatpipe.make import make_job
 from splatpipe.run import StepEntry
+from splatpipe.train.gpu_api import load_gpu
+from splatpipe.train.smoke import SmokeSizes, run_smoke_training
 
 from cloud.aws import job_machine_aws
 from cloud.config import load_cloud_config
@@ -311,6 +315,24 @@ def _check_moge_weights(context: SmokeContext) -> str:
     return "the MoGe-2 weights match their pinned sha256"
 
 
+def _check_training(context: SmokeContext) -> str:
+    """The Trainer trains the Smoke_Scene on the GPU, and the PLY it gives passes the PLY_Check.
+
+    The sizes come from `[cloud.smoke]`, and `run_smoke_training` does the rest. `load_gpu`, looked
+    up in this module when the check runs, imports the GPU_Module and torch only then, so this
+    module still imports on a laptop (Req 12.10) and a test can patch `cloud.smoke_runner.load_gpu`
+    with a GPU_Stand_In. Like the gsplat and fused-ssim checks, it has no timeout of its own: the
+    log records its seconds (Req 12.11).
+    """
+    checks = context.cloud_config.smoke_checks
+    sizes = SmokeSizes(images=checks.train_images, points=checks.train_points,
+                       pixels=checks.image_pixels, splats=checks.train_splats,
+                       steps=checks.train_steps, refine_start_step=checks.train_refine_start_step,
+                       refine_every=checks.train_refine_every,
+                       sh_degree_interval=checks.train_sh_degree_interval)
+    return run_smoke_training(context.config, sizes, context.scratch, load_gpu())
+
+
 def _check_cloud_runner(context: SmokeContext) -> str:
     """The Cloud_Runner runs a tiny Fake_Step Job end to end (Req 11.2).
 
@@ -354,6 +376,7 @@ SMOKE_CHECKS: tuple[SmokeCheck, ...] = (
     SmokeCheck("node", _check_node),
     SmokeCheck("splat-transform", _check_splat_transform),
     SmokeCheck("moge-weights", _check_moge_weights),
+    SmokeCheck("training", _check_training),
     SmokeCheck("cloud-runner", _check_cloud_runner),
 )
 

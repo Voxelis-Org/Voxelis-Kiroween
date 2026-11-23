@@ -272,3 +272,18 @@ def test_the_frames_step_report_fields_part_names_every_count_and_the_four_timin
              *(f"`timings.{name}`" for name in FRAMES_TIMINGS)]
     missing = [name for name in names if name not in report]
     assert not missing, f"The frames section's Step report fields part should name {missing}"
+
+
+# The smoke test part of ## Running a job in the cloud (training spec, Req 12.13, 13.11)
+
+CLOUD = "Running a job in the cloud"
+
+
+def test_the_smoke_test_part_names_the_training_check_train_steps_and_cloud_smoke() -> None:
+    """Training spec, Req 12.13, 13.11: the smoke test part lists the training check and says its
+    numbers are in [cloud.smoke]."""
+    cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
+    smoke = doc_part(cloud, 3, "The smoke test", f"The ## {CLOUD} section")
+    phrases = ("training check", "`train_steps`", "`[cloud.smoke]`")
+    missing = [words for words in phrases if words not in smoke]
+    assert not missing, f"The part headed The smoke test should name {missing}"

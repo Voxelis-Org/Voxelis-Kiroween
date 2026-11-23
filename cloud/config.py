@@ -55,6 +55,13 @@ class SmokeChecks:
     scene_gaussians: int             # Gaussians in the tiny synthetic scene gsplat renders
     image_pixels: int                # width and height of the render, the SSIM images and the video
     video_seconds: float             # length of the test video the fake-step job is made from
+    train_images: int                # images in the training check's tiny scene
+    train_points: int                # points the training check's scene starts from
+    train_splats: int                # most splats the training check may grow to, its splat budget
+    train_steps: int                 # Iterations the training check trains for
+    train_refine_start_step: int     # Iteration after which the training check's MCMC refines
+    train_refine_every: int          # Iterations between the training check's refines
+    train_sh_degree_interval: int    # Iterations between rises of the training check's SH degree
 
 
 @dataclass(frozen=True)
@@ -231,6 +238,13 @@ def _read_smoke_checks(cloud: Mapping[str, object]) -> SmokeChecks:
         scene_gaussians=_whole(table, "scene_gaussians", label("scene_gaussians")),
         image_pixels=_whole(table, "image_pixels", label("image_pixels")),
         video_seconds=_number(table, "video_seconds", label("video_seconds")),
+        train_images=_whole(table, "train_images", label("train_images")),
+        train_points=_whole(table, "train_points", label("train_points")),
+        train_splats=_whole(table, "train_splats", label("train_splats")),
+        train_steps=_whole(table, "train_steps", label("train_steps")),
+        train_refine_start_step=_whole(table, "train_refine_start_step", label("train_refine_start_step")),
+        train_refine_every=_whole(table, "train_refine_every", label("train_refine_every")),
+        train_sh_degree_interval=_whole(table, "train_sh_degree_interval", label("train_sh_degree_interval")),
     )
 
 

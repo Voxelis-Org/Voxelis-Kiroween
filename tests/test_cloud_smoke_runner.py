@@ -12,9 +12,14 @@ the CPU with no network, no GPU and no AWS account, against the `FakeAws` seam (
 - The checks that need no GPU run here, with stand-ins for the tools: COLMAP, Node, splat-transform,
   the ffmpeg filter check and the MoGe-2 sha256. The Cloud_Runner check runs for real, on a tiny
   Fake_Step Job, when ffmpeg is installed, and is skipped when it isn't.
-- The GPU checks (torch, gsplat and fused-ssim) need the machine image's GPU packages, so their
-  bodies run only on the real machine. On a laptop without those packages, each fails on its own and
-  the smoke test goes on.
+- The GPU checks (torch, gsplat, fused-ssim and training) need the machine image's GPU packages, so
+  their bodies run only on the real machine. On a laptop without those packages, each fails on its
+  own and the smoke test goes on. The training check imports the GPU_Module through
+  `splatpipe.train.gpu_api.importlib`, which that test replaces with a stand-in that raises as a
+  machine with no torch does, so the check fails with the training spec's Req 2.2 message and no
+  test imports splatpipe/train/gpu.py.
+- The training check also runs here whole, with `cloud.smoke_runner.load_gpu` patched to give a
+  FakeGpu, the GPU_Stand_In, in place of the GPU_Module (training spec, Req 12.9, 14.10).
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -229,11 +235,11 @@ def test_main_refuses_without_the_image_id(
 # The checks
 
 def test_the_smoke_checks_cover_the_image_in_order() -> None:
-    # The user's list, then the Cloud_Runner on a fake-step job last. Later specs add their own GPU
-    # paths, starting with training (Req 11.5).
+    # The user's list, then training, the first of the GPU paths later specs add (Req 11.5;
+    # training spec, Req 12.1), just before the Cloud_Runner on a fake-step job, which stays last.
     assert [check.name for check in SMOKE_CHECKS] == [
         "torch-gpu", "gsplat", "fused-ssim", "ffmpeg-zscale", "colmap", "node",
-        "splat-transform", "moge-weights", "cloud-runner"]
+        "splat-transform", "moge-weights", "training", "cloud-runner"]
 
 
 # What each tool prints for its version, as _run_command gives it back: stdout, a line break, then
@@ -320,17 +326,69 @@ def test_the_moge_check_passes_only_on_the_pinned_sha256(
         check.run(context_in(tmp_path))
 
 
+# load_gpu's Readable_Error on a machine with no torch, as the training spec's Req 2.2 words it.
+NO_TORCH = ("The train step runs only on the GPU machine image, which has torch, gsplat and "
+            "fused-ssim, and this machine has no torch. Run the job there with "
+            "`uv run python -m cloud.start`.")
+
+
+class NoTorchImportlib:
+    """A stand-in for splatpipe.train.gpu_api's importlib, as the GPU interface's tests use one.
+    Its import_module records each name it's asked to import in `names`, then raises the
+    ModuleNotFoundError that importing the GPU_Module raises on a machine with no torch, so no
+    test imports splatpipe/train/gpu.py."""
+
+    def __init__(self) -> None:
+        self.names: list[str] = []
+
+    def import_module(self, name: str) -> ModuleType:
+        """Record `name`, then raise as a machine with no torch does."""
+        self.names.append(name)
+        raise ModuleNotFoundError("No module named 'torch'", name="torch")
+
+
 @pytest.mark.skipif(importlib.util.find_spec("torch") is not None,
                     reason="torch is installed here, so this isn't a machine without the GPU packages")
-def test_without_the_gpu_packages_each_gpu_check_fails_on_its_own() -> None:
+def test_without_the_gpu_packages_each_gpu_check_fails_on_its_own(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    stand_in = NoTorchImportlib()
+    monkeypatch.setattr("splatpipe.train.gpu_api.importlib", stand_in)
     aws = FakeAws()
-    gpu = [CHECKS[name] for name in ("torch-gpu", "gsplat", "fused-ssim")]
+    gpu = [CHECKS[name] for name in ("torch-gpu", "gsplat", "fused-ssim", "training")]
     assert smoke(aws, [*gpu, SmokeCheck("after", passing("fine"))], []) is False
     log = log_of(aws)
     for check in gpu:
         assert f"FAIL {check.name}" in log
     assert "ModuleNotFoundError" in log
+    # The training check asked the stand-in for the GPU_Module and failed with the Req 2.2
+    # message, as it is, and the check after it still ran.
+    assert stand_in.names == ["splatpipe.train.gpu"]
+    training = next(line for line in log.splitlines() if line.startswith("FAIL training "))
+    assert training.endswith(f": {NO_TORCH}")
     assert "PASS after" in log
+
+
+def test_the_training_check_trains_with_the_smoke_numbers_and_gives_its_line(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_gpu: Callable[..., Any]) -> None:
+    gpu = fake_gpu()
+    monkeypatch.setattr(cloud.smoke_runner, "load_gpu", lambda: gpu)
+    context = context_in(tmp_path)
+
+    detail = CHECKS["training"].run(context)
+
+    assert detail == ("trained 30 iterations, with 1 refine, to 200 splats at SH degree 3, and the "
+                      "PLY check passed")
+    # The stand-in got the [cloud.smoke] numbers: the scene's images and their size, the points,
+    # and the five settings the check trains with, with no Stop_Time.
+    checks = context.cloud_config.smoke_checks
+    name, (scene, start, settings, stop) = gpu.calls[-1]
+    assert (name, stop) == ("train", None)
+    assert (len(scene.views), scene.width, scene.height, len(start)) == (
+        checks.train_images, checks.image_pixels, checks.image_pixels, checks.train_points)
+    assert (settings.steps, settings.max_splats, settings.refine_start_step,
+            settings.refine_every, settings.sh_degree_interval) == (
+        checks.train_steps, checks.train_splats, checks.train_refine_start_step,
+        checks.train_refine_every, checks.train_sh_degree_interval)
 
 
 # _run_command, which the tool checks use, on real tiny commands
