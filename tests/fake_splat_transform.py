@@ -12,8 +12,9 @@ its environment says:
   LAST_LINE, on stderr, in plain text.
 - silent exits with 0 and writes nothing.
 - empty writes a .sog of 0 bytes and exits with 0.
-- hang sleeps for HANG_SECONDS, longer than any test's timeout. It's a plain sleep, so a kill
-  stops it at once.
+- hang prints one line on stdout, PID_PREFIX and its process ID, so a test can check that the
+  process is gone once it's stopped, then sleeps for HANG_SECONDS, longer than any test's
+  timeout. It's a plain sleep, so a kill stops it at once.
 
 Any other value, or none, exits with USAGE_EXIT_CODE and one line on stderr, so a test that
 forgets to set it fails loudly. So does a run with no arguments, which has no .sog to write.
@@ -45,6 +46,8 @@ FAIL_EXIT_CODE = 3
 LAST_LINE = "Error: the splat-transform stand-in failed on purpose (FAKE_SPLAT_TRANSFORM=fail)."
 # How long hang sleeps, in seconds.
 HANG_SECONDS = 60
+# The start of hang's one line, which its process ID and a \n follow.
+PID_PREFIX = "fake_splat_transform.py: hanging on purpose as process "
 # The exit code for a missing or unknown mode, or no arguments.
 USAGE_EXIT_CODE = 2
 
@@ -118,6 +121,7 @@ def main(argv: list[str]) -> int:
         case "empty":
             target.write_bytes(b"")
         case "hang":
+            say("stdout", f"{PID_PREFIX}{os.getpid()}\n")
             time.sleep(HANG_SECONDS)
     return 0
 
