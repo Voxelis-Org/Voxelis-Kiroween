@@ -109,3 +109,4 @@ What the test found, and how the rules block it:
 - 2026-11-23 08:29+05:30 | feat/clean | clean 7.6 Write the real splat-transform test in `tests/test_clean_export.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, tests/fake_splat_transform.py, tests/test_clean_export.py
 - 2026-11-23 08:34+05:30 | feat/clean | clean 7.8 Run the tests and commit | tests/fake_splat_transform.py, tests/test_clean_export.py, .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json
 - 2026-11-23 09:20+05:30 | feat/clean | clean 8.1 Write `run()` and `work()` in `splatpipe/clean/__init__.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, splatpipe/clean/__init__.py, tests/splats.py, splatpipe/clean/__main__.py
+- 2026-11-23 09:20+05:30 | feat/clean | clean 8.2 Write `splatpipe/clean/__main__.py` | .kiro/specs/clean/tasks.md, .kiro/specs/clean/tasks.meta.json, splatpipe/clean/__init__.py, tests/splats.py, splatpipe/clean/__main__.py
