@@ -1,14 +1,25 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_frames, which changes its [frames] settings, work_calls, which records whose Fake_Step work
-runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg.
+set_frames and set_cameras, which change its [frames] and [cameras] settings, colmap_options,
+which gives the COLMAP options of the camera solve's options.md, work_calls, which records whose
+Fake_Step work runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's
+ffprobe and ffmpeg.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
 a Job in the real data/ folder (Req 14.2). The test config also has [frames] with its three
 Preset tables, so a test that runs the Frames_Step without a Config of its own gets settings
-(frames spec, Req 9.11).
+(frames spec, Req 9.11). It has [cameras] with its three Preset tables for the Cameras_Step:
+the real config's, read once, with min_placed_frames at 1 and every *_timeout_seconds at 60 on
+top (cameras spec, Req 12.15, C5). set_cameras changes any of its keys, or leaves one out when
+given MISSING.
+
+colmap_options parses the seven code blocks of .kiro/skills/colmap-cli/references/options.md
+with this file's own code, never with splatpipe/cameras/settings.py, and sorts each option the
+way the cameras design does: a Fixed_Constant, a path, --SequentialMatching.overlap, or an
+Option_Key with the key that O11's naming rule gives it. It's the oracle of the settings test
+and of Property 1.
 
 FakeTools gives the Frames_Step synthetic frames, from a list or from a function that makes each
 one on demand, and records what the step asked for. It can also report that ffmpeg has no
@@ -18,19 +29,25 @@ through splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 2.4, 
 
 from __future__ import annotations
 
+import enum
 import json
 import os
+import re
+import shlex
 import sys
+import tomllib
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 import numpy as np
 import pytest
 
 import splatpipe.config
+from splatpipe.config import PRESETS, REPO_ROOT
 from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
@@ -101,6 +118,32 @@ FRAMES = {
 # for the same reason as min_picks.
 BASE_PICKS = {"fast": 2, "default": 3, "quality": 4}
 
+# The real config's [cameras] with its Preset tables, read once by path, because temp_config
+# points CONFIG_PATH at the test config.
+REAL_CAMERAS = tomllib.loads((REPO_ROOT / "config.toml").read_text(encoding="utf-8"))["cameras"]
+
+# The test config's [cameras] Shared_Settings: the real config's, with two test values on top
+# (cameras spec, C5): min_placed_frames at 1, so tiny Jobs pass the Placed_Check, and every
+# *_timeout_seconds at 60. Each real value keeps the type tomllib gave it, so toml_value writes it
+# back as the same TOML type. The test values are integers.
+CAMERAS = {**{key: value for key, value in REAL_CAMERAS.items() if key not in PRESETS},
+           "min_placed_frames": 1,
+           **{key: 60 for key in REAL_CAMERAS if key.endswith("_timeout_seconds")}}
+
+# The test config's near_overlap, the one Preset_Setting of [cameras], for each Preset: the real
+# config's.
+NEAR_OVERLAP = {preset: REAL_CAMERAS[preset]["near_overlap"] for preset in PRESETS}
+
+
+class Missing(enum.Enum):
+    """The type of MISSING."""
+
+    MISSING = "missing"
+
+
+# What set_cameras takes in place of a value to leave that key out of the test config.
+MISSING: Final = Missing.MISSING
+
 
 def toml_value(value: object) -> str:
     """`value` as a TOML value: a bool as true or false, text in double quotes as JSON writes it,
@@ -127,17 +170,41 @@ def frames_text(frames: Mapping[str, Any]) -> str:
                       for preset, value in base_picks.items()))
 
 
+def table_text(name: str, values: Mapping[str, Any]) -> str:
+    """The TOML table [name], with a line for each key in `values` whose value isn't MISSING."""
+    return f"\n[{name}]\n" + "".join(f"{key} = {toml_value(value)}\n"
+                                     for key, value in values.items() if value is not MISSING)
+
+
+def cameras_text(cameras: Mapping[str, Any]) -> str:
+    """[cameras] and its three Preset tables as TOML, with each key in `cameras` set to its value
+    and every other key at its value in CAMERAS or NEAR_OVERLAP. A key set to MISSING is left out.
+
+    A Shared_Setting takes its new value, like {"min_placed_frames": 5}. near_overlap takes a dict
+    of the Presets it changes, like {"near_overlap": {"quality": 3}}, and the other Presets keep
+    theirs. near_overlap set to MISSING is left out of every Preset table.
+    """
+    shared = {**CAMERAS, **{key: value for key, value in cameras.items() if key != "near_overlap"}}
+    changed = cameras.get("near_overlap", {})
+    near_overlap = (dict.fromkeys(NEAR_OVERLAP, MISSING) if changed is MISSING
+                    else {**NEAR_OVERLAP, **changed})
+    return table_text("cameras", shared) + "".join(
+        table_text(f"cameras.{preset}", {"near_overlap": value})
+        for preset, value in near_overlap.items())
+
+
 def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
-                frames: Mapping[str, Any] | None = None) -> str:
+                frames: Mapping[str, Any] | None = None,
+                cameras: Mapping[str, Any] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [frames] comes last, with the keys in `frames` changed
-    as frames_text says. The Jobs_Folder is written with forward slashes, so a Windows backslash
-    can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames] and then [cameras] come last, with the keys in
+    `frames` and `cameras` changed as frames_text and cameras_text say. The Jobs_Folder is
+    written with forward slashes, so a Windows backslash can't become a TOML escape."""
     modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
     fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
-    return jobs + fakes + frames_text(frames or {})
+    return jobs + fakes + frames_text(frames or {}) + cameras_text(cameras or {})
 
 
 @pytest.fixture(autouse=True)
@@ -161,9 +228,9 @@ def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. [frames] is back to the test config's values
-    too. load_config() reads the file each time it's called, so the next run that loads the config
-    sees the change.
+    fail = "none", and set_fail() sets them all back. [frames] and [cameras] are back to the test
+    config's values too. load_config() reads the file each time it's called, so the next run that
+    loads the config sees the change.
     """
     def rewrite(**modes: str) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", fail=modes), encoding="utf-8")
@@ -178,14 +245,145 @@ def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     its own of, takes a dict of the Presets to change, like set_frames(base_picks={"fast": 50}).
 
     Like set_fail, each call writes the whole file again from config_text, so every key it doesn't
-    name is back to the test config's value, and every fail is back to "none". The next run that
-    loads the config sees the change. Each test gets a new test config, so the next test sees the
-    test config's values again.
+    name is back to the test config's value, [cameras] is too, and every fail is back to "none".
+    The next run that loads the config sees the change. Each test gets a new test config, so the
+    next test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
 
     return rewrite
+
+
+@pytest.fixture
+def set_cameras(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_cameras(**values), which rewrites the test config with each [cameras] key it names
+    set to the given value, like set_cameras(min_placed_frames=5), or left out when the value is
+    MISSING. near_overlap, which each Preset has its own of, takes a dict of the Presets to
+    change, like set_cameras(near_overlap={"quality": 3}), and set_cameras(near_overlap=MISSING)
+    leaves it out of every Preset table.
+
+    Like set_frames, each call writes the whole file again from config_text, so every key it
+    doesn't name is back to the test config's value, [frames] is too, and every fail is back to
+    "none". The next run that loads the config sees the change. Each test gets a new test config,
+    so the next test sees the test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", cameras=values), encoding="utf-8")
+
+    return rewrite
+
+
+# The camera solve's COLMAP command lines, one bash code block per command (colmap-cli skill).
+OPTIONS_MD = REPO_ROOT / ".kiro" / "skills" / "colmap-cli" / "references" / "options.md"
+
+# A bash code block of options.md, from the line after its ```bash to its closing ```.
+BASH_BLOCK = re.compile(r"^```bash\n(.*?)^```", re.MULTILINE | re.DOTALL)
+
+# The options that the cameras design's "The Fixed_Constants" holds in code, but for the paths,
+# which are sorted on their own: the four log options of every command, and each command's own.
+# options.md gives each its fixed value, except --SequentialMatching.quadratic_overlap, which is 1
+# there and in the Far_Match_Run but 0 in the Near_Match_Run (A1).
+LOG_OPTIONS = ("--log_target", "--log_level", "--log_severity", "--log_color")
+FIXED_OPTIONS = {
+    "feature_extractor": ("--camera_mode", "--FeatureExtraction.type",
+                          "--FeatureExtraction.use_gpu"),
+    "sequential_matcher": ("--FeatureMatching.type", "--FeatureMatching.use_gpu",
+                           "--SequentialMatching.loop_detection",
+                           "--SequentialMatching.quadratic_overlap"),
+    "view_graph_calibrator": (),
+    "global_mapper": ("--GlobalMapper.gp_use_gpu", "--GlobalMapper.ba_ceres_use_gpu",
+                      "--GlobalMapper.ba_backend"),
+    "mapper": ("--Mapper.ba_use_gpu", "--Mapper.ba_local_backend", "--Mapper.ba_global_backend"),
+    "image_undistorter": ("--output_type",),
+    "image_undistorter_standalone": (),
+}
+
+# The folders that every path in options.md starts from: the frames step's work folder and the
+# camera solve's.
+PATH_FOLDERS = ("$FRAMES", "$OUT")
+
+# The two commands whose options with no group share the undistortion_ keys (O11).
+UNDISTORTERS = ("image_undistorter", "image_undistorter_standalone")
+
+# The Option_Keys that O11 names by hand: Req 12.2's camera_model, and default_random_seed, which
+# every command takes and which keeps its own name.
+OWN_KEYS = {"--ImageReader.camera_model": "camera_model",
+            "--default_random_seed": "default_random_seed"}
+
+
+@dataclass(frozen=True)
+class ColmapOption:
+    """One option of a command's block in options.md, with its value's text and its sort.
+
+    `sort` is "fixed" for a Fixed_Constant, "path" for a path, "overlap" for
+    --SequentialMatching.overlap, which near_overlap or far_overlap sets, and "key" for an
+    Option_Key, whose key is `key`.
+    """
+
+    option: str  # COLMAP's option, like "--SiftExtraction.max_num_features"
+    text: str  # its value as a shell reads the block, like "8192" or "$OUT/database.db"
+    sort: Literal["fixed", "path", "overlap", "key"]
+    key: str | None = None  # the Option_Key, like "sift_extraction_max_num_features", or None
+
+
+def option_key(command: str, option: str) -> str:
+    """The Option_Key that O11's naming rule gives `option` of `command`.
+
+    --Group.name gets <group>_<name>, with the group in snake case. An option with no group gets
+    its command's name in front, or undistortion_ for the two undistorters. The whole key is in
+    lower case, so --GlobalMapper.ba_refine_points3D gets global_mapper_ba_refine_points3d.
+    OWN_KEYS names the two keys the rule doesn't give.
+    """
+    if option in OWN_KEYS:
+        return OWN_KEYS[option]
+    group, _, name = option.removeprefix("--").rpartition(".")
+    if group:
+        prefix = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", group)  # TwoViewGeometry: Two_View_Geometry
+    else:
+        prefix = "undistortion" if command in UNDISTORTERS else command
+    return f"{prefix}_{name}".lower()
+
+
+def colmap_option(command: str, option: str, text: str) -> ColmapOption:
+    """`option` of `command`, with its value's text, sorted the way the cameras design sorts it."""
+    if option in LOG_OPTIONS or option in FIXED_OPTIONS[command]:
+        return ColmapOption(option, text, "fixed")
+    if text.partition("/")[0] in PATH_FOLDERS:
+        return ColmapOption(option, text, "path")
+    if option == "--SequentialMatching.overlap":
+        return ColmapOption(option, text, "overlap")
+    return ColmapOption(option, text, "key", option_key(command, option))
+
+
+def parse_options(text: str) -> dict[str, tuple[ColmapOption, ...]]:
+    """The options of each command in `text`, the text of options.md, by command in the order of
+    its code blocks, with each block's options in the block's order.
+
+    A block is one shell command: colmap, the command, then each option followed by its value,
+    with a backslash ending each line but the last. It's split as a shell splits it, so the
+    backslash joins each line to the next and the quotes around a path come off, but $FRAMES and
+    $OUT stay as they are.
+    """
+    commands: dict[str, tuple[ColmapOption, ...]] = {}
+    for block in BASH_BLOCK.findall(text):
+        words = shlex.split(block.replace("\\\n", ""))  # words[0] is colmap
+        command, rest = words[1], words[2:]
+        commands[command] = tuple(colmap_option(command, option, value)
+                                  for option, value in zip(rest[::2], rest[1::2]))
+    return commands
+
+
+@pytest.fixture(scope="session")
+def colmap_options() -> Mapping[str, tuple[ColmapOption, ...]]:
+    """Give the options of the seven COLMAP commands of options.md as parse_options reads them,
+    each a ColmapOption with its sort and, for an Option_Key, its key.
+
+    It's the oracle of the settings test and of Property 1, so it reads only options.md, never
+    splatpipe/cameras/settings.py. It's session-scoped, so a Hypothesis test can take it, and
+    read-only, because every test shares it.
+    """
+    return MappingProxyType(parse_options(OPTIONS_MD.read_text(encoding="utf-8")))
 
 
 def make_dir_link(link: Path, target: Path) -> None:

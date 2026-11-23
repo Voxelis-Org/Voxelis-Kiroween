@@ -23,6 +23,13 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
 - The Frames_Step's imports (frames spec, Req 9.9, 13.10): every splatpipe/frames/*.py imports
   only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, so torch, gsplat, boto3 and
   cloud/ stay out.
+- The Cameras_Step's imports (cameras spec, Req 2.1, 12.13, 12.14, 16.10): every
+  splatpipe/cameras/*.py imports only names in sys.stdlib_module_names, numpy, cv2 and
+  splatpipe, so torch, gsplat, boto3, pycolmap and cloud/ stay out. None of those files names
+  VideoCapture or VideoWriter, cv2's video classes: not in an import like `from cv2 import
+  VideoWriter`, an attribute like cv2.VideoCapture under any name the file gives cv2, or a bare
+  name. A docstring or comment that names one isn't code, so it doesn't count. With the
+  dependency check, this shows the step needs no new package (Req 12.12).
 - The dependencies (frames spec, Req 9.8): numpy and opencv-python-headless are runtime
   dependencies in pyproject.toml and in the project's own entry in uv.lock, and no package in
   either file is plain opencv-python, torch, gsplat or an nvidia-* or cuda-* package. Names are
@@ -30,7 +37,8 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
   clean-export spec can decide scipy without changing it.
 
 Each import check's failure lists the file and the line of every import it found, and the
-dependency check's failure lists the file of every package it found.
+cameras check's failure does the same for every video class it found. The dependency check's
+failure lists the file of every package it found.
 """
 
 import ast
@@ -63,6 +71,12 @@ LOADED_BY_RUN = ("import json, sys, splatpipe.run; "
 # The top-level names a splatpipe/frames/*.py may import besides the standard library (frames
 # spec, Req 9.9).
 FRAMES_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+# The top-level names a splatpipe/cameras/*.py may import besides the standard library (cameras
+# spec, Req 12.13).
+CAMERAS_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+# cv2's classes that read and write video, which no splatpipe/cameras/*.py names (cameras spec,
+# Req 12.14).
+VIDEO_CLASSES = frozenset({"VideoCapture", "VideoWriter"})
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 # The runtime dependencies the Frames_Step needs (frames spec, Req 9.8).
@@ -125,6 +139,17 @@ def imports_of(path: Path) -> list[tuple[str, str]]:
     package = ".".join(path.parent.relative_to(REPO_ROOT).parts)
     shown = path.relative_to(REPO_ROOT).as_posix()
     return [(f"{shown}:{line}", name) for line, name in imports_in(path.read_bytes(), package)]
+
+
+def video_classes_of(path: Path) -> list[tuple[str, str]]:
+    """Every attribute or name in the file at `path` that is one of VIDEO_CLASSES, as
+    ("<file>:<line>", its code), like cv2.VideoCapture under any name the file gives cv2. A
+    docstring or comment that names one isn't code, so it isn't read."""
+    shown = path.relative_to(REPO_ROOT).as_posix()
+    found = [(node.lineno, ast.unparse(node)) for node in ast.walk(ast.parse(path.read_bytes()))
+             if (isinstance(node, ast.Attribute) and node.attr in VIDEO_CLASSES)
+             or (isinstance(node, ast.Name) and node.id in VIDEO_CLASSES)]
+    return [(f"{shown}:{line}", code) for line, code in sorted(found)]
 
 
 def top(name: str) -> str:
@@ -233,6 +258,19 @@ def test_the_frames_step_imports_only_the_standard_library_numpy_cv2_and_splatpi
     allowed = sys.stdlib_module_names | FRAMES_IMPORTS
     found = [(where, name) for path in sorted(SPLATPIPE.glob("frames/*.py"))
              for where, name in imports_of(path) if top(name) not in allowed]
+    assert found == []
+
+
+def test_the_cameras_step_imports_only_stdlib_numpy_cv2_and_splatpipe_and_no_video_class() -> None:
+    """Cameras spec, Req 2.1, 12.13, 12.14 and 16.10. `from cv2 import VideoWriter` reads as
+    cv2.VideoWriter, so the import reader finds it, and video_classes_of finds the attributes and
+    names in the code. With the dependency check below, this shows that the step needs no new
+    package (Req 12.12)."""
+    allowed = sys.stdlib_module_names | CAMERAS_IMPORTS
+    paths = sorted(SPLATPIPE.glob("cameras/*.py"))
+    found = [(where, name) for path in paths for where, name in imports_of(path)
+             if top(name) not in allowed or name.removeprefix("cv2.") in VIDEO_CLASSES]
+    found += [use for path in paths for use in video_classes_of(path)]
     assert found == []
 
 
