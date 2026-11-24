@@ -3,6 +3,9 @@
 The tests of the Pipeline_Doc's ## Step: frames section also read the real config.toml by path,
 and take the Frames_Record's top-level fields from what splatpipe.frames.files.frames_record
 gives. So the section has to name the keys the real [frames] holds and the fields the step writes.
+The tests of its ## Step: cameras section do the same with the real [cameras], and take the
+Solve_Record's top-level fields and the Viewer_Cameras' fields from what
+splatpipe.cameras.outputs.solve_record and viewer_cameras give for a small example.
 """
 
 import re
@@ -11,8 +14,12 @@ from pathlib import Path
 
 import numpy as np
 
+from splatpipe.cameras.level import LevelMove, Levelling
+from splatpipe.cameras.model import POINT2D, Camera, Image, Model, Points
+from splatpipe.cameras.outputs import solve_record, viewer_cameras
+from splatpipe.cameras.solve import ModelCount, Solved
 from splatpipe.frames.choose import Kept
-from splatpipe.frames.files import frames_record
+from splatpipe.frames.files import frames_record, pick_name
 from splatpipe.frames.mask import MaskChoice
 from splatpipe.frames.scores import Scores
 from splatpipe.run import STEP_LIST
@@ -68,6 +75,25 @@ def test_the_zimg_row_names_the_wtfpl_and_zscale() -> None:
     row = licence_row("zimg (libzimg)")
     assert "WTFPL" in row["Licence"], "The zimg (libzimg) row should give the WTFPL"
     assert "zscale" in row["How we use it"], "The zimg (libzimg) row should say zscale uses it"
+
+
+# The seven COLMAP commands the Cameras_Step runs (cameras spec, Req 15.8).
+COLMAP_COMMANDS = ("feature_extractor", "sequential_matcher", "view_graph_calibrator",
+                   "global_mapper", "mapper", "image_undistorter", "image_undistorter_standalone")
+# The COLMAP row's Installed cell: Homebrew's COLMAP on the laptop, none on the machine image yet.
+COLMAP_INSTALLED = "Yes, on the laptop through Homebrew. Not yet on the machine image."
+
+
+def test_the_colmap_row_names_the_cameras_step_commands_and_homebrews_colmap_on_laptops() -> None:
+    """Cameras spec, Req 15.8, 16.12."""
+    row = licence_row("COLMAP 4.2.1")
+    commands = [f"`{command}`" for command in COLMAP_COMMANDS]
+    phrases = ("never vendored or linked", "no pycolmap",
+               "Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD", "`-h`", "`use_gpu 0`")
+    missing = [words for words in (*commands, *phrases) if words not in row["How we use it"]]
+    assert not missing, f"The COLMAP 4.2.1 row should say {missing}"
+    assert row["Installed"] == COLMAP_INSTALLED, (
+        f"The COLMAP 4.2.1 row's Installed cell should say {COLMAP_INSTALLED!r}")
 
 
 # The Skeleton's ## headings in docs/pipeline.md. They all come before the first ## Step: section.
@@ -268,3 +294,124 @@ def test_the_frames_step_report_fields_part_names_every_count_and_the_four_timin
              *(f"`timings.{name}`" for name in FRAMES_TIMINGS)]
     missing = [name for name in names if name not in report]
     assert not missing, f"The frames section's Step report fields part should name {missing}"
+
+
+# The ## Step: cameras section (cameras spec, Req 15.1–15.6, 16.12)
+
+CAMERAS = "Step: cameras"
+# The Work_Folder's parts (Req 11.1) and the Model_Files of the Levelled_Model (Req 10.5).
+WORK_FOLDER_PARTS = ("`colmap/`", "`images/`", "`masks/`", "`sparse/`", "`solve.json`")
+MODEL_FILES = ("`cameras.bin`", "`images.bin`", "`points3D.bin`")
+# The Cameras_Report's counts (Req 13.1) and timings (Req 13.2): one for each COLMAP_Command,
+# with the two Match_Runs as sequential_matcher_near and sequential_matcher_far, then the stages.
+CAMERAS_COUNTS = ("picks", "placed_frames", "points3d", "models_found", "fallback_ran",
+                  "kept_from_global", "levelled")
+CAMERAS_TIMINGS = ("feature_extractor", "sequential_matcher_near", "sequential_matcher_far",
+                   "view_graph_calibrator", "global_mapper", "mapper", "image_undistorter",
+                   "image_undistorter_standalone", "matching", "mapping", "undistortion",
+                   "levelling", "writing")
+
+
+def cameras_part(title: str) -> str:
+    """The text of the ### part with this title in the ## Step: cameras section."""
+    section = doc_part(pipeline_parts(), 2, CAMERAS)
+    return doc_part(doc_parts(section), 3, title, f"The ## {CAMERAS} section")
+
+
+def one_frame_model() -> Model:
+    """A Levelled_Model with one PINHOLE camera and one Placed_Frame, Pick 0, with no 2D points,
+    and no points."""
+    camera = Camera(camera_id=1, model_id=1, width=2, height=2,  # model 1 is PINHOLE
+                    params=(1.0, 1.0, 1.0, 1.0))
+    image = Image(image_id=1, qvec=(1.0, 0.0, 0.0, 0.0), tvec=(0.0, 0.0, 0.0), camera_id=1,
+                  name=pick_name(0), points2d=np.zeros(0, dtype=POINT2D))
+    points = Points(ids=np.zeros(0, dtype="<u8"), xyz=np.zeros((0, 3)),
+                    rgb=np.zeros((0, 3), dtype="u1"), errors=np.zeros(0), tracks=())
+    return Model(cameras=(camera,), images=(image,), points=points)
+
+
+def solve_record_fields() -> list[str]:
+    """The Solve_Record's top-level fields, as solve_record gives them for an OPENCV camera whose
+    Calibration worked, then a global mapper whose one Model places Pick 0, and a Levelling that
+    moved the scene with the identity as its Level_Move."""
+    placed = ModelCount(number=0, placed=1)
+    solved = Solved(calibration_ran=True, calibration_failure=None, mapper="global",
+                    fallback_reason=None, models=(placed,), final=placed, folder=Path("0"),
+                    model=one_frame_model(), placed_names=frozenset({pick_name(0)}))
+    levelling = Levelling(move=LevelMove(rotation=np.eye(3), translation=np.zeros(3)),
+                          levelled=True, reason=None, mean_up_length=1.0,
+                          scene_centre="axis_point", heading_camera=pick_name(0))
+    return list(solve_record(solved, levelling, "OPENCV", None))
+
+
+def viewer_cameras_fields() -> list[str]:
+    """The Viewer_Cameras' fields, as viewer_cameras gives them for one_frame_model, levelled:
+    the top-level fields, then the camera's, then those of the frame of Pick 0."""
+    viewer = viewer_cameras(one_frame_model(), {pick_name(0): 0}, levelled=True)
+    return [*viewer, *viewer["camera"], *viewer["frames"][0]]
+
+
+def test_the_cameras_section_comes_after_the_frames_section_and_has_the_five_parts() -> None:
+    """Cameras spec, Req 15.1, 16.12."""
+    parts = pipeline_parts()
+    section = doc_parts(doc_part(parts, 2, CAMERAS))
+    for title in STEP_PARTS:
+        doc_part(section, 3, title, f"The ## {CAMERAS} section")
+    titles = [title for level, title, _ in parts if level == 2]
+    earlier = titles[:titles.index(CAMERAS)]
+    missing = [title for title in (*SKELETON_HEADINGS, FRAMES) if title not in earlier]
+    assert not missing, (f"docs/pipeline.md should have these ## headings before ## {CAMERAS}: "
+                         f"{missing}")
+
+
+def test_the_cameras_what_it_reads_part_names_the_frames_files_and_what_colmap_reads() -> None:
+    """Cameras spec, Req 15.2, 16.12."""
+    reads = cameras_part("What it reads")
+    phrases = ("`frames.json`", "`images/`", "`grey/`", "`mask.png`",
+               "`feature_extractor` reads the grey copies",
+               "`global_mapper`, `mapper` and `image_undistorter` read the colour picks",
+               "machine image needs COLMAP 4.2.1", "`.kiro/steering/tech.md`")
+    missing = [words for words in phrases if words not in reads]
+    assert not missing, f"The cameras section's What it reads part should say {missing}"
+
+
+def test_the_cameras_what_it_writes_part_names_the_files_the_frame_and_every_record_field() -> None:
+    """Cameras spec, Req 15.3, 16.12. The World_Up's minus is U+2212, as the doc writes it."""
+    writes = cameras_part("What it writes")
+    phrases = (*WORK_FOLDER_PARTS, *MODEL_FILES, "PINHOLE", "(0, −1, 0)", "+Z", "the origin",
+               "no pycolmap")
+    fields = [f"`{field}`" for field in solve_record_fields()]
+    missing = [words for words in (*phrases, *fields) if words not in writes]
+    assert not missing, f"The cameras section's What it writes part should name {missing}"
+
+
+def test_the_cameras_config_section_names_every_real_key_and_the_machine_needs() -> None:
+    """Cameras spec, Req 12.11, 15.4, 16.12."""
+    config = cameras_part("Config section")
+    section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["cameras"]
+    keys = [f"`{key}`" for key, value in section.items() if not isinstance(value, dict)]
+    phrases = ("`near_overlap`", "16 vCPUs", "16 GB", "The step itself never checks the machine")
+    missing = [words for words in (*keys, *phrases) if words not in config]
+    assert not missing, f"The cameras section's Config section part should name {missing}"
+
+
+def test_the_cameras_step_report_fields_part_names_every_count_and_timing() -> None:
+    """Cameras spec, Req 15.5, 16.12, with the counts of Req 13.1 and the timings of Req 13.2."""
+    report = cameras_part("Step report fields")
+    names = [*(f"`counts.{name}`" for name in CAMERAS_COUNTS),
+             *(f"`timings.{name}`" for name in CAMERAS_TIMINGS)]
+    missing = [name for name in names if name not in report]
+    assert not missing, f"The cameras section's Step report fields part should name {missing}"
+
+
+def test_the_cameras_files_in_out_part_names_every_viewer_field_and_when_the_file_changes() -> None:
+    """Cameras spec, Req 15.6, 16.12."""
+    out = cameras_part("Files in out/")
+    phrases = ("`out/cameras.json`",
+               "removes an earlier `out/cameras.json` when its own code starts",
+               "writes a new one last of all",
+               "A run that the step runner stops before the step's code starts",
+               "leaves the earlier run's `work/cameras/` and `out/cameras.json` in place")
+    fields = [f"`{field}`" for field in viewer_cameras_fields()]
+    missing = [words for words in (*phrases, *fields) if words not in out]
+    assert not missing, f"The cameras section's Files in out/ part should say {missing}"
