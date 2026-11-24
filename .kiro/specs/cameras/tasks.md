@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plan builds the Cameras_Step in `splatpipe/cameras/` in 10 tasks, in the design's build order: the settings, the model files, the levelling, the Frames_Contract with the COLMAP runner and the command lines, the database and the solve flow, the undistortion and the mask, the outputs and the step itself, the integration test with the real COLMAP, the step's section of the Pipeline_Doc with the COLMAP licence row, and last the Step_List entry. Each task writes its code with that code's unit tests and Hypothesis property tests, runs the whole suite and commits. The code is Python 3.11. The step adds no package: numpy and `opencv-python-headless` are already runtime dependencies, and pytest and Hypothesis are already in the dev group.
+This plan builds the Cameras_Step in `splatpipe/cameras/` in 10 tasks, in the design's build order: the settings, the model files, the levelling, the Frames_Contract with the COLMAP runner and the command lines, the database and the solve flow, the undistortion and the mask, the outputs and the step itself, the integration test with the real COLMAP, the step's section of the Pipeline_Doc with the COLMAP licence row, and last the Step_List entry. Task 10 ends with 10.9, the merge of `origin/main`, which brings the Training_Step and the Clean_Step, so the Step_List becomes frames, cameras, train, clean. Each task writes its code with that code's unit tests and Hypothesis property tests, runs the whole suite and commits. The code is Python 3.11. The step adds no package: numpy and `opencv-python-headless` are already runtime dependencies, and pytest and Hypothesis are already in the dev group.
 
 Three choices in the order matter:
 
@@ -21,11 +21,12 @@ Some files grow over several tasks, so each piece comes with the first task that
 - `tests/test_docs.py`: task 9 tests the cameras section and the COLMAP row, and task 10 tests "The step list".
 - `docs/pipeline.md`: task 9 adds `## Step: cameras`, and task 10 replaces the first three sentences of "The step list".
 - `tests/test_cameras_step.py`: task 7 writes it, and task 10 adds the `run_job` test of both steps.
+- 10.9, the merge, changes `config.toml`, `tests/conftest.py`, `tests/test_imports.py`, `tests/test_docs.py`, `docs/pipeline.md` and `docs/third-party-licences.md` once more, with `splatpipe/run.py`, `tests/test_run.py`, `tests/test_frames_step.py` and `docs/devlog.md`, and `tests/test_cameras_step.py` when its `run_job` test needs it.
 
 ## Working rules for every task
 
 - Work on the existing `feat/camera-solve` branch, never on `main`.
-- The only step folder this spec makes is `splatpipe/cameras/`. Of the Skeleton, only the Step_List and its comment in `splatpipe/run.py` change, in task 10. The Frames_Step's code, `pyproject.toml`, `uv.lock` and `.kiro/steering/tech.md` stay as they are.
+- The only step folder this spec makes is `splatpipe/cameras/`. Of the Skeleton, only the Step_List and its comment in `splatpipe/run.py` change, in task 10. These tasks leave the Frames_Step's code, `pyproject.toml`, `uv.lock` and `.kiro/steering/tech.md` as they are. The merge in 10.9 brings `main`'s own changes to `pyproject.toml`, `uv.lock` and `.kiro/steering/tech.md`, none of them for the Cameras_Step.
 - `splatpipe/cameras/` imports only the standard library, numpy, cv2 and `splatpipe`. Nothing imports `cloud/`, boto3, torch, gsplat or pycolmap. `level.py` is pure and imports only the standard library, numpy and the step's `model`.
 - COLMAP runs only as the separate program `colmap`, through `subprocess.run` in `run_colmap` in `colmap.py`. It's never linked or imported, and no other module starts a process.
 - cv2 only decodes and encodes the mask PNGs. It never reads or writes video: no `cv2.VideoCapture` and no `cv2.VideoWriter`.
@@ -36,7 +37,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - Property tests use Hypothesis with at least 100 examples (the default), and each docstring says `Feature: cameras, Property N: <title>`. Each oracle is written in the test with its own code and never calls the function it checks.
 - Every test sub-task is required. None is optional.
 - Nothing here costs money. No task touches AWS, sets `APPROVED_SPEND`, or runs anything paid or in the cloud.
-- The last sub-task of each task is its checkpoint. Run `uv run pytest` and fix what fails until every test passes, `tests/test_guard.py` included. Then stage the task's files by name with `git add <file> ...`, never with `git add -A`, `git add .` or a folder, and commit only those files with `git commit -m "<message>" -- <file> ...`, so nothing else that's staged goes in. Leave `docs/devlog.md` out: the devlog hook adds and commits its own line after each task.
+- The last sub-task of each task is its checkpoint. Run `uv run pytest` and fix what fails until every test passes, `tests/test_guard.py` included. Then stage the task's files by name with `git add <file> ...`, never with `git add -A`, `git add .` or a folder, and commit only those files with `git commit -m "<message>" -- <file> ...`, so nothing else that's staged goes in. Leave `docs/devlog.md` out: the devlog hook adds and commits its own line after each task. The merge in 10.9 is the one exception: git refuses a commit of named files while a merge is in progress, so 10.9 stages each file it resolves by name, `docs/devlog.md` included, and commits the merge with a plain `git commit -m "<message>"`.
 - If a hook blocks something it shouldn't, say so and fix the hook. Never work around it.
 
 ## Tasks
@@ -495,13 +496,22 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add splatpipe/run.py tests/test_run.py tests/test_frames_step.py tests/test_imports.py tests/test_docs.py tests/test_cameras_step.py docs/pipeline.md .kiro/specs/frames/requirements.md`, then commit those files with the message "Cameras: second entry in the step list".
     - _Requirements: 16.4, 16.13_
 
+  - [~] 10.9 Merge origin/main into feat/camera-solve, run the tests and commit the merge
+    - This is one sub-task, not two, because the devlog hook commits `docs/devlog.md` after each sub-task, and git refuses a partial commit while a merge is in progress. So the merge, the fixes, the test run and the merge commit all happen inside it.
+    - On `feat/camera-solve`, run `git merge origin/main`.
+    - Resolve each of the ten conflicted files keeping both sides, as Samarth's rules and the updated requirements and design say: `STEP_LIST` as frames, cameras, train, clean and its comment in `splatpipe/run.py`, as the design's `splatpipe/run.py` row gives them (Req 14.3); `config.toml` with both sides' sections, in step order, so `[cameras]` and its Preset tables sit between `[frames.quality]` and `[train]`; `tests/conftest.py` with both sides' fixtures and both sides' config sections, `[cameras]` and `main`'s `[train]` and `[clean]`; `docs/pipeline.md` with every `## Step:` section in step order, `frames`, `cameras`, `train` and `clean`, and the design's merged words in "The step list" (Req 15.1, 15.7); the one merged COLMAP row the design gives, in `docs/third-party-licences.md` (Req 15.8); `docs/devlog.md` with every line from both sides, in time order; and `tests/test_run.py`, `tests/test_docs.py`, `tests/test_frames_step.py` and `tests/test_imports.py` using the merged Step_List, as the design's rows for them say (Req 14.5 to 14.8).
+    - Any other test that runs the real Step_List, such as the `run_job` test in `tests/test_cameras_step.py` from 10.7 and `main`'s own `run_job` tests, still passes, with the stand-ins it needs or by passing only the entries it means to run (Req 14.4, 14.6).
+    - `uv run pytest` passes, `tests/test_guard.py` and `main`'s COLMAP row checks in `tests/test_cloud_image.py` included.
+    - Stage each resolved file, and any other file changed to make the tests pass, by name, then run `git commit` for the merge, with a message in the style of `main`'s earlier merges, such as "Merge origin/main into feat/camera-solve: keep both sides of the conflicts (cameras and training), step list frames, cameras, train, clean, devlog in time order". Never `git add -A` or `git add .`, and don't push.
+    - _Requirements: 12.1, 12.15, 14.3, 14.4, 14.5, 14.6, 14.7, 14.8, 15.1, 15.7, 15.8, 16.4, 16.13_
+
 ## Notes
 
 - Every test sub-task is required, as `.kiro/steering/rules.md` asks. None is marked optional.
 - The last sub-task of each task is its checkpoint: the whole suite, then the commit. So the plan has no separate checkpoint tasks and stays at 10 tasks.
 - Every acceptance criterion in `requirements.md` is named by at least one task. Each of the design's 7 correctness properties has its own property test sub-task: Property 7 in task 2, Properties 4 to 6 in task 3, Property 1 in task 4, Property 2 in task 5 and Property 3 in task 6. Properties 4, 5 and 6 are the levelling properties the user asked for: every distance kept, a scale of 1, and an up of (0, −1, 0) when the cameras agree.
 - Only 4.8 and task 8 need COLMAP, and both skip without it. Every other test uses `FakeColmap` or no COLMAP at all, so the suite passes on a laptop without it.
-- The design's choices O1 to O11 and C1 to C11 are still waiting for review. These tasks follow the design as it stands, and the review phase updates them if a choice changes.
+- The spec's review phase has run, and these tasks follow the design's choices O1 to O11 and C1 to C11 as the design gives them.
 - Two placements differ from the design's text, each because of where the code lives. The bit for bit check of a kept COLMAP_Frame (C10) is in the step tests of 7.5, because `__init__.py` makes that choice, though the design's test table lists it with the levelling tests. `FakeColmap` comes in two parts: task 5 writes the commands the solve flow runs, and task 7 adds the undistorters and the installing, because `Tools` comes with the step.
 - Three small test helpers aren't named in the design: the `colmap_options` oracle in `tests/conftest.py`, shared by the settings test and Property 1 so that `options.md` is parsed in one place; the `FakeColmap` flag that writes every other camera upside down, for the kept COLMAP_Frame in 7.5; and the check in 1.5 that no file uses `cv2.VideoCapture` or `cv2.VideoWriter`, for Req 12.14.
 - The graph runs the tasks in order, one at a time, so each task's test run and commit see only finished work. Inside a task, sub-tasks that write different files share a wave.
@@ -552,7 +562,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     { "id": 38, "tasks": ["9.4"] },
     { "id": 39, "tasks": ["10.1", "10.5", "10.6"] },
     { "id": 40, "tasks": ["10.2", "10.3", "10.4", "10.7"] },
-    { "id": 41, "tasks": ["10.8"] }
+    { "id": 41, "tasks": ["10.8"] },
+    { "id": 42, "tasks": ["10.9"] }
   ]
 }
 ```
