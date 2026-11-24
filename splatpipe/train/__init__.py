@@ -24,7 +24,10 @@ is the CLI, `uv run python -m splatpipe.train --job <id> [--preset <name>]` (Req
    the GPU and the Start_Splats (Req 1.3–1.19, 3.1–3.15). Priors that fail a check give the
    depth-priors spec's Req 10.3 warning, and the step trains with no Prior_Set. With no
    depth.json, it trains with no Prior_Set and adds no count or warning about it (that spec's
-   Req 10.1–10.4, 14.3, 14.6, 14.7, A9, A14).
+   Req 10.1–10.4, 14.3, 14.6, 14.7, A9, A14). With a Prior_Set, the Start_Splats also hold the
+   Back_Projected_Splats, after the Sparse_Points, and the Sparse_Points get what the Splat_Budget
+   leaves, with that spec's Req 12.7 warning in place of Req 3.11's when that's a subset. Every
+   Start_Splat goes through the one 3-NN search (that spec's Req 12.4–12.8, 14.4–14.6).
 7. Timed as train: the Trainer (Req 4.17). With no Iteration run, the step fails with the
    Req 7.9 message, and with fewer than steps, it adds the Req 7.8 warning (Req 7.7–7.9).
 8. Timed as write_ply: the Mean_Exposure is baked in (Req 6.4–6.7), the splats with a NaN or an
@@ -64,6 +67,7 @@ import numpy as np
 from splatpipe.errors import ExpectedFailure
 # Config comes through splatpipe.step, as for the Fake_Step.
 from splatpipe.step import Config, StepContext, run_step
+from splatpipe.train.backproject import start_points
 from splatpipe.train.colmap import Camera, SparseModel, read_model
 from splatpipe.train.deadline import read_cap_deadline, stop_time
 from splatpipe.train.files import (CAMERAS, RECORD, SPARSE, TRAINED_SPLAT, check_inputs,
@@ -74,8 +78,8 @@ from splatpipe.train.ply import check_ply, write_ply
 from splatpipe.train.priors import PRIOR_FOLDER, BrokenPriors, PriorSet, read_prior_set
 from splatpipe.train.scene import Scene, build_scene, training_size
 from splatpipe.train.settings import TrainSettings, read_settings
-from splatpipe.train.splats import (Splats, bake_exposure, choose_points, drop_non_finite,
-                                    mean_exposure, need_points, start_splats)
+from splatpipe.train.splats import (Splats, bake_exposure, drop_non_finite, mean_exposure,
+                                    need_points, start_splats)
 
 # The hook to the GPU_Module (Req 11.6). work reads it each time it runs, so a test can
 # monkeypatch it with a GPU_Stand_In.
@@ -84,6 +88,12 @@ GPU: Callable[[], Gpu] = load_gpu
 # The Req 3.11 warning: the Sparse_Points outnumber the Splat_Budget.
 _SUBSET = ("The camera solve gave {points:,} points, more than this preset's splat budget of "
            "{budget:,}, so training started from {budget:,} of them, chosen at random.")
+# The depth-priors spec's Req 12.7 warning, in place of Req 3.11's with a Prior_Set: the
+# Sparse_Points outnumber what the Splat_Budget leaves after the Back_Projected_Splats.
+_PRIOR_SUBSET = ("The camera solve gave {points:,} points, more than the {left:,} places this "
+                 "preset's splat budget of {budget:,} leaves after {back_projected:,} splats "
+                 "started from the depth priors, so training started from {left:,} of the "
+                 "points, chosen at random.")
 # The Req 7.8 warning: the Trainer stopped at the Stop_Time, before the last Planned_Iteration.
 _STOPPED_EARLY = ("Training stopped early, after {run:,} of {planned:,} iterations, to leave time "
                   "for the clean step before the job's time cap.")
@@ -162,7 +172,7 @@ def _load(step: StepContext, gpu: Gpu, cameras: Path,
     priors = _read_priors(step, model)  # the depth-priors spec's Req 10.1–10.4
     # Req 1.19, 1.20, 3.3, 3.5–3.10, and the depth-priors spec's Req 10.8
     scene = build_scene(model, pixels, width, height, cfg, priors)
-    return model.camera, scene, _start_splats(step, gpu, model, cfg)
+    return model.camera, scene, _start_splats(step, gpu, model, scene, cfg)
 
 
 def _read_priors(step: StepContext, model: SparseModel) -> PriorSet | None:
@@ -185,19 +195,35 @@ def _read_priors(step: StepContext, model: SparseModel) -> PriorSet | None:
     return priors
 
 
-def _start_splats(step: StepContext, gpu: Gpu, model: SparseModel,
+def _start_splats(step: StepContext, gpu: Gpu, model: SparseModel, scene: Scene,
                   cfg: TrainSettings) -> Splats:
-    """The Start_Splats, from every Sparse_Point or, with the Req 3.11 warning, from max_splats of
-    them chosen at random, sized by the GPU's 3-NN search (Req 3.11–3.15)."""
-    points, colours = choose_points(model.points, model.colours, cfg.max_splats, cfg.seed)
-    if len(model.points) > cfg.max_splats:
-        step.add_warning(_SUBSET.format(points=len(model.points), budget=cfg.max_splats))
+    """The Start_Splats, sized by the GPU's 3-NN search (Req 3.11–3.15).
+
+    With no Prior_Set, they start from every Sparse_Point or, with the Req 3.11 warning, from
+    max_splats of them chosen at random, as the splat-training spec says (depth-priors spec,
+    Req 12.8). With one, they start from the Sparse_Points that max_splats − B leaves room for,
+    with the Req 12.7 warning when that's fewer than all of them, then the B Back_Projected_Splats,
+    and the count backprojected_splats is B (Req 12.6, 12.7, 14.4). Every Start_Splat goes through
+    one 3-NN search and start_splats together, so all take the same size rule, opacity, rotation
+    and f_rest, and start_splats counts them all (Req 12.4, 12.5, 14.4).
+    """
+    start = start_points(model, scene, cfg)  # Req 12.1–12.4, 12.6, 12.8
+    points = len(model.points)
+    if scene.taps is None:  # no Prior_Set: no new count or warning (A14)
+        if start.sparse < points:
+            step.add_warning(_SUBSET.format(points=points, budget=cfg.max_splats))
+    else:
+        step.add_count("backprojected_splats", int(start.back_projected))
+        if start.sparse < points:
+            step.add_warning(_PRIOR_SUBSET.format(
+                points=points, left=cfg.max_splats - start.back_projected,
+                budget=cfg.max_splats, back_projected=start.back_projected))
     with _out_of_memory(step.preset, cfg):
-        distances = gpu.nearest_distances(points, cfg.start_scale_neighbours,
+        distances = gpu.nearest_distances(start.points, cfg.start_scale_neighbours,
                                           cfg.neighbour_chunk_pairs)
-    start = start_splats(points, colours, distances, cfg)
-    step.add_count("start_splats", int(len(start)))
-    return start
+    splats = start_splats(start.points, start.colours, distances, cfg)
+    step.add_count("start_splats", int(len(splats)))
+    return splats
 
 
 def _train(step: StepContext, gpu: Gpu, scene: Scene, start: Splats, cfg: TrainSettings,

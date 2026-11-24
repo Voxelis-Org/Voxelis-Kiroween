@@ -50,6 +50,17 @@ for an earlier camera solve, in which the second image sat 0.01 further along x.
 no depth.json, with no work/depth/ at all or with only Prior_Files in it, use the default scene,
 so their reports hold exactly the splat-training spec's counts, timings and warnings.
 
+The tests of the Start_Splats (that spec's Req 12.5–12.8, 14.4) run the plane scene with that
+Prior_Set. Its Frames are one colour, so every pixel is a Plain_Pixel, and the three Prior_Views
+have far more Candidate_Pixels than fast's Back_Project_Budget of 16. FakeGpu records the step's
+nearest_distances calls, so a test reads every point the step sized, in float64, before
+start_splats rounds the means to float32. pixel_of finds each Back_Projected_Splat's Prior_View
+and pixel by projecting it with the view's scaled camera, and scaled_up gives the scaled-up
+inverse_depth there from the Prior written, with taps_oracle's taps. log_scales_oracle sizes every
+Start_Splat by brute force over all of them together. The regression check runs the default
+scene with no work/depth/ and compares the Start_Splats with choose_points of the scene's points,
+worked out in the test.
+
 conftest's no_cap_deadline removes SPLATPIPE_CAP_DEADLINE before every test, so only a test that
 sets it with monkeypatch.setenv has a Cap_Deadline (Req 14.11).
 """
@@ -77,13 +88,13 @@ from splatpipe.train.gpu_api import GpuInfo, GpuOutOfMemory, NonFiniteLoss, non_
 from splatpipe.train.ply import check_ply, read_ply
 from splatpipe.train.priors import (Prior, PriorEntry, PriorIndex, prior_path, write_index,
                                     write_prior)
-from splatpipe.train.scene import world_to_camera
-from splatpipe.train.splats import SH_C0, Splats
+from splatpipe.train.scene import Scene, world_to_camera
+from splatpipe.train.splats import SH_C0, Splats, choose_points
 
 from camera_files import (ARC_ANGLES, CAMERA_SOLVE, DEFAULT_CAMERA, DEFAULT_IMAGES,
                           DEFAULT_POINTS, IMAGES_FOLDER, PLANE_CAMERA, PLANE_IMAGES, PLANE_POINTS,
-                          PLANE_Z, POINTS_BIN, ImageRecord, write_camera_solve_output,
-                          write_model)
+                          PLANE_Z, POINTS_BIN, ImageRecord, PointRecord,
+                          write_camera_solve_output, write_model)
 
 # The default Camera_Solve_Output: 3 images of 8 x 6 pixels, a mask on the first only, and 12
 # points.
@@ -677,6 +688,195 @@ def test_with_no_depth_json_the_report_and_the_scene_are_the_splat_training_spec
     # The Trainer gets a Scene with no Prior_Set: every view an empty prior and no taps (Req 10.8).
     assert [view.prior for view in gpu.scene.views] == [None] * IMAGES
     assert gpu.scene.taps is None
+
+
+# The Start_Splats with and without depth priors (depth-priors spec, Req 12.5–12.8, 14.4, 14.5)
+
+# The Back_Project_Budget for fast's 50 splats in the test config, ⌊50 × backproject_share⌋, and so
+# the Back_Projected_Splats, since the plane's Prior_Views have hundreds of Candidate_Pixels. It
+# leaves 34 places, room for all 30 Sparse_Points.
+BACK_PROJECTED = 16
+# A max_splats of 40 for fast: a Back_Project_Budget of ⌊40 × backproject_share⌋ = 13, which leaves
+# 27 places for the plane's 30 Sparse_Points.
+SMALL_BUDGET, SMALL_BACK_PROJECTED, SMALL_LEFT = 40, 13, 27
+# The Req 12.7 warning, worded as the design gives it.
+PRIOR_SUBSET_WARNING = ("The camera solve gave {points} points, more than the {left} places this "
+                        "preset's splat budget of {budget} leaves after {back_projected} splats "
+                        "started from the depth priors, so training started from {left} of the "
+                        "points, chosen at random.")
+# How far a Back_Projected_Splat may project from its pixel's centre, in pixels: the step works in
+# float64 from the centre. How far 1 / its camera-space z may stray from the scaled-up
+# inverse_depth, relatively: the step scales the float32 Prior up in float32. How far a
+# Start_Splat's log scale may stray from the oracle's, relatively: the step rounds it to float32.
+CENTRE_ERROR = 1e-9
+DEPTH_ERROR = 1e-6
+LOG_SCALE_ERROR = 1e-6
+
+
+def records_points(records: Sequence[PointRecord]) -> tuple[np.ndarray, np.ndarray]:
+    """The (P, 3) float64 positions and (P, 3) uint8 colours of the point `records`, in their
+    order, as the Model_Reader gives model.points and model.colours."""
+    return (np.array([record.position for record in records], dtype=np.float64),
+            np.array([record.colour for record in records], dtype=np.uint8))
+
+
+def sh0_of(colours: np.ndarray) -> np.ndarray:
+    """The band-0 coefficients that show the uint8 RGB `colours`, (colour / 255 − 0.5) / SH_C0 as
+    float32, as the splat-training spec's Req 3.12 gives each Start_Splat."""
+    return ((colours.astype(np.float64) / 255 - 0.5) / SH_C0).astype(np.float32)
+
+
+def sized_points(gpu: Any) -> tuple[np.ndarray, int]:
+    """The points and the neighbour count of the step's nearest_distances call, checking that
+    FakeGpu `gpu` recorded exactly one."""
+    [(points, neighbours, _)] = [args for name, args in gpu.calls if name == "nearest_distances"]
+    return points, neighbours
+
+
+def log_scales_oracle(points: np.ndarray, neighbours: int, factor: float) -> np.ndarray:
+    """Each of the (N, 3) `points`' log of `factor` × the root mean square of its distances to its
+    `neighbours` nearest other points, found by brute force over all of them together, as (N,)
+    float64 (splat-training spec, Req 3.12, 3.14)."""
+    gaps = np.linalg.norm(points[:, np.newaxis] - points[np.newaxis], axis=-1)
+    np.fill_diagonal(gaps, np.inf)
+    nearest = np.sort(gaps, axis=1)[:, :neighbours]
+    return np.log(factor * np.sqrt(np.mean(nearest * nearest, axis=1)))
+
+
+def pixel_of(point: np.ndarray, scene: Scene) -> tuple[int, int, int, float]:
+    """The Prior_View, by its place in `scene`, and the row and column of the training pixel whose
+    centre the world `point` projects to within CENTRE_ERROR, with the point's camera-space z.
+
+    Each Prior_View projects it with its scaled K and world-to-camera matrix: c = R p + t, then
+    (fx · c_x / c_z + cx, fy · c_y / c_z + cy). Exactly one Prior_View must have such a pixel.
+    """
+    found = []
+    for index, view in enumerate(scene.views):
+        if view.prior is None:
+            continue
+        x, y, z = view.world_to_camera[:3, :3] @ point + view.world_to_camera[:3, 3]
+        k = view.intrinsics
+        u, v = k[0, 0] * x / z + k[0, 2], k[1, 1] * y / z + k[1, 2]
+        column, row = math.floor(u), math.floor(v)
+        if (z > 0 and 0 <= column < scene.width and 0 <= row < scene.height
+                and abs(u - column - 0.5) <= CENTRE_ERROR
+                and abs(v - row - 0.5) <= CENTRE_ERROR):
+            found.append((index, row, column, float(z)))
+    assert len(found) == 1, (point, found)
+    return found[0]
+
+
+def scaled_up(stored: np.ndarray, row: int, column: int, width: int, height: int) -> float:
+    """The (h, w) Prior array `stored` sampled bilinearly at the training pixel (row, column) of a
+    `width` x `height` Training_Size, with taps_oracle's taps, blended across and then down, in
+    float64 (Req 10.6)."""
+    first_rows, second_rows, row_weights, _ = taps_oracle(stored.shape[0], height)
+    first_columns, second_columns, column_weights, _ = taps_oracle(stored.shape[1], width)
+    values = stored.astype(np.float64)
+    r0, r1, wr = first_rows[row], second_rows[row], row_weights[row]
+    c0, c1, wc = first_columns[column], second_columns[column], column_weights[column]
+    top = values[r0, c0] * (1 - wc) + values[r0, c1] * wc
+    bottom = values[r1, c0] * (1 - wc) + values[r1, c1] * wc
+    return float(top * (1 - wr) + bottom * wr)
+
+
+def test_with_a_prior_set_the_start_splats_are_the_sparse_points_then_the_back_projected_splats(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any]) -> None:
+    job_id = plane_job(new_job)
+    written = write_plane_priors(job_id)
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    settings = report["settings"]
+    total = len(PLANE_POINTS) + BACK_PROJECTED
+    # backprojected_splats counts the Back_Projected_Splats, and start_splats every Start_Splat,
+    # them included, each as an int. All 30 Sparse_Points fit, so no warning (Req 12.6, 14.4).
+    counts = report["counts"]
+    assert (counts["backprojected_splats"], counts["start_splats"]) == (BACK_PROJECTED, total)
+    assert type(counts["backprojected_splats"]) is int
+    assert report["warnings"] == []
+    # One nearest_distances call over every Start_Splat together gives every size (Req 12.5).
+    points, neighbours = sized_points(gpu)
+    assert neighbours == settings["start_scale_neighbours"]
+    assert points.shape == (total, 3) and len(gpu.start) == total
+    assert np.array_equal(gpu.start.means, points.astype(np.float32))
+    oracle = log_scales_oracle(points, neighbours, settings["start_scale_factor"])
+    assert np.allclose(gpu.start.log_scales, oracle[:, np.newaxis], rtol=LOG_SCALE_ERROR, atol=0)
+    # The Sparse_Points come first, every one, in points3D.bin's order with its colour (Req 12.6).
+    sparse, colours = records_points(PLANE_POINTS)
+    assert np.array_equal(points[:len(sparse)], sparse)
+    assert np.array_equal(gpu.start.sh0[:len(sparse)], sh0_of(colours))
+    # Then the Back_Projected_Splats, in view and pixel order: each sits at a pixel centre of a
+    # Prior_View, at the camera-space z of 1 / the scaled-up inverse_depth there, with the pixel's
+    # colour (Req 12.2–12.4).
+    scene = gpu.scene
+    pixels = [pixel_of(point, scene) for point in points[len(sparse):]]
+    places = [pixel[:3] for pixel in pixels]
+    assert places == sorted(set(places))
+    for (index, row, column, z), sh0 in zip(pixels, gpu.start.sh0[len(sparse):], strict=True):
+        view = scene.views[index]
+        expected = scaled_up(written[view.name].inverse_depth, row, column, scene.width,
+                             scene.height)
+        assert math.isclose(1 / z, expected, rel_tol=DEPTH_ERROR), (view.name, row, column)
+        assert np.array_equal(sh0, sh0_of(view.pixels[row, column])), (view.name, row, column)
+    # Every Start_Splat has the same opacity, the identity rotation and no higher band (Req 12.4).
+    assert np.all(gpu.start.quats == (1, 0, 0, 0)) and not gpu.start.sh_rest.any()
+    assert len(set(gpu.start.opacity_logits.tolist())) == 1
+
+
+def test_more_sparse_points_than_the_budget_leaves_after_the_back_projected_splats_warn(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any],
+        set_train: Callable[..., None]) -> None:
+    job_id = plane_job(new_job)
+    write_plane_priors(job_id)
+    set_train(max_splats={"fast": SMALL_BUDGET})
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    # The Req 12.7 warning, in place of Req 3.11's, gives the points, the Splat_Budget, the
+    # Back_Projected_Splats and the points used (Req 12.7, 14.5).
+    assert report["warnings"] == [PRIOR_SUBSET_WARNING.format(
+        points=len(PLANE_POINTS), left=SMALL_LEFT, budget=SMALL_BUDGET,
+        back_projected=SMALL_BACK_PROJECTED)]
+    counts = report["counts"]
+    assert (counts["backprojected_splats"], counts["start_splats"]) == (SMALL_BACK_PROJECTED,
+                                                                        SMALL_BUDGET)
+    # The points used are choose_points' 27 of the 30, drawn with seed, so the Start_Splats fill
+    # the Splat_Budget and no more (Req 12.6).
+    points, _ = sized_points(gpu)
+    sparse, colours = records_points(PLANE_POINTS)
+    chosen, _ = choose_points(sparse, colours, SMALL_LEFT, report["settings"]["seed"])
+    assert len(points) == len(gpu.start) == SMALL_BUDGET
+    assert np.array_equal(points[:SMALL_LEFT], chosen)
+
+
+# fast's max_splats: the test config's 50, room for all 12 of the default scene's points, and 5,
+# which choose_points draws a subset for.
+@pytest.mark.parametrize("budget", [
+    pytest.param(50, id="every point"),
+    pytest.param(5, id="a subset of the points"),
+])
+def test_with_no_work_depth_the_start_splats_are_choose_points_and_no_back_projected_splat(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any],
+        set_train: Callable[..., None], budget: int) -> None:
+    job_id = camera_solve_job(new_job)
+    assert not priors_folder(job_id).exists()
+    set_train(max_splats={"fast": budget})
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    sparse, colours = records_points(DEFAULT_POINTS)
+    chosen, chosen_colours = choose_points(sparse, colours, budget, report["settings"]["seed"])
+    # The one nearest_distances call and the Start_Splats hold exactly choose_points' points and
+    # colours for max_splats, as the splat-training spec gives them, and no Back_Projected_Splat
+    # (Req 12.8).
+    points, _ = sized_points(gpu)
+    assert np.array_equal(points, chosen)
+    assert np.array_equal(gpu.start.means, chosen.astype(np.float32))
+    assert np.array_equal(gpu.start.sh0, sh0_of(chosen_colours))
+    # No new count, start_splats counts choose_points' points, and the only warning is Req 3.11's
+    # when they're a subset (Req 14.3, A14).
+    assert sorted(report["counts"]) == sorted(SPLAT_TRAINING_COUNTS)
+    assert report["counts"]["start_splats"] == len(chosen)
+    subset = [SUBSET_WARNING.format(points=POINTS, budget=budget)] if budget < POINTS else []
+    assert report["warnings"] == subset
 
 
 # Failed runs

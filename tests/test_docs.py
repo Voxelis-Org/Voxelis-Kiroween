@@ -426,14 +426,16 @@ SCALE_UP_PHRASES = ("scaled up bilinearly", "unit length", "scaled up nearest-ne
 
 def test_the_train_section_names_the_prior_keys_and_counts_and_depth_names_the_scale_up() -> None:
     """Depth-priors spec, Req 17.2, 17.3, 17.9: ## Step: train names every new key of the real
-    [train], the prior index, counts.prior_images and the Req 10.3 warning, and the depth
-    section's What it writes part names the bilinear and nearest-neighbour scale-up."""
+    [train], the prior index, counts.prior_images, counts.backprojected_splats and the Req 10.3
+    warning, and the depth section's What it writes part names the bilinear and
+    nearest-neighbour scale-up."""
     real = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["train"]
     absent = [key for key in PRIOR_TRAIN_KEYS if key not in real]
     assert not absent, f"The real [train] should hold {absent}"
     section = doc_part(pipeline_parts(), 2, TRAIN)
     names = [*(f"`{key}`" for key in PRIOR_TRAIN_KEYS), "`work/depth/depth.json`",
-             "`counts.prior_images`", "Training ran without depth priors."]
+             "`counts.prior_images`", "`counts.backprojected_splats`",
+             "Training ran without depth priors."]
     missing = [words for words in names if words not in section]
     assert not missing, f"The ## {TRAIN} section should name {missing}"
     writes = depth_part("What it writes")
