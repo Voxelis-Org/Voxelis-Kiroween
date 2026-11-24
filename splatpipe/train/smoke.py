@@ -12,10 +12,12 @@ GPU_Stand_In instead, so the whole check runs on a laptop with no torch (Req 12.
   drawn from one generator seeded with [train]'s seed. One PINHOLE camera, image_pixels square, is
   shared by train_images cameras on the circle of radius 1 in the x–z plane, each looking at the
   origin. The train_points points are uniform in the cube of half-side 0.25 around the origin, so
-  every point is 1 ± 0.25·√2, 0.65 to 1.35, in front of every camera. The images are random RGB,
-  and image 0's keep mask leaves out its left half, so one image has a mask and keeps pixels. The
-  radius and the half-side are the scene's shape in its own unit, Fixed_Constants, as the smoke
-  test's gsplat check puts its Gaussians one unit from its camera (Req 9.5).
+  every point is 1 ± 0.25·√2, 0.65 to 1.35, in front of every camera. The points' ids are 1 to
+  train_points, and no image has Observed_Points (depth-priors spec, Req 2.4), so nothing in the
+  training check's run changes. The images are random RGB, and image 0's keep mask leaves out
+  its left half, so one image has a mask and keeps pixels. The radius and the half-side are the
+  scene's shape in its own unit, Fixed_Constants, as the smoke test's gsplat check puts its
+  Gaussians one unit from its camera (Req 9.5).
 - run_smoke_training (Req 12.3, 12.7–12.9): the GPU check, the step's own set-up of the scene and
   the Start_Splats, the Trainer, the Exposure_Bake, the PLY_Writer and the PLY_Check. It drops no
   splat, so a splat with a NaN or an infinity fails the PLY_Check, because the Smoke_Scene should
@@ -52,7 +54,7 @@ _STEP = "train"  # the Train_Step's section in Config, whose settings the check 
 # of _RADIUS around the origin, and the points in the cube of half-side _HALF_SIDE around it.
 _RADIUS = 1.0
 _HALF_SIDE = 0.25
-_FIRST_ID = 1  # COLMAP numbers its cameras and its images from 1
+_FIRST_ID = 1  # COLMAP numbers its cameras, its images and its points from 1
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,9 @@ def smoke_scene(sizes: SmokeSizes, seed: int) -> tuple[SparseModel, list[ImagePi
     origin from _RADIUS · (sin θ, 0, −cos θ), with θ = 2πj / `images`. Image 0's keep mask leaves
     out its left `pixels` // 2 columns, and the other images have no mask. With 2 or more images,
     the cameras' mean is the origin, so the Scene_Extent is scene_extent_factor × _RADIUS.
+
+    The points' ids are 1 to `points` as uint64, and every image's observed_ids is empty, so no
+    point rules a pixel out (depth-priors spec, Req 2.4). Neither draws from the generator.
     """
     generator = np.random.default_rng(seed)
     side = sizes.pixels
@@ -109,7 +114,8 @@ def smoke_scene(sizes: SmokeSizes, seed: int) -> tuple[SparseModel, list[ImagePi
     keep = np.ones((side, side), dtype=bool)
     keep[:, :side // 2] = False  # image 0's left half is masked, and its right half kept
     pixels[0] = ImagePixels(pixels[0].pixels, keep)
-    return SparseModel(camera, images, points, colours), pixels
+    point_ids = np.arange(_FIRST_ID, _FIRST_ID + sizes.points, dtype=np.uint64)
+    return SparseModel(camera, images, points, colours, point_ids), pixels
 
 
 def run_smoke_training(config: Config, sizes: SmokeSizes, scratch: Path, gpu: Gpu) -> str:
@@ -184,13 +190,14 @@ def _camera_on_circle(index: int, count: int) -> ModelImage:
 
     Its pose turns the world by θ about y, the unit quaternion (cos θ/2, 0, sin θ/2, 0), then
     moves it _RADIUS along the camera's z, so the origin sits _RADIUS in front of the camera, at
-    the image's centre. Its Camera_Centre, −Rᵀt, is then that point on the circle.
+    the image's centre. Its Camera_Centre, −Rᵀt, is then that point on the circle. It has no
+    Observed_Points, so its observed_ids is an empty uint64 array.
     """
     theta = 2 * math.pi * index / count
     quaternion = np.array([math.cos(theta / 2), 0.0, math.sin(theta / 2), 0.0])
     translation = np.array([0.0, 0.0, _RADIUS])
     return ModelImage(_FIRST_ID + index, quaternion, translation, _FIRST_ID,
-                      f"smoke_{index}.jpg")
+                      f"smoke_{index}.jpg", np.empty(0, dtype=np.uint64))
 
 
 def _random_bytes(generator: np.random.Generator, shape: tuple[int, ...]) -> np.ndarray:
