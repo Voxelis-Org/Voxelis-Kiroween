@@ -80,8 +80,8 @@ MANIFESTS = ("pyproject.toml", "uv.lock", ".python-version", "package.json", "pa
 # Smoke_Markers under jobs/_smoke/.
 IMAGE_PREFIX = "jobs/_image/"
 # Where the image keeps the MoGe-2 weights, and their pinned sha256, which the install checks after
-# the download and the smoke machine checks again. The depth-priors spec decides how its step finds
-# the file.
+# the download and the smoke machine checks again. The Depth_Step finds the file through
+# moge_weights in [depth] of config.toml, which a test keeps equal to MOGE_WEIGHTS.
 MOGE_WEIGHTS = "/opt/models/moge-2-vitb-normal/model.pt"
 MOGE_SHA256 = "16b8110e86d5dc5a849db120ca96ef3a223fd30b0c9146d1d81db504073da5f6"
 # Where npm ci, run in JOB_ROOT, puts the splat-transform command.

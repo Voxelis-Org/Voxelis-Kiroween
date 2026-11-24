@@ -49,6 +49,27 @@ one thing at a time for the refusal tests (training spec, Req 1.12 to 1.17):
     fully_masked   images whose mask masks every pixel.
     extra_images   file names to add to images/ that images.bin doesn't name, each holding JUNK.
     extra_masks    the same for masks/.
+
+The plane scene is the Depth_Step's (depth-priors spec, Req 18.1): PLANE_CAMERA, PLANE_IMAGES and
+PLANE_POINTS, records that write_model and write_camera_solve_output take like the default
+scene's, so its Frames are JPEGs of one colour too. Four PINHOLE cameras of 16 x 12 pixels sit
+below the plane z = PLANE_Z, each in a place of its own, and each looks at the plane at an angle,
+so its points' depths differ across its Frame and no Frame is flat. 30 points lie on the plane,
+ids 1 to 30, each seen by every camera and no two on one pixel of any image. Each image's
+keypoints name its 30 points, with PLANE_STRAYS mixed in: two keypoints of id -1 and one of
+PLANE_NO_POINT, the id of no point. The camera's longer edge is below [depth]'s long_edge, so the
+Prior_Size is 16 x 12, the camera's own size.
+
+plane_moge_output(model, image, width, height, metres_per_unit, no_geometry) gives MoGe's exact
+output for one image of the plane scene, read back with read_model, at the Prior_Size: at each
+pixel an Observed_Point lands on, that point's camera-space z × metres_per_unit, and elsewhere the
+plane's depth at the pixel's centre × metres_per_unit; the plane's normal facing the camera; and a
+mask that's true except at the pixels in `no_geometry`. So every Frame fits with a scale of
+metres_per_unit and an offset of 0, up to float32's rounding of the depth, and its
+Metres_Per_Unit is the one the test chose. Its projection and its quaternion turn are this
+module's own, so it shares no code with the Depth_Step, and it imports nothing from
+splatpipe.train.colmap. It imports splatpipe.depth.gpu_api's MoGeOutput when it's called, so the
+other tests that use this module never import splatpipe.depth.
 """
 
 from __future__ import annotations
@@ -58,9 +79,15 @@ import struct
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
+
+# Named in plane_moge_output's type hint only. The function imports it when it's called, so only
+# the tests that call it import splatpipe.depth.
+if TYPE_CHECKING:
+    from splatpipe.depth.gpu_api import MoGeOutput
 
 CAMERAS_BIN = "cameras.bin"
 IMAGES_BIN = "images.bin"
@@ -264,3 +291,206 @@ def _write(path: Path, data: bytes) -> None:
     """Write `data` to `path`, making its folder if need be."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
+
+
+# The plane scene, the Depth_Step's scene, in which every Frame fits exactly (depth-priors spec,
+# Req 18.1). Four PINHOLE cameras of 16 x 12 pixels sit below the plane z = PLANE_Z, each in a
+# place of its own, and each looks at the plane at an angle of about 20 degrees, so its points'
+# depths differ across its Frame and no Frame is flat. PLANE_GRID's 30 points lie on the plane,
+# each seen by every camera, and no two land on one pixel of any image. The camera's longer edge
+# is below [depth]'s long_edge of 512, so the Prior_Size is the camera's own 16 x 12.
+PLANE_Z = 3.0
+PLANE_CAMERA = CameraRecord(camera_id=1, width=16, height=12, fx=16.0, fy=16.0, cx=8.0, cy=6.0)
+
+# Each camera's centre and the point on the plane its optical axis goes through, in world units.
+PLANE_VIEWS = (
+    ((-0.9, -0.7, 0.0), (0.1, 0.05, PLANE_Z)),
+    ((1.0, -0.5, 0.3), (-0.05, 0.1, PLANE_Z)),
+    ((0.8, 0.8, -0.2), (0.0, -0.1, PLANE_Z)),
+    ((-0.7, 0.9, 0.4), (-0.1, 0.0, PLANE_Z)),
+)
+
+# The 30 points: a 6 x 5 grid 0.36 apart around the plane's origin, row by row, each nudged by up
+# to 0.02 in x and in y. With these nudges, every point lands on a pixel of its own in every image,
+# at least a pixel inside the Frame and at least 0.019 pixels from a pixel's edge, so no rounding
+# can move it to the next pixel.
+PLANE_GRID = tuple((0.36 * (i - 2.5) + 0.01 * ((2 * i + j) % 5 - 2),
+                    0.36 * (j - 2) + 0.01 * ((i + 2 * j + 3) % 5 - 2), PLANE_Z)
+                   for j in range(5) for i in range(6))
+
+# Point k of PLANE_GRID has the id k + 1. PLANE_NO_POINT is the id of no point in the scene.
+PLANE_NO_POINT = 1000
+
+# The keypoints that name no Observed_Point, mixed in among each image's 30 others: each one's
+# index among the image's keypoints and its point id, -1 being COLMAP's id for a keypoint with
+# no point. They all sit at STRAY_XY, which no Observed_Point lands on in any image.
+PLANE_STRAYS = ((0, -1), (11, PLANE_NO_POINT), (23, -1))
+STRAY_XY = (0.5, 0.5)
+
+
+def _rotate(quaternion: Sequence[float], vectors: np.ndarray) -> np.ndarray:
+    """`vectors`, (N, 3), turned by the rotation of `quaternion` (w, x, y, z) once it's scaled to
+    length 1: v + w·s + q × s with s = 2 q × v, where q is the quaternion's vector part.
+
+    It's written here, rather than taken from splatpipe.train.scene, so the plane scene's
+    oracle shares no code with the Depth_Step it checks.
+    """
+    unit = np.asarray(quaternion, dtype=np.float64) / np.linalg.norm(quaternion)
+    vectors = np.asarray(vectors, dtype=np.float64)
+    turn = 2.0 * np.cross(unit[1:], vectors)
+    return vectors + unit[0] * turn + np.cross(unit[1:], turn)
+
+
+def _inverse(quaternion: Sequence[float]) -> tuple[float, float, float, float]:
+    """The quaternion of the opposite rotation: (w, -x, -y, -z)."""
+    w, x, y, z = (float(part) for part in quaternion)
+    return (w, -x, -y, -z)
+
+
+def _looking_at(centre: Sequence[float],
+                target: Sequence[float]) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """The world-to-camera quaternion (w, x, y, z) and translation of a camera at `centre` whose
+    optical axis goes through `target`.
+
+    The camera-to-world rotation turns the camera's z axis onto the direction d from `centre` to
+    `target` the shortest way, about z × d, so the camera's x stays close to the world's.
+    images.bin holds the opposite rotation, and the translation is −R × centre.
+    """
+    direction = np.subtract(target, centre) / np.linalg.norm(np.subtract(target, centre))
+    axis = np.cross((0.0, 0.0, 1.0), direction)
+    half = math.atan2(float(np.linalg.norm(axis)), float(direction[2])) / 2
+    to_world = (math.cos(half), *(math.sin(half) * axis / np.linalg.norm(axis)))
+    quaternion = _inverse(to_world)
+    translation = -_rotate(quaternion, np.array([centre]))[0]
+    return tuple(float(part) for part in quaternion), tuple(float(part) for part in translation)
+
+
+def _project_points(camera: CameraRecord, quaternion: Sequence[float],
+                    translation: Sequence[float],
+                    points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The camera-space z of each of the (N, 3) world `points` and where each lands with
+    `camera` at its full size, (z, u, v), in COLMAP's pixel convention: u = fx·x / z + cx and
+    v = fy·y / z + cy, with the top-left pixel's centre at (0.5, 0.5)."""
+    in_camera = _rotate(quaternion, points) + np.asarray(translation, dtype=np.float64)
+    z = in_camera[:, 2]
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):  # a test's point at z = 0
+        return (z, camera.fx * in_camera[:, 0] / z + camera.cx,
+                camera.fy * in_camera[:, 1] / z + camera.cy)
+
+
+def _plane_image(index: int, centre: Sequence[float], target: Sequence[float]) -> ImageRecord:
+    """Image `index` of the plane scene, named like the Frames_Step's picks, from 000000.jpg: a
+    keypoint at the projection of every point of PLANE_GRID, in order, with PLANE_STRAYS mixed
+    in at their indices."""
+    quaternion, translation = _looking_at(centre, target)
+    _, u, v = _project_points(PLANE_CAMERA, quaternion, translation, np.array(PLANE_GRID))
+    keypoints = [(float(x), float(y), number + 1) for number, (x, y) in enumerate(zip(u, v))]
+    for place, point_id in PLANE_STRAYS:  # in index order, so each lands at its own index
+        keypoints.insert(place, (*STRAY_XY, point_id))
+    return ImageRecord(image_id=index + 1, quaternion=quaternion, translation=translation,
+                       camera_id=PLANE_CAMERA.camera_id, name=f"{index:06d}.jpg",
+                       keypoints=tuple(keypoints))
+
+
+PLANE_IMAGES = tuple(_plane_image(index, centre, target)
+                     for index, (centre, target) in enumerate(PLANE_VIEWS))
+
+
+def _keypoint_index(image: ImageRecord, point_id: int) -> int:
+    """The index of the keypoint of `image` that names `point_id`."""
+    return [keypoint[2] for keypoint in image.keypoints].index(point_id)
+
+
+# Point k is a keypoint of every image, so its track names every image.
+PLANE_POINTS = tuple(
+    PointRecord(point_id=number + 1, position=point, colour=(8 * number, 250 - 8 * number, 90),
+                error=0.5,
+                track=tuple((image.image_id, _keypoint_index(image, number + 1))
+                            for image in PLANE_IMAGES))
+    for number, point in enumerate(PLANE_GRID))
+
+
+def plane_moge_output(model: Any, image: Any, width: int, height: int, metres_per_unit: float,
+                      no_geometry: Collection[tuple[int, int]] = ()) -> MoGeOutput:
+    """MoGe's exact output for the plane scene's `image`, a ModelImage of the SparseModel `model`
+    that read_model gives, at the Prior_Size `width` x `height`, with MoGe's metres
+    `metres_per_unit` times the camera solve's units.
+
+    - depth, (h, w) float32: at each pixel an Observed_Point lands on, that point's camera-space
+      z × metres_per_unit, and at every other pixel the depth of the plane z = PLANE_Z at the
+      pixel's centre ((x + 0.5)·W / w, (y + 0.5)·H / h), × metres_per_unit. An Observed_Point
+      lands on its Prior_Size pixel (min(⌊u·w / W⌋, w − 1), min(⌊v·h / H⌋, h − 1)) when it's in
+      front of the camera and its projection with the Shared_Camera at its full size W x H is
+      inside the Frame. When two land on one pixel, the first in the image's order keeps it.
+    - normal, (h, w, 3) float32: the plane's unit normal in the camera frame, facing the camera.
+    - mask, (h, w) bool: true except at the pixels (x, y), column then row, in `no_geometry`,
+      where depth is +inf and normal 0, as MoGe's apply_mask leaves them.
+
+    So each Fit_Point's 1 / z is exactly metres_per_unit × its MoGe_Value, up to float32's
+    rounding, and every Frame fits with a scale of metres_per_unit and an offset of 0. The
+    Observed_Points are found from model.point_ids, each id at its first row, and the projection
+    is this module's own: nothing here comes from splatpipe.train.colmap or the Depth_Step.
+    """
+    from splatpipe.depth.gpu_api import MoGeOutput  # here, so only the depth tests import it
+
+    quaternion = np.asarray(image.quaternion, dtype=np.float64)
+    translation = np.asarray(image.translation, dtype=np.float64)
+    depth = _plane_depth(model.camera, quaternion, translation, width, height)
+    for (x, y), z in _landings(model, image, width, height).items():
+        depth[y, x] = z
+    depth = (depth * metres_per_unit).astype(np.float32)
+    normal = np.broadcast_to(_facing_normal(quaternion, translation),
+                             (height, width, 3)).astype(np.float32)
+    mask = np.ones((height, width), dtype=bool)
+    for x, y in no_geometry:
+        mask[y, x] = False
+    depth[~mask] = np.inf
+    normal[~mask] = 0.0
+    return MoGeOutput(depth=depth, normal=normal, mask=mask)
+
+
+def _plane_depth(camera: Any, quaternion: np.ndarray, translation: np.ndarray,
+                 width: int, height: int) -> np.ndarray:
+    """The camera-space z, (h, w) float64, at which the ray through each Prior_Size pixel's
+    centre meets the plane z = PLANE_Z. Raises ValueError when a ray doesn't meet it in front of
+    the camera."""
+    columns = (np.arange(width) + 0.5) * camera.width / width
+    rows = (np.arange(height) + 0.5) * camera.height / height
+    u, v = np.meshgrid(columns, rows)
+    rays = np.stack([(u - camera.cx) / camera.fx, (v - camera.cy) / camera.fy,
+                     np.ones_like(u)], axis=-1).reshape(-1, 3)  # camera-space z of 1
+    centre = _rotate(_inverse(quaternion), -translation[np.newaxis])[0]
+    rise = _rotate(_inverse(quaternion), rays)[:, 2]  # the world z each ray gains per unit of z
+    with np.errstate(divide="ignore", invalid="ignore"):
+        depth = (PLANE_Z - centre[2]) / rise
+    if not np.all(np.isfinite(depth) & (depth > 0)):
+        raise ValueError("A pixel's ray doesn't meet the plane in front of this camera.")
+    return depth.reshape(height, width)
+
+
+def _landings(model: Any, image: Any, width: int, height: int) -> dict[tuple[int, int], float]:
+    """Each Prior_Size pixel (x, y) that an Observed_Point of `image` lands on, with that point's
+    camera-space z. A point behind the camera or outside the Frame lands nowhere, and the first
+    point on a pixel keeps it. An id that names no point of `model` is no observation."""
+    rows: dict[int, int] = {}
+    for row, point_id in enumerate(model.point_ids.tolist()):
+        rows.setdefault(int(point_id), row)
+    observed = [rows[int(point_id)] for point_id in image.observed_ids.tolist()
+                if int(point_id) in rows]
+    camera = model.camera
+    z, u, v = _project_points(camera, image.quaternion, image.translation,
+                              np.asarray(model.points, dtype=np.float64)[observed].reshape(-1, 3))
+    landings: dict[tuple[int, int], float] = {}
+    for depth, across, down in zip(z.tolist(), u.tolist(), v.tolist()):
+        if depth > 0 and 0 <= across < camera.width and 0 <= down < camera.height:
+            pixel = (min(math.floor(across * width / camera.width), width - 1),
+                     min(math.floor(down * height / camera.height), height - 1))
+            landings.setdefault(pixel, depth)
+    return landings
+
+
+def _facing_normal(quaternion: np.ndarray, translation: np.ndarray) -> np.ndarray:
+    """The plane's unit normal in the camera frame, (3,) float64, on the camera's side of it."""
+    centre = _rotate(_inverse(quaternion), -translation[np.newaxis])[0]
+    side = (0.0, 0.0, -1.0) if centre[2] < PLANE_Z else (0.0, 0.0, 1.0)
+    return _rotate(quaternion, np.array([side]))[0]

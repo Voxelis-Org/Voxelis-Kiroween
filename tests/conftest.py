@@ -1,18 +1,20 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the test config,
-set_frames and set_train, which change its [frames] and [train] settings, set_clean, which sets
-its [clean] settings, work_calls, which records whose Fake_Step work runs, fake_tools, which puts
-a FakeTools in place of the Frames_Step's ffprobe and ffmpeg, fake_gpu, which puts a FakeGpu in
-place of the Train_Step's GPU_Module, and no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out
-of every test.
+set_frames, set_depth and set_train, which change its [frames], [depth] and [train] settings,
+set_clean, which sets its [clean] settings, work_calls, which records whose Fake_Step work runs,
+fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg, fake_gpu,
+which puts a FakeGpu in place of the Train_Step's GPU_Module, and no_cap_deadline, which keeps
+SPLATPIPE_CAP_DEADLINE out of every test.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
-a Job in the real data/ folder (Req 14.2). The test config also has [frames] and [train], each
-with its three Preset tables, so a test that runs the Frames_Step or the Train_Step without a
-Config of its own gets settings (frames spec, Req 9.11; training spec, Req 9.15). It has [clean]
-and its three Preset tables too, from CLEAN_SHARED and CLEAN_PRESETS.
+a Job in the real data/ folder (Req 14.2). The test config also has [frames], [depth] and
+[train], each with its three Preset tables, so a test that runs the Frames_Step, the Depth_Step
+or the Train_Step without a Config of its own gets settings (frames spec, Req 9.11; training
+spec, Req 9.15; depth-priors spec, Req 8.8). [depth] holds DEPTH, the 8 real settings, and
+depth_text writes it with its three empty Preset tables. It has [clean] and its three Preset
+tables too, from CLEAN_SHARED and CLEAN_PRESETS.
 
 The autouse fixture no_cap_deadline removes SPLATPIPE_CAP_DEADLINE from the environment before
 every test, so a Cap_Deadline left in the shell or by another test can't change one. A test that
@@ -123,6 +125,20 @@ FRAMES = {
 # for the same reason as min_picks.
 BASE_PICKS = {"fast": 2, "default": 3, "quality": 4}
 
+# The test config's 8 [depth] Shared_Settings: the real values (depth-priors spec, Req 8.2). Each
+# value has the TOML type it has in the real config, so fit_miss_ratio is the whole number 3.
+# Every [depth] setting is shared, so its three Preset tables are empty.
+DEPTH = {
+    "long_edge": 512,
+    "moge_weights": "/opt/models/moge-2-vitb-normal/model.pt",
+    "resolution_level": 9,
+    "use_fp16": True,
+    "fit_min_points": 10,
+    "fit_miss_ratio": 3,
+    "fit_max_median_error": 0.15,
+    "min_gpu_memory_gb": 16,
+}
+
 # The test config's 35 [train] Shared_Settings: the real values (training spec, Req 9.2). Each
 # value has the TOML type it has in the real config.
 TRAIN = {
@@ -232,6 +248,19 @@ def frames_text(frames: Mapping[str, Any]) -> str:
                       for preset, value in base_picks.items()))
 
 
+def depth_text(depth: Mapping[str, Any]) -> str:
+    """[depth] and its three empty Preset tables as TOML, with each key in `depth` set to its
+    value, like {"fit_min_points": 3}, and every other key at its value in DEPTH.
+
+    Every [depth] setting is a Shared_Setting, so each Preset table holds no key (depth-priors
+    spec, Req 8.1).
+    """
+    shared = {**DEPTH, **depth}
+    return ("\n[depth]\n"
+            + "".join(f"{key} = {toml_value(value)}\n" for key, value in shared.items())
+            + "".join(f"\n[depth.{preset}]\n" for preset in BASE_PICKS))  # the three Presets
+
+
 def train_text(train: Mapping[str, Any]) -> str:
     """[train] and its three Preset tables as TOML, with each key in `train` set to its value
     and every other key at its value in TRAIN or TRAIN_PRESETS.
@@ -273,19 +302,21 @@ def clean_toml(changes: Mapping[str, object]) -> str:
 
 def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
                 frames: Mapping[str, Any] | None = None,
+                depth: Mapping[str, Any] | None = None,
                 train: Mapping[str, Any] | None = None,
                 clean: Mapping[str, object] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [frames] and then [train] come next, with the keys in
-    `frames` and `train` changed as frames_text and train_text say. [clean] and its Preset tables
-    come last, with the changes in `clean` made, as clean_toml reads them. The Jobs_Folder is
-    written with forward slashes, so a Windows backslash can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames], [depth] and then [train] come next, in step
+    order, with the keys in `frames`, `depth` and `train` changed as frames_text, depth_text and
+    train_text say. [clean] and its Preset tables come last, with the changes in `clean` made, as
+    clean_toml reads them. The Jobs_Folder is written with forward slashes, so a Windows
+    backslash can't become a TOML escape."""
     modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
     fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
-    return (jobs + fakes + frames_text(frames or {}) + train_text(train or {})
-            + clean_toml(clean or {}))
+    return (jobs + fakes + frames_text(frames or {}) + depth_text(depth or {})
+            + train_text(train or {}) + clean_toml(clean or {}))
 
 
 @pytest.fixture(autouse=True)
@@ -321,9 +352,9 @@ def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. [frames], [train] and [clean] are back to the
-    test config's values too. load_config() reads the file each time it's called, so the next run
-    that loads the config sees the change.
+    fail = "none", and set_fail() sets them all back. [frames], [depth], [train] and [clean] are
+    back to the test config's values too. load_config() reads the file each time it's called, so
+    the next run that loads the config sees the change.
     """
     def rewrite(**modes: str) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", fail=modes), encoding="utf-8")
@@ -338,12 +369,29 @@ def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     its own of, takes a dict of the Presets to change, like set_frames(base_picks={"fast": 50}).
 
     Like set_fail, each call writes the whole file again from config_text, so every key it doesn't
-    name is back to the test config's value, in [train] too, and every fail is back to "none". The
-    next run that loads the config sees the change. Each test gets a new test config, so the next
-    test sees the test config's values again.
+    name is back to the test config's value, in [depth] and [train] too, and every fail is back to
+    "none". The next run that loads the config sees the change. Each test gets a new test config,
+    so the next test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_depth(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_depth(**values), which rewrites the test config with each [depth] key it names
+    set to the given value, like set_depth(fit_min_points=3) (depth-priors spec, Req 8.8). Every
+    [depth] setting is shared, so each value goes in [depth] and the Preset tables stay empty.
+
+    Like set_fail and set_frames, each call writes the whole file again from config_text, so
+    every key it doesn't name is back to its value in DEPTH, in [frames] and [train] too, and
+    every fail is back to "none". The next run that loads the config sees the change. Each test
+    gets a new test config, so the next test sees the test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", depth=values), encoding="utf-8")
 
     return rewrite
 
@@ -356,9 +404,9 @@ def set_train(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     set_train(max_splats={"fast": 4}).
 
     Like set_fail and set_frames, each call writes the whole file again from config_text, so
-    every key it doesn't name is back to the test config's value, in [frames] too, and every fail
-    is back to "none". The next run that loads the config sees the change. Each test gets a new
-    test config, so the next test sees the test config's values again.
+    every key it doesn't name is back to the test config's value, in [frames] and [depth] too,
+    and every fail is back to "none". The next run that loads the config sees the change. Each
+    test gets a new test config, so the next test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", train=values), encoding="utf-8")
@@ -375,8 +423,8 @@ def set_clean(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
 
     Each call writes the whole file again, the way set_fail does, so every setting it doesn't
     name is back to its value in CLEAN_SHARED or CLEAN_PRESETS, every fail is back to "none",
-    [frames] is back to the test config's values, and set_clean() sets them all back. A set_fail
-    or set_frames call after it puts [clean] back the same way.
+    [frames], [depth] and [train] are back to the test config's values, and set_clean() sets them
+    all back. A set_fail or set_frames call after it puts [clean] back the same way.
     """
     def rewrite(**values: object) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", clean=values), encoding="utf-8")

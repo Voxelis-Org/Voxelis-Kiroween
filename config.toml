@@ -288,6 +288,33 @@ base_picks = 150
 # Fewest picks the step aims for.
 base_picks = 200
 
+[depth]
+# Longest edge of the depth priors, in pixels. A smaller camera isn't scaled up.
+long_edge = 512
+# The MoGe-2 ViT-B normal weights on the machine image. A test keeps it equal to MOGE_WEIGHTS in cloud/image.py.
+moge_weights = "/opt/models/moge-2-vitb-normal/model.pt"
+# How much detail MoGe-2 sees, from 0 to 9. 9 is MoGe's default, its most detail.
+resolution_level = 9
+# Whether MoGe-2 runs its network in half precision, as it does by default.
+use_fp16 = true
+# Fewest of the camera solve's points a frame needs in each of its two fits to get a depth prior.
+fit_min_points = 10
+# The second fit leaves out the points that miss the first fit by more than this times the median miss.
+fit_miss_ratio = 3
+# A frame gets no depth prior when its median relative depth error is above this.
+fit_max_median_error = 0.15
+# Least GPU memory the job's machine needs for this step, in GB. The step never checks it.
+min_gpu_memory_gb = 16
+
+# Every [depth] setting is shared, so this preset table is empty.
+[depth.fast]
+
+# Every [depth] setting is shared, so this preset table is empty.
+[depth.default]
+
+# Every [depth] setting is shared, so this preset table is empty.
+[depth.quality]
+
 [train]
 # Longest edge of the images the step trains at, in pixels. A smaller camera isn't scaled up.
 long_edge = 1600

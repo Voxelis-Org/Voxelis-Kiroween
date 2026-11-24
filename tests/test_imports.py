@@ -39,6 +39,11 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
   gpu_api.GPU_MODULE, the module load_gpu imports, names that file. A fresh process that imports
   splatpipe.train and each of its other modules, found with glob, holds none of torch, gsplat
   and fused_ssim in sys.modules.
+- The Depth_Step's imports (depth-priors spec, Req 18.8): every splatpipe/depth/*.py but gpu.py
+  imports only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, a relative import
+  counting as splatpipe, and gpu.py, the Depth_GPU_Module, imports only those and torch, moge
+  and huggingface_hub. The files are found with glob, so each new file is checked as soon as it
+  lands, and the check fails if it finds no file, so it never passes by reading nothing.
 - The dependencies (frames spec, Req 9.8, and splat-training spec, Req 9.10): numpy and
   opencv-python-headless are runtime dependencies in pyproject.toml and in the project's own
   entry in uv.lock, and no package in either file is plain opencv-python, torch, gsplat,
@@ -122,6 +127,13 @@ LOADED_BY_TRAIN = ("import importlib, json, sys\n"
                    "for name in sys.argv[1:]:\n"
                    "    importlib.import_module(name)\n"
                    "print(json.dumps(sorted(sys.modules)))\n")
+# The top-level names a splatpipe/depth/*.py may import besides the standard library, and the
+# Depth_GPU_Module's file, which may import torch, moge and huggingface_hub too (depth-priors
+# spec, Req 18.8).
+DEPTH_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+DEPTH_GPU_MODULE_FILE = SPLATPIPE / "depth" / "gpu.py"
+DEPTH_GPU_NAMES = frozenset({"torch", "moge", "huggingface_hub"})
+DEPTH_GPU_MODULE_IMPORTS = DEPTH_IMPORTS | DEPTH_GPU_NAMES
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 # The runtime dependencies the Frames_Step needs (frames spec, Req 9.8).
@@ -357,6 +369,22 @@ def test_importing_splatpipe_train_and_its_cpu_modules_loads_no_gpu_package() ->
     loaded = json.loads(result.stdout)
     assert {"splatpipe.train", *modules} <= set(loaded)
     assert [name for name in loaded if top(name) in GPU_NAMES] == []
+
+
+def test_the_depth_step_imports_only_the_standard_library_numpy_cv2_and_splatpipe() -> None:
+    """Depth-priors spec, Req 18.8. gpu.py, the Depth_GPU_Module, may import torch, moge and
+    huggingface_hub as well, and no other file may. A relative import resolves to splatpipe. The
+    files are found with glob, so each file a later task adds is checked as it lands, and the
+    test fails when it finds none, so it never passes by reading nothing."""
+    paths = sorted(SPLATPIPE.glob("depth/*.py"))
+    assert paths, ("splatpipe/depth/ holds no .py file, so the depth import check has nothing to "
+                   "read. Make splatpipe/depth/__init__.py first.")
+    found: list[tuple[str, str]] = []
+    for path in paths:
+        allowed = sys.stdlib_module_names | (
+            DEPTH_GPU_MODULE_IMPORTS if path == DEPTH_GPU_MODULE_FILE else DEPTH_IMPORTS)
+        found += [(where, name) for where, name in imports_of(path) if top(name) not in allowed]
+    assert found == []
 
 
 def test_pyproject_and_uv_lock_hold_numpy_and_headless_opencv_and_no_gpu_or_plain_opencv() -> None:
