@@ -9,6 +9,11 @@ one test (Req 8.8).
 Every [depth] setting is a Shared_Setting, so every refusal names [depth], whatever the Preset.
 The tests use the quality Preset, so a message that named the Preset's table, or the test
 config's default_preset, would show.
+
+The Fallback_List test reads the real config's [cloud] too, with cloud.config's own loader. With
+the needs the Start_Command works out for the real Step_List, which holds the Depth_Step, the GPU
+memory needed is the train step's 24, 24 and 48 GB, which covers the depth step's 16, and
+select_candidates keeps every type on each Preset's Fallback_List (Req 8.5, 18.10).
 """
 
 import tomllib
@@ -18,10 +23,13 @@ from typing import Any
 
 import pytest
 
+from cloud.config import load_cloud_config
 from cloud.image import MOGE_WEIGHTS
+from cloud.select import select_candidates, step_needs_over
 from splatpipe.config import REPO_ROOT, StepSettings, load_config
 from splatpipe.depth.settings import DepthSettings, read_settings
 from splatpipe.errors import ExpectedFailure, PipelineError
+from splatpipe.run import STEP_LIST
 
 # Read by path, so these tests still read it once CONFIG_PATH points at a test config.
 REAL_CONFIG = REPO_ROOT / "config.toml"
@@ -126,6 +134,28 @@ def test_the_real_depth_section_loads_exactly_the_8_keys_for_each_preset(preset:
 def test_the_real_moge_weights_is_the_machine_images_weights_file() -> None:
     section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["depth"]
     assert section["moge_weights"] == MOGE_WEIGHTS  # Req 8.4
+
+
+# The Step_Needs and the Fallback_Lists
+
+# The GPU memory the Start_Command needs over the real Step_List for each Preset, in GB: the train
+# step's min_gpu_memory_gb, which is above the depth step's 16 (Req 8.5).
+NEEDED_GPU_MEMORY_GB = {"fast": 24.0, "default": 24.0, "quality": 48.0}
+
+
+@pytest.mark.parametrize("preset", PRESET_NAMES)
+def test_every_type_on_each_presets_fallback_list_still_fits_the_real_step_list_with_depth(
+        preset: str) -> None:
+    """Req 8.5, 18.10. The needs come from the Start_Command's own step_needs_over over the real
+    Step_List's names, as cloud/start.py works them out, so the depth step's min_gpu_memory_gb
+    counts with no change to the cloud code."""
+    names = [entry.name for entry in STEP_LIST]
+    assert "depth" in names
+    needs = step_needs_over(names, load_config(REAL_CONFIG), preset)
+    assert needs.min_gpu_memory_gb == NEEDED_GPU_MEMORY_GB[preset]
+    cloud_config = load_cloud_config(REAL_CONFIG)
+    fallback = list(cloud_config.preset_plan(preset).fallback)
+    assert select_candidates(preset, needs, cloud_config) == fallback  # every type is kept
 
 
 # The checks of read_settings

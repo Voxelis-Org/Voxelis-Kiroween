@@ -7,7 +7,9 @@ The ## Step: train section's Config section test reads the real [train] the same
 has to name every key the real [train] and its preset tables hold, and the whole section has to
 name the depth-priors spec's 15 [train] keys, each of which the real [train] must hold, and its
 five Prior_Terms. The
-## Step: depth section's Config section test reads the real [depth] the same way.
+## Step: depth section's Config section test reads the real [depth] the same way. The step list
+test takes its entries from the real STEP_LIST, and the skill tests read the gsplat-training and
+moge-depth skills by path.
 
 The Step_Reports' counts and timings are written out here, as the step tests write them out:
 tests/test_frames_step.py, tests/test_train_step.py and tests/test_depth_step.py check that a real
@@ -144,20 +146,38 @@ def test_the_pipeline_doc_has_a_step_section_for_the_fake_step_and_every_listed_
         doc_part(parts, 2, f"Step: {name}")
 
 
-def test_the_step_list_part_names_the_frames_step_as_the_first_required_entry() -> None:
-    """Frames spec, Req 12.5. Training spec, Req 13.8, 13.14: the list holds the frames step and
-    the train step, then the clean step, and the frames spec's three sentences and the old one
-    on a later spec adding the clean step's entry are gone."""
+def test_the_step_list_part_names_the_frames_depth_train_and_clean_entries_in_order() -> None:
+    """Frames spec, Req 12.5. Training spec, Req 13.8, 13.14. Depth-priors spec, Req 17.4, 17.9:
+    the list holds the frames step, required and first, the depth step, optional, the train step,
+    required, and then the clean step, optional, each written as the real Step_List's entry. The
+    camera solve spec's entry goes between the frames step and the depth step. The training spec's
+    three sentences, the frames spec's three and the old one on a later spec adding the clean
+    step's entry are gone."""
     step_list = doc_part(pipeline_parts(), 2, "The step list")
-    phrases = ("The list holds the frames step and the train step, both required, and then the "
-               "clean step, optional",
-               "The camera solve spec puts its entry between the frames step and the train step, "
-               "so the order becomes frames, cameras, train, clean",
-               "Until the camera solve spec adds its entry, a job runs the frames step and then "
-               "fails at the train step, because the camera solve output is missing")
+    phrases = ("The list holds the frames step, required, the depth step, optional, the train "
+               "step, required, and then the clean step, optional",
+               "The camera solve spec puts its entry between the frames step and the depth step, "
+               "so the order becomes frames, cameras, depth, train, clean",
+               "Until the camera solve spec adds its entry, a job runs the frames step, fails the "
+               "depth step and goes on, and then fails at the train step, because the camera "
+               "solve output is missing")
     missing = [words for words in phrases if words not in step_list]
     assert not missing, f"The part headed The step list should say {missing}"
-    gone = ("The list holds the frames step as its first, required entry",
+    # Each entry as the code writes it, in the real Step_List's order, with frames first.
+    entries = [f'`StepEntry("{entry.name}", "{entry.module}", {entry.required})`'
+               for entry in STEP_LIST]
+    assert STEP_LIST[0].name == "frames" and STEP_LIST[0].required
+    unnamed = [entry for entry in entries if entry not in step_list]
+    assert not unnamed, f"The part headed The step list should name {unnamed}"
+    places = [step_list.index(entry) for entry in entries]
+    assert places == sorted(places), (
+        f"The part headed The step list should name {entries} in that order")
+    gone = ("The list holds the frames step and the train step, both required, and then the "
+            "clean step, optional",
+            "The camera solve spec puts its entry between the frames step and the train step",
+            "so the order becomes frames, cameras, train, clean",
+            "a job runs the frames step and then fails at the train step",
+            "The list holds the frames step as its first, required entry",
             "Each later step spec adds its own entry after the frames step",
             "a job is done once the frames step is done",
             "The list starts empty", "No steps are set up yet",
@@ -498,3 +518,25 @@ def test_the_gsplat_training_skill_names_out_train_ply_and_no_longer_out_splat_p
     assert "`out/train.ply`" in skill, "The gsplat-training skill should name `out/train.ply`"
     assert "out/splat.ply" not in skill, (
         "The gsplat-training skill should no longer name out/splat.ply")
+
+
+# The moge-depth skill (depth-priors spec, Req 17.8)
+
+MOGE_DEPTH_SKILL = ROOT / ".kiro" / "skills" / "moge-depth" / "SKILL.md"
+
+
+def test_the_moge_depth_skill_says_what_the_depth_priors_spec_decided() -> None:
+    """Depth-priors spec, Req 17.8: the skill names `moge_weights` in `[depth]` and the image's
+    `--no-deps` installs, and its sentences on what the image didn't have yet, the missing licence
+    rows, the code's row covering the three git dependencies and the depth-priors spec deciding are
+    gone. So is "Step 7 of the image build" for the weights' download, which is step 8 now that
+    step 7 installs MoGe's code."""
+    skill = MOGE_DEPTH_SKILL.read_text(encoding="utf-8")
+    for words in ("`moge_weights` in `[depth]`", "`--no-deps`"):
+        assert words in skill, f"The moge-depth skill should name {words}"
+    gone = ("The image doesn't have MoGe's code yet", "huggingface-hub has none yet",
+            "the code's row covers the three git dependencies", "The depth-priors spec decides",
+            "Step 7 of the image build")
+    lowered = skill.lower()  # so a phrase counts at a sentence's start or inside one
+    left = [words for words in gone if words.lower() in lowered]
+    assert not left, f"The moge-depth skill should no longer say {left}"

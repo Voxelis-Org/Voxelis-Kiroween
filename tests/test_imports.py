@@ -458,9 +458,10 @@ def test_importing_splatpipe_run_loads_only_skeleton_modules() -> None:
 
 
 def test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section() -> None:
-    """The entries are the Frames_Step, the Train_Step and then the Clean_Step, so this loads
-    [frames], [train] and [clean] from the real config for each of the three Presets (frames
-    spec, Req 11.7, and splat-training spec, Req 14.9)."""
+    """The entries are the Frames_Step, the Depth_Step, the Train_Step and then the Clean_Step, so
+    this loads [frames], [depth], [train] and [clean] from the real config for each of the three
+    Presets (frames spec, Req 11.7, splat-training spec, Req 14.9, and depth-priors spec,
+    Req 18.10)."""
     config = load_config(REAL_CONFIG)
     for entry in STEP_LIST:
         assert check_step_name(entry.name) == entry.name
