@@ -4,7 +4,12 @@ The tests of the Pipeline_Doc's ## Step: frames section also read the real confi
 and take the Frames_Record's top-level fields from what splatpipe.frames.files.frames_record
 gives. So the section has to name the keys the real [frames] holds and the fields the step writes.
 The ## Step: train section's Config section test reads the real [train] the same way, so that part
-has to name every key the real [train] and its preset tables hold.
+has to name every key the real [train] and its preset tables hold. The ## Step: depth section's
+Config section test reads the real [depth] the same way.
+
+The Step_Reports' counts and timings are written out here, as the step tests write them out:
+tests/test_frames_step.py, tests/test_train_step.py and tests/test_depth_step.py check that a real
+run's report holds exactly those names.
 """
 
 import re
@@ -348,6 +353,63 @@ def test_the_train_files_in_out_part_names_the_splat_and_the_clean_steps_limit()
     phrases = ("`out/train.ply`", "3,000,000 splats", "8,000,000 splats", "`max_source_splats`")
     missing = [words for words in phrases if words not in out]
     assert not missing, f"The train section's Files in out/ part should name {missing}"
+
+
+# The ## Step: depth section (depth-priors spec, Req 17.1, 17.2, 17.9)
+
+DEPTH = "Step: depth"
+# The Depth_Report's counts (Req 9.1) and timings (Req 9.2).
+DEPTH_COUNTS = ("images", "prior_width", "prior_height", "fitted_images", "few_points_images",
+                "flat_images", "poor_fit_images", "peak_gpu_memory_bytes")
+DEPTH_TIMINGS = ("load_model", "infer", "fit", "write")
+# The Prior_Index and a Prior_File's three arrays (Req 7.1, 7.3).
+PRIOR_NAMES = ("`work/depth/depth.json`", "`inverse_depth`", "`normal`", "`mask`")
+
+
+def depth_part(title: str) -> str:
+    """The text of the ### part with this title in the ## Step: depth section."""
+    section = doc_part(pipeline_parts(), 2, DEPTH)
+    return doc_part(doc_parts(section), 3, title, f"The ## {DEPTH} section")
+
+
+def test_the_depth_section_comes_after_frames_and_before_train_and_has_the_five_parts() -> None:
+    """Depth-priors spec, Req 17.1, 17.9."""
+    parts = pipeline_parts()
+    section = doc_parts(doc_part(parts, 2, DEPTH))
+    for title in STEP_PARTS:
+        doc_part(section, 3, title, f"The ## {DEPTH} section")
+    titles = [title for level, title, _ in parts if level == 2]
+    assert titles.index(FRAMES) < titles.index(DEPTH) < titles.index(TRAIN), (
+        f"docs/pipeline.md should have ## {DEPTH} after ## {FRAMES} and before ## {TRAIN}")
+
+
+def test_the_depth_config_section_names_every_real_key_and_its_tables() -> None:
+    """Depth-priors spec, Req 17.1, 17.9: the keys of the real [depth] and of its preset tables."""
+    config = depth_part("Config section")
+    section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["depth"]
+    presets = {name: table for name, table in section.items() if isinstance(table, dict)}
+    shared = [key for key, value in section.items() if not isinstance(value, dict)]
+    per_preset = list(dict.fromkeys(key for table in presets.values() for key in table))
+    tables = ["[depth]", *(f"[depth.{name}]" for name in presets)]
+    names = [f"`{name}`" for name in (*shared, *per_preset, *tables)]
+    missing = [words for words in names if words not in config]
+    assert not missing, f"The depth section's Config section part should name {missing}"
+
+
+def test_the_depth_step_report_fields_part_names_every_count_and_the_four_timings() -> None:
+    """Depth-priors spec, Req 17.9, with the counts of Req 9.1 and the timings of Req 9.2."""
+    report = depth_part("Step report fields")
+    names = [*(f"`counts.{name}`" for name in DEPTH_COUNTS),
+             *(f"`timings.{name}`" for name in DEPTH_TIMINGS)]
+    missing = [name for name in names if name not in report]
+    assert not missing, f"The depth section's Step report fields part should name {missing}"
+
+
+def test_the_depth_what_it_writes_part_names_the_prior_index_and_the_three_arrays() -> None:
+    """Depth-priors spec, Req 17.2, 17.9: the Prior_Index and the Prior_File's arrays."""
+    writes = depth_part("What it writes")
+    missing = [words for words in PRIOR_NAMES if words not in writes]
+    assert not missing, f"The depth section's What it writes part should name {missing}"
 
 
 # The smoke test and cap deadline parts of ## Running a job in the cloud (training spec,

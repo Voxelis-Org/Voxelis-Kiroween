@@ -1,5 +1,5 @@
 """The import checks (Req 12) and the dependency check: they read the Pipeline's files with ast,
-the GPU_Module's as text too, and pyproject.toml and uv.lock with tomllib, and run no Step
+the two GPU modules' as text too, and pyproject.toml and uv.lock with tomllib, and run no Step
 (Req 12.5).
 
 `imports_in` collects every module name a file imports, with its line: each `import`, each
@@ -44,12 +44,28 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
   counting as splatpipe, and gpu.py, the Depth_GPU_Module, imports only those and torch, moge
   and huggingface_hub. The files are found with glob, so each new file is checked as soon as it
   lands, and the check fails if it finds no file, so it never passes by reading nothing.
-- The dependencies (frames spec, Req 9.8, and splat-training spec, Req 9.10): numpy and
-  opencv-python-headless are runtime dependencies in pyproject.toml and in the project's own
-  entry in uv.lock, and no package in either file is plain opencv-python, torch, gsplat,
-  fused-ssim or an nvidia-* or cuda-* package. Names are compared as PEP 503 normalises them.
-  The check neither requires nor refuses scipy, so the clean spec can decide scipy without
-  changing it.
+- The Depth_GPU_Module (depth-priors spec, Req 3.2, 3.6, 3.9, 3.10, 3.15, 18.8): gpu.py is read
+  as text and with ast and never imported, because torch, MoGe and huggingface_hub exist only on
+  the Machine_Image. It imports all three: torch only in import statements of the module's own
+  body, at its top, and moge and huggingface_hub only inside functions. Each function that
+  imports huggingface_hub, import_moge among them, sets os.environ["HF_HUB_OFFLINE"] to "1" in
+  a statement of its own body, on a line before its first moge or huggingface_hub import, by
+  ast's line numbers, because the docstring names both first. load_model's moge import isn't
+  read, because it runs after import_moge has imported MoGe. gpu.py calls torch.load, every call
+  with weights_only=True, and its text, comments and docstrings included, names none of
+  from_pretrained, hf_hub_download and init_weights. gpu_api.DEPTH_GPU_MODULE, the module
+  load_depth_gpu imports, names that file. A fresh process that imports splatpipe.depth and
+  each of its other modules, found with glob, holds none of torch, moge, utils3d_moge and
+  huggingface_hub in sys.modules. A made-up file that breaks each rule shows each check failing,
+  with its line.
+- The dependencies (frames spec, Req 9.8, splat-training spec, Req 9.10, and depth-priors spec,
+  Req 15.5): numpy and opencv-python-headless are runtime dependencies in pyproject.toml and in
+  the project's own entry in uv.lock, and no package in either file is plain opencv-python,
+  torch, gsplat, fused-ssim, an nvidia-* or cuda-* package, moge, utils3d-moge, huggingface-hub
+  or hf-xet. MoGe's code and the packages only it needs go only on the Machine_Image, which
+  leaves hf-xet off, so a laptop's uv sync installs none of them. Names are compared as PEP 503
+  normalises them, so utils3d_moge, huggingface_hub and hf_xet are refused too. The check
+  neither requires nor refuses scipy, so the clean spec can decide scipy without changing it.
 
 Each import check's failure lists the file and the line of every import it found, and the
 dependency check's failure lists the file of every package it found.
@@ -66,6 +82,7 @@ from pathlib import Path
 from typing import Any
 
 from splatpipe.config import PRESETS, REPO_ROOT, load_config
+from splatpipe.depth.gpu_api import DEPTH_GPU_MODULE
 from splatpipe.run import STEP_LIST
 from splatpipe.step import check_step_name
 from splatpipe.train.gpu_api import GPU_MODULE
@@ -132,17 +149,44 @@ LOADED_BY_TRAIN = ("import importlib, json, sys\n"
 # spec, Req 18.8).
 DEPTH_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
 DEPTH_GPU_MODULE_FILE = SPLATPIPE / "depth" / "gpu.py"
+DEPTH_GPU_MODULE_SHOWN = DEPTH_GPU_MODULE_FILE.relative_to(REPO_ROOT).as_posix()
+DEPTH_PACKAGE = "splatpipe.depth"  # the package gpu.py's relative imports resolve against
 DEPTH_GPU_NAMES = frozenset({"torch", "moge", "huggingface_hub"})
 DEPTH_GPU_MODULE_IMPORTS = DEPTH_IMPORTS | DEPTH_GPU_NAMES
+# The two names gpu.py imports only inside functions, after HF_HUB_OFFLINE is set, because
+# huggingface_hub reads the variable once, when it's first imported, and MoGe's model module
+# imports huggingface_hub at its top (depth-priors spec, Req 3.6).
+HUB_NAMES = frozenset({"moge", "huggingface_hub"})
+# The statement that sets HF_HUB_OFFLINE, as ast.unparse writes it, so either kind of quote reads
+# the same (depth-priors spec, Req 3.6).
+SET_HUB_OFFLINE = "os.environ['HF_HUB_OFFLINE'] = '1'"
+# The functions gpu.py never names, comments and docstrings included: MoGe's own loader and the
+# Hub's download, either of which can fetch the weights, and the encoder's set-up from DINOv2's
+# original weights, which downloads them and overwrites MoGe's (depth-priors spec, Req 3.10).
+NEVER_IN_DEPTH_GPU_MODULE = ("from_pretrained", "hf_hub_download", "init_weights")
+# The names a fresh process that imports splatpipe.depth and its CPU modules never loads, by top
+# level (depth-priors spec, Req 3.15).
+NEVER_LOADED_BY_DEPTH = frozenset({"torch", "moge", "utils3d_moge", "huggingface_hub"})
+# Run in a fresh process with module names as its arguments: it imports splatpipe.depth, then
+# each module it's given, and prints the name of every module in sys.modules.
+LOADED_BY_DEPTH = ("import importlib, json, sys\n"
+                   "import splatpipe.depth\n"
+                   "for name in sys.argv[1:]:\n"
+                   "    importlib.import_module(name)\n"
+                   "print(json.dumps(sorted(sys.modules)))\n")
+# The kinds of node whose body is a function's, so an import inside one runs only when it's called.
+FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 # The runtime dependencies the Frames_Step needs (frames spec, Req 9.8).
 FRAMES_DEPENDENCIES = frozenset({"numpy", "opencv-python-headless"})
 # The packages that never go in pyproject.toml or uv.lock, by their normalised names: plain
-# opencv-python, which installs the same cv2 module as the headless one, and the GPU packages,
-# which only go in the cloud machine image (frames spec, Req 9.8, and splat-training spec,
-# Req 9.10).
-NEVER_PACKAGES = frozenset({"opencv-python", "torch", "gsplat", "fused-ssim"})
+# opencv-python, which installs the same cv2 module as the headless one, the GPU packages, which
+# only go in the cloud machine image, and MoGe's code with the packages only it needs, which go
+# only there too, hf-xet included though the image leaves it off (frames spec, Req 9.8,
+# splat-training spec, Req 9.10, and depth-priors spec, Req 15.5).
+NEVER_PACKAGES = frozenset({"opencv-python", "torch", "gsplat", "fused-ssim", "moge",
+                            "utils3d-moge", "huggingface-hub", "hf-xet"})
 NEVER_PREFIXES = ("nvidia-", "cuda-")
 # The first character of a requirement like "numpy>=2.4.6" that can't be part of its package name.
 NAME_END = re.compile(r"[^A-Za-z0-9._-]")
@@ -176,8 +220,14 @@ def constant_import(node: ast.AST) -> str | None:
 
 def imports_in(source: str | bytes, package: str) -> list[tuple[int, str]]:
     """Every module name that `source`, a file in `package`, imports, as (line, name), in order."""
+    return imports_below(ast.parse(source), package)
+
+
+def imports_below(tree: ast.AST, package: str) -> list[tuple[int, str]]:
+    """Every module name imported in `tree`, a parsed file in `package` or a part of one, like a
+    function, as (line, name), in order."""
     found: list[tuple[int, str]] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found += [(node.lineno, alias.name) for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
@@ -231,6 +281,66 @@ def pyproject_packages(pyproject: dict[str, Any]) -> list[str]:
 def never_a_dependency(name: str) -> bool:
     """Whether a package, by its normalised name, must never be in pyproject.toml or uv.lock."""
     return name in NEVER_PACKAGES or name.startswith(NEVER_PREFIXES)
+
+
+def misplaced_depth_gpu_imports(source: str | bytes, package: str) -> list[tuple[int, str]]:
+    """The torch, moge and huggingface_hub imports in `source` that are out of place, as
+    (line, name): torch anywhere but in an import statement of the module's own body, at its top,
+    and moge or huggingface_hub anywhere but inside a function (depth-priors spec, Req 3.6,
+    18.8)."""
+    tree = ast.parse(source)
+    at_top = {pair for statement in tree.body
+              if isinstance(statement, (ast.Import, ast.ImportFrom))
+              for pair in imports_below(statement, package)}
+    in_functions = {pair for node in ast.walk(tree) if isinstance(node, FUNCTIONS)
+                    for pair in imports_below(node, package)}
+    return [(line, name) for line, name in imports_below(tree, package)
+            if (top(name) == "torch" and (line, name) not in at_top)
+            or (top(name) in HUB_NAMES and (line, name) not in in_functions)]
+
+
+def functions_importing_huggingface_hub(source: str | bytes,
+                                        package: str) -> list[ast.FunctionDef]:
+    """Each function in `source`, nested ones included, that imports huggingface_hub."""
+    return [node for node in ast.walk(ast.parse(source)) if isinstance(node, FUNCTIONS)
+            and any(top(name) == "huggingface_hub" for _, name in imports_below(node, package))]
+
+
+def hub_imports_before_offline(source: str | bytes, package: str) -> list[tuple[int, str]]:
+    """The first moge or huggingface_hub import, as (line, name), of each function in `source`
+    that imports huggingface_hub with no statement of its own body setting HF_HUB_OFFLINE to 1 on
+    an earlier line (depth-priors spec, Req 3.6).
+
+    Line numbers come from ast, because the module's docstring names both the variable and the
+    imports first. A function that imports moge and not huggingface_hub, like gpu.py's
+    load_model, isn't read: it runs after import_moge has imported MoGe, so its import is only a
+    lookup in sys.modules.
+    """
+    found: list[tuple[int, str]] = []
+    for function in functions_importing_huggingface_hub(source, package):
+        line, name = next(pair for pair in imports_below(function, package)
+                          if top(pair[1]) in HUB_NAMES)
+        if not any(ast.unparse(statement) == SET_HUB_OFFLINE and statement.lineno < line
+                   for statement in function.body):
+            found.append((line, name))
+    return sorted(found)
+
+
+def torch_load_calls(source: str | bytes) -> list[tuple[int, bool]]:
+    """Each torch.load call in `source`, as (line, whether it passes weights_only=True)
+    (depth-priors spec, Req 3.9)."""
+    return [(node.lineno, any(keyword.arg == "weights_only"
+                              and isinstance(keyword.value, ast.Constant)
+                              and keyword.value.value is True for keyword in node.keywords))
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call) and ast.unparse(node.func) == "torch.load"]
+
+
+def lines_naming(text: str, names: tuple[str, ...]) -> list[tuple[int, str]]:
+    """Each line of `text` that names one of `names`, as (line, name), comments and docstrings
+    included."""
+    return [(number, name) for number, line in enumerate(text.splitlines(), start=1)
+            for name in names if name in line]
 
 
 def test_the_reader_finds_every_kind_of_import_with_its_line() -> None:
@@ -387,9 +497,114 @@ def test_the_depth_step_imports_only_the_standard_library_numpy_cv2_and_splatpip
     assert found == []
 
 
+def test_the_depth_gpu_checks_find_each_violation_with_its_line() -> None:
+    """The helpers that the Depth_GPU_Module's checks use, on a made-up file that breaks each
+    rule, so the checks can fail. guarded() breaks none, with double quotes that ast.unparse
+    reads as single ones."""
+    sample = ('"""Calls from_pretrained."""\n'
+              "import os\n"
+              "import moge\n"
+              "def import_moge():\n"
+              "    import torch\n"
+              "    import huggingface_hub.constants\n"
+              "    os.environ['HF_HUB_OFFLINE'] = '1'\n"
+              "def load(path):\n"
+              "    return torch.load(path, weights_only=False)\n"
+              "def later():\n"
+              "    if True:\n"
+              '        os.environ["HF_HUB_OFFLINE"] = "1"\n'
+              "    from moge.model.v2 import MoGeModel\n"
+              "    import huggingface_hub\n"
+              "def guarded(path):\n"
+              '    os.environ["HF_HUB_OFFLINE"] = "1"\n'
+              "    import huggingface_hub\n"
+              "    return torch.load(path, map_location='cpu', weights_only=True)\n")
+    assert misplaced_depth_gpu_imports(sample, DEPTH_PACKAGE) == [(3, "moge"), (5, "torch")]
+    assert hub_imports_before_offline(sample, DEPTH_PACKAGE) == [
+        (6, "huggingface_hub.constants"), (13, "moge.model.v2.MoGeModel")]
+    assert torch_load_calls(sample) == [(9, False), (18, True)]
+    assert lines_naming(sample, NEVER_IN_DEPTH_GPU_MODULE) == [(1, "from_pretrained")]
+
+
+def test_depth_gpu_py_imports_torch_at_its_top_and_moge_and_huggingface_hub_inside_functions(
+) -> None:
+    """Depth-priors spec, Req 3.6, 18.8. gpu.py is read as text and never imported, because
+    torch, MoGe and huggingface_hub exist only on the Machine_Image. It imports all three."""
+    text = DEPTH_GPU_MODULE_FILE.read_text(encoding="utf-8")
+    found = [(f"{DEPTH_GPU_MODULE_SHOWN}:{line}", name)
+             for line, name in misplaced_depth_gpu_imports(text, DEPTH_PACKAGE)]
+    assert found == []
+    imported = {top(name) for _, name in imports_in(text, DEPTH_PACKAGE)}
+    assert DEPTH_GPU_NAMES <= imported, sorted(DEPTH_GPU_NAMES - imported)
+
+
+def test_depth_gpu_py_sets_hf_hub_offline_before_it_imports_moge_or_huggingface_hub() -> None:
+    """Depth-priors spec, Req 3.6. In each function that imports huggingface_hub, import_moge
+    among them, a statement of the function's own body sets os.environ["HF_HUB_OFFLINE"] to "1"
+    on a line before the function's first moge or huggingface_hub import. The lines come from
+    ast, since the docstring names both first, and load_model, which imports moge only after
+    import_moge has, isn't read."""
+    text = DEPTH_GPU_MODULE_FILE.read_text(encoding="utf-8")
+    importers = [function.name
+                 for function in functions_importing_huggingface_hub(text, DEPTH_PACKAGE)]
+    assert "import_moge" in importers, importers
+    found = [(f"{DEPTH_GPU_MODULE_SHOWN}:{line}", name)
+             for line, name in hub_imports_before_offline(text, DEPTH_PACKAGE)]
+    assert found == []
+
+
+def test_depth_gpu_py_loads_the_weights_with_weights_only() -> None:
+    """Depth-priors spec, Req 3.9: gpu.py calls torch.load, and every call passes
+    weights_only=True, read with ast, since the docstring names it too."""
+    calls = torch_load_calls(DEPTH_GPU_MODULE_FILE.read_text(encoding="utf-8"))
+    assert calls, f"{DEPTH_GPU_MODULE_SHOWN} calls no torch.load"
+    assert [f"{DEPTH_GPU_MODULE_SHOWN}:{line}" for line, weights_only in calls
+            if not weights_only] == []
+
+
+def test_depth_gpu_py_names_no_moge_loader_hub_download_or_dinov2_set_up() -> None:
+    """Depth-priors spec, Req 3.10: anywhere in its text, comments and docstrings included."""
+    text = DEPTH_GPU_MODULE_FILE.read_text(encoding="utf-8")
+    assert [(f"{DEPTH_GPU_MODULE_SHOWN}:{line}", name)
+            for line, name in lines_naming(text, NEVER_IN_DEPTH_GPU_MODULE)] == []
+
+
+def test_the_module_load_depth_gpu_imports_is_the_file_these_checks_read() -> None:
+    """Depth-priors spec, Req 3.2, 18.8: gpu_api.DEPTH_GPU_MODULE with its dots turned into
+    folders, plus .py, is splatpipe/depth/gpu.py."""
+    assert DEPTH_GPU_MODULE.replace(".", "/") + ".py" == DEPTH_GPU_MODULE_SHOWN
+
+
+def test_importing_splatpipe_depth_and_its_cpu_modules_loads_no_torch_moge_or_huggingface_hub(
+) -> None:
+    """Depth-priors spec, Req 3.15, 18.8. The CPU modules are every splatpipe/depth/*.py but
+    __init__.py and gpu.py, found with glob, so a module a later task adds is imported as it
+    lands. On a laptop, where none of the four is installed, a CPU module that imported one would
+    fail the fresh process."""
+    modules = [f"{DEPTH_PACKAGE}.{path.stem}" for path in sorted(SPLATPIPE.glob("depth/*.py"))
+               if path != DEPTH_GPU_MODULE_FILE and path.stem != "__init__"]
+    result = subprocess.run([sys.executable, "-c", LOADED_BY_DEPTH, *modules], cwd=REPO_ROOT,
+                            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                            capture_output=True, encoding="utf-8", timeout=60)
+    assert result.returncode == 0, result.stderr
+    loaded = json.loads(result.stdout)
+    assert {DEPTH_PACKAGE, *modules} <= set(loaded)
+    assert [name for name in loaded if top(name) in NEVER_LOADED_BY_DEPTH] == []
+
+
+def test_the_dependency_check_refuses_moge_and_the_packages_only_it_needs() -> None:
+    """Depth-priors spec, Req 15.5, in the spellings MoGe's and huggingface_hub's own files use,
+    so the check below refuses each of them in pyproject.toml and uv.lock."""
+    spellings = ("moge", "utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge",
+                 "huggingface-hub==1.26.0", "huggingface_hub>=0.20", "hf-xet", "hf_xet>=1.1")
+    assert [spelling for spelling in spellings
+            if not never_a_dependency(package_name(spelling))] == []
+
+
 def test_pyproject_and_uv_lock_hold_numpy_and_headless_opencv_and_no_gpu_or_plain_opencv() -> None:
-    """Frames spec, Req 9.8. scipy is neither required nor refused, so the clean spec can decide
-    it without changing this test."""
+    """Frames spec, Req 9.8, splat-training spec, Req 9.10, and depth-priors spec, Req 15.5: no
+    GPU package, no MoGe package and no plain opencv-python. scipy is neither required nor
+    refused, so the clean spec can decide it without changing this test."""
     pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     lock = {package["name"]: package
             for package in tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))["package"]}

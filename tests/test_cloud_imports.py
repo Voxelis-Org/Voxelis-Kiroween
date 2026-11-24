@@ -5,10 +5,12 @@ ast, so no module is imported and no Step runs:
 
 - No file under `splatpipe/` imports `cloud` or boto3, so the Pipeline never learns where it runs
   and never depends on the cloud wrapper (Req 1.1). No file under `splatpipe/` imports a GPU
-  package either, except `splatpipe/train/gpu.py`, the GPU_Module, which may import torch, gsplat
-  and fused_ssim and no other GPU package (Req 16.7; splat-training spec, Req 14.8, A14). The
-  Train_Step loads the GPU_Module only when it runs, so the rest of the Pipeline still imports on
-  a laptop with no GPU libraries.
+  package either, except the two GPU modules: `splatpipe/train/gpu.py`, the GPU_Module, which may
+  import torch, gsplat and fused_ssim (Req 16.7; splat-training spec, Req 14.8, A14), and
+  `splatpipe/depth/gpu.py`, the Depth_GPU_Module, which may import torch, moge and huggingface_hub
+  (depth-priors spec, Req 18.9). Neither may import any other GPU package. The Train_Step and the
+  Depth_Step load their GPU module only when they run, so the rest of the Pipeline still imports
+  on a laptop with no GPU libraries.
 - boto3 is imported only under `cloud/`, so the AWS SDK lives only in the cloud wrapper (Req 1.2).
 - No `cloud/*.py` imports a GPU package at module level, so every `cloud` module imports on a laptop
   that has no GPU libraries; those packages live only in the Machine_Image. A lazy import inside a
@@ -27,18 +29,25 @@ SPLATPIPE = REPO_ROOT / "splatpipe"
 CLOUD = REPO_ROOT / "cloud"
 
 # The GPU-only packages, by top-level import name: PyTorch and its siblings, the splat trainer
-# gsplat, fused-ssim, the MoGe depth model, nvdiffrast, and the NVIDIA CUDA wheels torch pulls in
-# (tech.md, rules.md). None is installed on a laptop, so importing one at module level would make
-# `import cloud.<module>` fail on a laptop.
+# gsplat, fused-ssim, the MoGe depth model and the packages around it (huggingface_hub,
+# utils3d_moge, utils3d and hf_xet), nvdiffrast, and the NVIDIA CUDA wheels torch pulls in (tech.md,
+# rules.md; depth-priors spec, Req 18.9). None is installed on a laptop, so importing one at module
+# level would make `import cloud.<module>` fail on a laptop.
 GPU_PACKAGES = frozenset({
     "torch", "torchvision", "torchaudio",
-    "gsplat", "fused_ssim", "moge", "nvdiffrast", "nvidia",
+    "gsplat", "fused_ssim", "moge", "huggingface_hub", "utils3d_moge", "utils3d", "hf_xet",
+    "nvdiffrast", "nvidia",
 })
 
-# The GPU_Module, the one file under splatpipe/ that may import a GPU package, and the only GPU
-# packages it may import (splat-training spec, Req 14.8, A14).
+# The two GPU modules, the only files under splatpipe/ that may import a GPU package, each with
+# the only GPU packages it may import: the GPU_Module (splat-training spec, Req 14.8, A14) and the
+# Depth_GPU_Module (depth-priors spec, Req 18.9).
 GPU_MODULE_FILE = SPLATPIPE / "train" / "gpu.py"
-GPU_MODULE_PACKAGES = frozenset({"torch", "gsplat", "fused_ssim"})
+DEPTH_GPU_MODULE_FILE = SPLATPIPE / "depth" / "gpu.py"
+GPU_MODULE_PACKAGES = {
+    GPU_MODULE_FILE: frozenset({"torch", "gsplat", "fused_ssim"}),
+    DEPTH_GPU_MODULE_FILE: frozenset({"torch", "moge", "huggingface_hub"}),
+}
 
 
 class _Imports(ast.NodeVisitor):
@@ -108,18 +117,21 @@ def test_the_reader_finds_imports_with_their_line_and_whether_they_are_module_le
 
 def test_nothing_under_splatpipe_imports_cloud_boto3_or_a_gpu_package() -> None:
     """Every *.py under splatpipe/, step folders included (rglob), so a folder added later counts
-    too. None imports cloud or boto3, and none but splatpipe/train/gpu.py, the GPU_Module, imports
-    a GPU package, anywhere in the file. The GPU_Module may import torch, gsplat and fused_ssim and
-    no other GPU package (Req 1.1, 16.7; splat-training spec, Req 14.8, A14)."""
+    too. None imports cloud or boto3, and none but the two GPU modules imports a GPU package,
+    anywhere in the file. splatpipe/train/gpu.py, the GPU_Module, may import torch, gsplat and
+    fused_ssim, and splatpipe/depth/gpu.py, the Depth_GPU_Module, may import torch, moge and
+    huggingface_hub. Neither may import any other GPU package (Req 1.1, 16.7; splat-training spec,
+    Req 14.8, A14; depth-priors spec, Req 18.9)."""
     offenders: list[str] = []
     for path in sorted(SPLATPIPE.rglob("*.py")):
-        allowed = GPU_MODULE_PACKAGES if path == GPU_MODULE_FILE else frozenset()
+        allowed = GPU_MODULE_PACKAGES.get(path, frozenset())
         forbidden = ({"cloud", "boto3"} | GPU_PACKAGES) - allowed
         offenders += [f"{where} imports {top}"
                       for where, top, _module_level in imports_of(path)
                       if top in forbidden]
     assert offenders == [], ("splatpipe must import no cloud, boto3 or GPU package, but "
-                             "splatpipe/train/gpu.py may import torch, gsplat and fused_ssim: "
+                             "splatpipe/train/gpu.py may import torch, gsplat and fused_ssim, and "
+                             "splatpipe/depth/gpu.py may import torch, moge and huggingface_hub: "
                              + "; ".join(offenders))
 
 

@@ -569,6 +569,176 @@ The counts are whole numbers, so the seconds the still trim cut and the mask cov
 
 The frames step writes no files to `out/` but its report, `out/reports/frames.json`, which the step runner writes, like every step's.
 
+## Step: depth
+
+The depth step is in `splatpipe/depth/`, built like the fake step. It makes depth priors for the train step on the job machine's GPU. It runs MoGe-2 on each frame of the camera solve output in `work/cameras/`, fits each frame's depth to the camera solve's own points, and writes the frames that fit as prior files in its work folder, `work/depth/`. It's an optional step: when it fails, the job goes on and trains without depth priors.
+
+Its CLI is `uv run python -m splatpipe.depth --job <id> [--preset P]`, and its plain function is `splatpipe.depth.run(job_id, preset=None)`.
+
+It works in this order:
+
+1. It checks every setting.
+2. It checks that the camera solve output's `images/` folder and its three model files are there, without reading them. This comes before the GPU checks, so a job without the camera solve output fails with the camera solve's message on any machine, a laptop included.
+3. It imports the GPU module, `splatpipe/depth/gpu.py`, which needs torch.
+4. It checks the machine: torch must see a CUDA GPU, the MoGe-2 weights must be a file at `moge_weights`, and MoGe-2 must import, offline. It checks no amount of GPU memory.
+5. It loads MoGe-2 from the weights onto the GPU. It reads nothing of the camera solve output before this.
+6. It reads the sparse model with the train step's reader, and works out the prior size and the field of view.
+7. For each frame, in `images.bin`'s order, it decodes the frame and scales it down to the prior size, runs MoGe-2 on it, fits it to the camera solve's points and, when it fits, writes its prior file.
+8. It releases MoGe-2 and empties torch's GPU memory cache, so the train step that runs next in the same process gets the GPU's memory. This happens once the load has started, whether the step is done or fails.
+9. When no frame fitted, the step fails here. When some frames were left out, it adds a warning.
+10. Last of all, it writes the prior index, `work/depth/depth.json`.
+
+### What it reads
+
+- The camera solve output in `work/cameras/`: the frames in `images/` and the sparse model in `sparse/`, the same files the train step reads, under the train step's names, as "Step: train" lays them out. It reads no masks, so it never opens `masks/`.
+- Its settings, from `[depth]`. Every one is shared, so the preset tables are empty.
+- The MoGe-2 weights, the `Ruicheng/moge-2-vitb-normal` checkpoint, at `moge_weights`: `/opt/models/moge-2-vitb-normal/model.pt`, where the image build downloads them and checks their sha256. The step doesn't check the sha256 again, because the image build and the smoke test do.
+- torch, MoGe's code (`moge`, with `utils3d_moge`) and huggingface_hub, which only a GPU machine image built with MoGe's code has. Only the GPU module, `splatpipe/depth/gpu.py`, imports them: torch at its top, and MoGe and huggingface_hub only inside its functions. The step imports that module only when it runs. So `splatpipe.depth` imports on a laptop, and there the step fails at its GPU checks with a readable error that says to run the job with `uv run python -m cloud.start`.
+
+The step reads the sparse model with the train step's own reader, so it refuses exactly the models the train step refuses, with the same messages. The reader also keeps each point's id from `points3D.bin` and each image's observed points: the distinct point ids among the image's keypoints that are ids of points in `points3D.bin`, in the order of their first keypoint. A keypoint whose point id is −1, or isn't the id of a point, is no observation, and no model is refused for it. The reader still keeps no keypoint's x and y and no point's error or track.
+
+The step goes through every image in `images.bin`, in that file's order, and opens only the files those images name, so it ignores every other file in `images/`. It decodes each frame as the train step decodes a training image: as stored, ignoring any EXIF orientation, as a colour JPEG at the shared camera's size. A frame with no file, one that can't be decoded and one that isn't the shared camera's size fail the step with the train step's messages. The step scales the frame down to the prior size with OpenCV's `INTER_AREA` when it's larger, and turns it from BGR to RGB.
+
+The prior size is the train step's training size rule applied to the shared camera with `long_edge` from `[depth]`: a camera whose longer edge is above 512 pixels gets priors whose longer edge is 512, keeping its shape, and a smaller camera's priors keep its size. So a 1920 × 1080 camera gets 512 × 288 priors.
+
+MoGe-2 loads from the weights file by its path, and the step downloads nothing:
+
+- The GPU module sets `HF_HUB_OFFLINE=1` before it imports huggingface_hub or MoGe, so the Hugging Face client makes no requests. After the import, it checks that huggingface_hub really is offline.
+- It loads the file with `torch.load(path, map_location="cpu", weights_only=True)`, so the file can't run code, builds `MoGeModel(**checkpoint["model_config"])` from `moge.model.v2`, and loads `checkpoint["model"]` strictly. A missing or unexpected key fails the step, instead of leaving part of MoGe-2 with random weights.
+- It moves MoGe-2 to the GPU, in eval mode and in float32.
+- It never calls `from_pretrained()`, `hf_hub_download()` or `init_weights()`, so it fetches neither MoGe-2's weights from the Hugging Face Hub nor DINOv2's original weights.
+
+MoGe-2 gets each frame as RGB floats from 0 to 1, each 8-bit value divided by 255 on the GPU. Its `infer()` gets the field of view as `fov_x`, `resolution_level` and `use_fp16` from `[depth]`, and `force_projection` and `apply_mask` at MoGe's defaults. The field of view is degrees(2 × atan(W / (2 × fx))), from the shared camera's full width W and its fx, both in pixels, so scaling the frame doesn't change it. MoGe-2 gives back, at the prior size, each pixel's depth, the camera-space z in metres as MoGe-2 estimates them, its unit normal, and a mask of where it found geometry. A pixel is a geometry pixel only where the mask is true and the depth is finite and above 0, so sky, and any other pixel where MoGe-2 found no geometry, never gets a prior.
+
+### What it writes
+
+The step writes only into its work folder: `work/depth/<stem>.npz`, `work/depth/depth.json.tmp` while it writes the index, and `work/depth/depth.json`. These files are the prior format, the contract between the depth step and the train step, and anything that makes priors later writes the same. One module, `splatpipe/train/priors.py`, defines it for both steps, with its writer and its reader, and imports no torch. The names are fixed there, not in `config.toml`.
+
+```
+work/depth/
+  000000.npz ...   the prior files, one for each fitted frame, named after its image
+  depth.json       the prior index, written last
+```
+
+A prior file is numpy's uncompressed `.npz`, written with `np.savez` and read with `np.load(path, allow_pickle=False)`, so reading one can run no code. Its name is its image's name in `images.bin` with `.jpg` swapped for `.npz`: the prior of `000012.jpg` is `000012.npz`. It holds exactly three arrays at the prior size, h = `prior_height` rows by w = `prior_width` columns:
+
+| Array | Shape | dtype | What it holds |
+|---|---|---|---|
+| `inverse_depth` | (h, w) | float32, little-endian | The fitted inverse depth, scale × (1 / MoGe's depth) + offset, in 1 / camera solve units: an estimate of 1 / the pixel's camera-space z in the camera solve's own units. Above 0 at each pixel with a prior, and 0 at every other pixel. |
+| `normal` | (h, w, 3) | float32, little-endian | MoGe-2's unit normal at each pixel with a prior, in the camera frame of the image's pose, with x right, y down and z forward, facing the camera as MoGe-2 gives it: a wall square to the camera has z near −1. (0, 0, 0) at every other pixel. |
+| `mask` | (h, w) | bool | True exactly at the pixels with a prior. |
+
+Stored pixel (x, y) is centred at ((x + 0.5) × W / w, (y + 0.5) × H / h) in the shared camera's pixels, where W × H is the camera's size and the top-left pixel's centre is (0.5, 0.5), as COLMAP and MoGe both put it. Every value in a prior file is finite.
+
+`depth.json`, the prior index, describes the priors. It holds only plain JSON, and floats keep full precision. This example is from a 1920 × 1080 camera, with one of its priors shown:
+
+```json
+{
+  "format": 1,
+  "camera": {"width": 1920, "height": 1080, "fx": 1450.0, "fy": 1450.0, "cx": 960.0, "cy": 540.0},
+  "prior_width": 512,
+  "prior_height": 288,
+  "metres_per_unit": 1.8734,
+  "priors": [
+    {"name": "000000.jpg", "quaternion": [0.9982, 0.0121, -0.0583, 0.0034],
+     "translation": [0.412, -0.077, 1.935], "scale": 0.5312, "offset": 0.0071,
+     "fit_points": 412, "kept_points": 377, "median_error": 0.0431, "metres_per_unit": 1.9021}
+  ]
+}
+```
+
+| Field | What it holds |
+|---|---|
+| `format` | 1, the prior format's version, as a whole number. |
+| `camera` | The shared camera the priors were made for: its `width` and `height` as whole numbers, and its `fx`, `fy`, `cx` and `cy` as `cameras.bin` gives them. |
+| `prior_width`, `prior_height` | The prior size w and h, in pixels, whole numbers above 0. |
+| `metres_per_unit` | The job's metres per camera solve unit, an estimate that nothing applies. |
+| `priors` | One object per fitted frame, in `images.bin`'s order. |
+
+Each object in `priors` holds:
+
+| Field | What it holds |
+|---|---|
+| `name` | The image's name in `images.bin`. |
+| `quaternion`, `translation` | The image's pose, (w, x, y, z) and (x, y, z), exactly as `images.bin` gives them, before any normalising, so a reader can tell priors made for an earlier camera solve. |
+| `scale`, `offset` | The second pass's scale and offset. |
+| `fit_points`, `kept_points` | The fit points of the first pass and of the second. |
+| `median_error` | The median relative depth error, over every fit point. |
+| `metres_per_unit` | This frame's metres per camera solve unit. |
+
+The index names no path. A reader derives each prior file's path from a name it has checked against `images.bin`, never from a path in the index.
+
+The step writes the prior index after every prior file, to `depth.json.tmp` in the same folder, and one rename on the same file system turns it into `depth.json`, so a reader never finds a half-written index. When that write fails, the step removes the temporary file. So a run that fails, at any point, leaves no `depth.json`, and the format's reader, `read_prior_set` in `splatpipe/train/priors.py`, reads a `work/depth/` with no `depth.json` as no priors, whatever else it holds. A run where no frame fits leaves `work/depth/` empty. The step runner empties `work/depth/` before the step runs, so no file from an earlier run is left.
+
+MoGe-2's depth is in metres as it estimates them, with a scale of its own for each frame, while the camera solve's model has a scale of its own too. So the step fits each frame's inverse depth to the camera solve's own points before it writes a prior. A frame's fit points are its observed points that are in front of its camera, whose projection (u, v) with the shared camera at its full size lands inside the frame, and whose prior-size pixel is a geometry pixel. That pixel is (min(⌊u × w / W⌋, w − 1), min(⌊v × h / H⌋, h − 1)), the stored pixel whose footprint holds the projection. Each fit point's target is 1 / its camera-space z, and its MoGe value is 1 / MoGe's depth at its pixel.
+
+The fit has two passes, worked out in float64. A set of numbers' spread is their mean distance from their median.
+
+1. A frame with fewer than `fit_min_points` (10) fit points is left out, with too few points.
+2. The first pass: the scale is the targets' spread over the MoGe values' spread, and the offset is the targets' median minus the scale times the MoGe values' median. A frame whose MoGe values have a spread of 0 is left out as flat.
+3. Each point's miss is |scale × MoGe value + offset − target|. The second pass keeps the points whose miss is at most `fit_miss_ratio` (3) times the median miss, so a few points far off the rest can't pull the fit.
+4. When fewer than `fit_min_points` points are kept, the frame is left out with too few points. When the kept MoGe values have a spread of 0, it's left out as flat.
+5. The second pass fits the kept points the same way, and its scale and offset are the frame's. A scale of 0 leaves the frame out as flat. The scale is a ratio of spreads, so it's never below 0.
+6. The 15% check: over every fit point, the ones the second pass dropped included, the fitted inverse depth p is scale × MoGe value + offset, and the relative depth error is |target / p − 1|, which is |1 / p − z| / z. Where p isn't above 0, the error is infinite. A frame whose median relative depth error is above `fit_max_median_error` (0.15) is left out as a poor fit.
+
+Every frame that passes is a fitted frame, and gets a prior file. At each geometry pixel, its fitted inverse depth is the second pass's scale × (1 / MoGe's depth) + offset, worked out in float64 and stored as float32. A pixel keeps its prior only where that float32 value is finite and above 0 and every component of MoGe's normal is finite. Every other pixel gets 0s and a false mask.
+
+A fitted frame's metres per unit is the median, over the second pass's kept points, of target / MoGe value, which is MoGe's depth over the camera solve's z: how many metres one camera solve unit is, as MoGe-2 sees it. The job's is the median of the fitted frames'. Both go in `depth.json` as an estimate only. The step changes no camera, pose or point, and nothing is rescaled, so the scene stays in the camera solve's units.
+
+### Config section
+
+| Key | Table | Value | What it is |
+|---|---|---|---|
+| `long_edge` | `[depth]` | `512` | The longest edge of the depth priors, in pixels. A camera with a longer edge gets priors scaled down to it, keeping its shape. A smaller camera isn't scaled up. |
+| `moge_weights` | `[depth]` | `"/opt/models/moge-2-vitb-normal/model.pt"` | The MoGe-2 ViT-B normal weights on the machine image, where the image build downloads them. A test keeps it equal to `MOGE_WEIGHTS` in `cloud/image.py`. |
+| `resolution_level` | `[depth]` | `9` | How much detail MoGe-2 sees, from 0 to 9, passed to its `infer()`. 9 is MoGe's default, its most detail. |
+| `use_fp16` | `[depth]` | `true` | Whether MoGe-2 runs its network in half precision, as it does by default. The model itself stays in float32. |
+| `fit_min_points` | `[depth]` | `10` | The fewest fit points a frame needs in each of its two passes to get a depth prior. |
+| `fit_miss_ratio` | `[depth]` | `3` | The second pass leaves out the points that miss the first pass's fit by more than this times the median miss. |
+| `fit_max_median_error` | `[depth]` | `0.15` | A frame gets no depth prior when its median relative depth error is above this. |
+| `min_gpu_memory_gb` | `[depth]` | `16` | The least GPU memory the job's cloud machine needs for this step, in GB. The step never checks it. |
+
+`[depth.fast]`, `[depth.default]` and `[depth.quality]` are empty, each with a comment above it saying that every `[depth]` setting is shared, so every preset makes the same priors. The real `config.toml` has a comment on the line directly above every key.
+
+- The step checks every setting before it checks the camera solve output. A value of the wrong kind fails the step with a readable error that names the key, its table and what it must be, like "The setting resolution_level in [depth] is 10, but it must be a whole number from 0 to 9. Change it to a whole number from 0 to 9." A bool is never a number here. A missing key fails the step with the step runner's message, which names `[depth]`, the preset's table and the key.
+- `long_edge`, `fit_min_points` and `min_gpu_memory_gb` must be whole numbers above 0, `resolution_level` a whole number from 0 to 9, `use_fp16` true or false, `moge_weights` a string of one or more characters, and `fit_miss_ratio` and `fit_max_median_error` numbers above 0.
+
+`min_gpu_memory_gb` is the step's one machine need: the job's cloud machine needs a GPU with 16 GB for this step. The cloud spec reads it to pick the machine. The step itself checks it like the other settings, but never uses it, so it runs on any GPU that torch can see.
+
+### Step report fields
+
+- `settings`: the 8 settings in `[depth]`. The preset tables add none.
+- `timings.load_model`: building MoGe-2 and loading its weights onto the GPU.
+- `timings.infer`: decoding the frames, scaling them down and running MoGe-2 on them, summed over the frames.
+- `timings.fit`: the fit points and the two passes, summed over the frames.
+- `timings.write`: writing the prior files and the prior index.
+- `counts.images`: the images in `images.bin`, which are the frames.
+- `counts.prior_width` and `counts.prior_height`: the prior size, in pixels.
+- `counts.fitted_images`: the fitted frames, each with a prior file.
+- `counts.few_points_images`: the frames left out with too few fit points, in either pass.
+- `counts.flat_images`: the frames left out as flat.
+- `counts.poor_fit_images`: the frames left out as a poor fit, with a median relative depth error above `fit_max_median_error`.
+- `counts.peak_gpu_memory_bytes`: the most GPU memory torch's allocator held at once from the GPU check on, from `torch.cuda.max_memory_allocated()`. The step adds it once MoGe-2 has started to load, whether the step is done or fails.
+- `warnings`, only when the step left out some frames but fitted at least one: "Depth priors were made for <fitted> of <frames> frames. Of the others, <few> had too few of the camera solve's points, <flat> were flat and <poor> fitted poorly, so they train without a depth prior."
+- `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message, saying what went wrong and what to do. Those failures are:
+  - a bad or missing setting;
+  - a camera solve output that's missing, or that the train step's reader refuses, and a frame with no file, one that can't be decoded and one that isn't the shared camera's size, each with the train step's message;
+  - a machine without torch, MoGe's code, huggingface_hub or a package they import, which names the package and says that the step runs only on a GPU machine image built with MoGe's code; one where torch sees no CUDA GPU; and one with no file at `moge_weights`, which says to rebuild the machine image with `uv run python -m cloud.image`;
+  - a file at `moge_weights` that isn't the MoGe-2 ViT-B normal checkpoint, because it can't be loaded, isn't a dict that holds `model_config` and `model`, or fails the strict load;
+  - torch running out of GPU memory while the step loads MoGe-2, or while it runs MoGe-2 on a frame, which the error names;
+  - no fitted frame: "None of the <frames> frames fitted the camera solve's points, so no depth priors were made: <few> had fewer than <fit_min_points> of the points, <flat> were flat, and <poor> fitted poorly, with a median depth error above <fit_max_median_error>. The job goes on and trains without depth priors.";
+  - a prior file or the prior index that can't be written, like on a full disk, with the file and the reason.
+
+huggingface_hub found online after MoGe's import is a bug in the step, because it means something imported huggingface_hub before the GPU module set `HF_HUB_OFFLINE`. The step then fails with the general bug message, `expected` is `false`, and the message in `technical` says so. Any other error is a bug too, with the general message.
+
+When the step fails, for any reason, the job runner writes its readable error to the job log and goes on with the next step, because the step is optional. So a job whose required steps are all done ends done with warnings, with the depth step's entry `failed`. A failed run leaves no `depth.json`, so the job trains without depth priors.
+
+The counts are whole numbers, so the scales, offsets, errors and metres per unit are in `depth.json` instead. The step adds each count as soon as it knows it, and each timing as a running sum over the frames, so a failed report holds the counts and timings the step had worked out before it failed.
+
+### Files in out/
+
+The depth step writes no files to `out/` but its report, `out/reports/depth.json`, which the step runner writes, like every step's.
+
 ## Step: train
 
 The train step is in `splatpipe/train/`, built like the fake step. It trains the job's 3D Gaussian splat on the job machine's GPU, from the frames, cameras and points that the camera solve step writes to `work/cameras/`, and writes the splat to `out/train.ply`, where the clean step reads it. It trains with its own trainer, written on gsplat 1.5.3's `rasterization()` and MCMC strategy.
