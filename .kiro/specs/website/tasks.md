@@ -19,6 +19,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
 - Work on `feat/website`, never on `main`.
 - This laptop has no AWS access for this project. No task makes a real AWS call, read-only ones included: no `aws` command, no boto3 client that reaches AWS and no command that runs either. If a task ever seems to need a real AWS call, stop and ask the user.
+- Never open or download anything under `uploads/` or any job's `input/` in the bucket, because those are judges' and users' videos. Nothing in these tasks needs them.
 - Change no file under `splatpipe/`, and leave the root `pyproject.toml` and the root `uv.lock` byte for byte as they are. Task 1's test checks both files' hashes (Req 1.2, 1.5, 18.13). The root `pyproject.toml` already sets `pythonpath = ["."]` for pytest, so `import app` works in the tests with no change to it.
 - In the code, boto3 and botocore are imported only in `cloud/aws.py`. No file under `app/` imports either, and `cloud/table.py` imports only the standard library (Req 1.4). Of the new test files, only `tests/test_website_aws.py` imports botocore, for its `Stubber`.
 - `app/` imports only the standard library, `app`, `cloud` and the top-level modules of `splatpipe` (`splatpipe.config`, `splatpipe.jobs`, `splatpipe.make`, `splatpipe.run`, `splatpipe.errors`, `splatpipe.jsonio`), never a Step package and never a name that starts with `_` (Req 1.5).
@@ -753,7 +754,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 
 - [ ] 10. The Deploy_Command, the bundle and the docs
   - Files: `app/lockfile.py`, `app/deploy.py`, `tests/test_website_deploy.py` and `tests/test_website_docs.py` (new), `docs/aws-setup.md`, `.kiro/steering/rules.md`, `.kiro/steering/cloud.md`, `.kiro/steering/tech.md`, `.kiro/steering/structure.md`, `.kiro/steering/product.md`, `.kiro/skills/aws-jobs/SKILL.md`, `docs/third-party-licences.md`, `README.md`, `docs/pipeline.md` and `tests/test_website_imports.py` (changed).
-  - _Requirements: 1.7, 1.8, 1.9, 3.1, 10.11, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.10, 15.11, 15.12, 15.13, 15.14, 16.1, 16.2, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15, 17.16, 18.15_
+  - _Requirements: 1.7, 1.8, 1.9, 3.1, 10.11, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.10, 15.11, 15.12, 15.13, 15.14, 16.1, 16.2, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15, 17.16, 17.17, 18.15_
 
   - [ ] 10.1 Write `app/lockfile.py`
     - `export_requirements(lock_text)` and `main(argv=None)` for `python3.11 -m app.lockfile app/uv.lock`, with the standard library only, so it runs in CloudShell before boto3 is installed.
@@ -802,7 +803,8 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `.kiro/steering/structure.md` lists `app/` and the App_Project, and says the Website's packages never go in the root `pyproject.toml` or `uv.lock`.
     - `.kiro/steering/product.md` replaces "The app around the pipeline comes later. This file gets updated then." with a paragraph on signing in, uploading, picking a Preset, starting a Job, the job list, the Result_Page and its download, the Showcase and the viewer to come.
     - `.kiro/skills/aws-jobs/SKILL.md` gets the same numbers, $52 a UTC_Day included, the same one yes and the same rule for Jobs the team starts through the Website or by hand as the Rules_Steering, and the line that Kiro never runs the CloudShell_Commands.
-    - _Requirements: 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.15_
+    - `.kiro/steering/rules.md` and `.kiro/skills/aws-jobs/SKILL.md` each gain the sentence on the judges' and users' videos that the design's "What task 10 writes in the docs" gives, copied word for word into both, so the two files hold the same line, which says that Kiro never opens or downloads anything under `uploads/` or any job's `input/` and never needs them (Req 17.17).
+    - _Requirements: 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.15, 17.17_
 
   - [ ] 10.7 Update the Licence_List, the README and the Pipeline_Doc
     - `docs/third-party-licences.md` updates "How we use it" for boto3, botocore, s3transfer, jmespath, python-dateutil, six and urllib3, which the Website_Bundle now ships to the Website_Function. It adds two new rows: Python (PSF-2.0), whose `python3.11` in CloudShell runs the CloudShell_Commands and whose Lambda runtime runs the Website, and pip (MIT), which installs the Website_Bundle's packages in CloudShell. The list has no Python or pip row today. uv isn't used in CloudShell, so its row stays as it is.
@@ -825,10 +827,10 @@ Some files grow over several tasks, so each piece comes with the first task that
   - [ ] 10.9 Write the unit tests for the docs in `tests/test_website_docs.py`
     - The way `tests/test_cloud_docs.py` checks the cloud-jobs spec's lines, check the lines each file gains. In `docs/aws-setup.md`: the website section, with the `echo $AWS_EXECUTION_ENV` check before any CloudShell_Command and the note that the Read_Policy, and so the Read_Profile, can read `uploads/` and the Website_Jobs' inputs; the change-set review's remove, add and replace of `WebsiteTable` and remove and replace of `WebsiteFunction` and `WebsiteFunctionUrl`; the two "Updating the stack" commands; and "Removing the setup", which says deleting the Stack keeps the table (Req 17.1, 17.2, 17.3).
     - No command in `docs/aws-setup.md` types a bucket name: `WebsiteCodeBucket` appears only with `UsePreviousValue=true`, and every `s3://` path names its bucket through a shell variable (Req 17.16).
-    - In the steering and the skill: the numbers, $52 a UTC_Day among them, the one yes, the rule for Jobs the team starts and the CloudShell line in `.kiro/steering/rules.md` and `.kiro/skills/aws-jobs/SKILL.md`; the Reservation line in `.kiro/steering/cloud.md` (Req 17.15); and the Website's lines in `tech.md`, `structure.md` and `product.md`, with "comes later" gone from `product.md`. Then the updated Licence_List rows with the new Python and pip rows, and the README and `docs/pipeline.md` lines.
+    - In the steering and the skill: the numbers, $52 a UTC_Day among them, the one yes, the rule for Jobs the team starts and the CloudShell line in `.kiro/steering/rules.md` and `.kiro/skills/aws-jobs/SKILL.md`, and the design's sentence on the judges' and users' videos, word for word in both files (Req 17.17); the Reservation line in `.kiro/steering/cloud.md` (Req 17.15); and the Website's lines in `tech.md`, `structure.md` and `product.md`, with "comes later" gone from `product.md`. Then the updated Licence_List rows with the new Python and pip rows, and the README and `docs/pipeline.md` lines.
     - Check that the numbers in the docs and the steering match `[website]` in the real `config.toml`, read by path, so a later change of a limit shows up here (Req 16.2).
     - `tests/test_cloud_docs.py` still passes unchanged.
-    - _Requirements: 16.2, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15, 17.16_
+    - _Requirements: 16.2, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15, 17.16, 17.17_
 
   - [ ] 10.10 Write the property test for Property 14 in `tests/test_website_deploy.py`, with Hypothesis
     - **Property 14: The bundle's zip and the lock export round-trip**
@@ -850,6 +852,7 @@ Some files grow over several tasks, so each piece comes with the first task that
 - Each task ends with its own checkpoint, which runs the whole suite, commits that task's files alone and pushes `feat/website`.
 - The property tests check the design's 14 Correctness Properties. Properties 1 and 2, which the requirements ask for, sit in tasks 6 and 7. Properties 2 and 9 draw their routes from `app.web`'s route table at test time, so task 8's routes join them with no change to the tests.
 - Where the plan still reads the design in a particular way, it says so in place. Task 5.9 gives the Guard_Hook's rule for where a script path counts as a module run, and the two spellings it catches that the design doesn't list, `--module` and a `-m` joined to its name. The working rules' "Tests" name each property test in a docstring holding `Feature: website, Property N: <title>` and `**Validates: Requirements ...**`, as the repo's existing property tests do, where the design shows a `# Feature: ...` comment.
+- At review the user accepted the plan's small choices: a change-set entry that AWS marks as a `Conditional` replacement counts as a replacement (tasks 10.4, 10.5 and 10.8), the deploy's `pip install` has no timeout (task 10.2's `pip_installer`), and the Guard_Hook blocks a CloudShell_Command only when someone runs it, so naming its file, as `git add app/deploy.py` does, still passes (task 5.9).
 
 ## Task Dependency Graph
 
