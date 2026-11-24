@@ -206,10 +206,21 @@ def test_positions_gives_the_float32_centres_exactly_as_float64() -> None:
 
 def centre_distance(a: np.ndarray, b: np.ndarray) -> float:
     """The Centre_Distance between the float64 centres `a` and `b`, as sqrt(dx*dx + dy*dy + dz*dz)
-    summed in that order, which is how the tree works it out, so the two agree exactly. math.dist
-    can differ from both by one unit in the last place."""
+    summed in that order, which is how the tree works it out, so the two agree to 1 ulp: scipy on
+    arm64 uses fused multiply-add, so its tree's distance can differ from this one by 1 ulp.
+    math.dist can differ from both by one unit in the last place."""
     dx, dy, dz = (float(p) - float(q) for p, q in zip(a, b, strict=True))
     return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+
+def check_within_1_ulp(distances: Sequence[float], expected: Sequence[float]) -> None:
+    """Check that the tree's `distances` and the `expected` ones from centre_distance() have the
+    same length and that each distance is within math.ulp of its counterpart, in order. scipy on
+    arm64 uses fused multiply-add, so its tree's distance can differ from centre_distance() by
+    1 ulp."""
+    assert len(distances) == len(expected), (distances, expected)
+    for distance, counterpart in zip(distances, expected, strict=True):
+        assert abs(distance - counterpart) <= math.ulp(counterpart), (distances, expected)
 
 
 def raw_rows(tree: cKDTree, k: int) -> list[list[int]]:
@@ -228,9 +239,10 @@ def check_nearest_others(tree: cKDTree, k: int) -> None:
     for point, (distances, others) in enumerate(zip(dist.tolist(), idx.tolist())):
         assert point not in others and len(set(others)) == k
         centre = tree.data[point]
-        assert distances == [centre_distance(centre, tree.data[other]) for other in others]
-        assert distances == sorted(centre_distance(centre, tree.data[other])
-                                   for other in range(tree.n) if other != point)[:k]
+        check_within_1_ulp(distances, [centre_distance(centre, tree.data[other])
+                                       for other in others])
+        check_within_1_ulp(distances, sorted(centre_distance(centre, tree.data[other])
+                                             for other in range(tree.n) if other != point)[:k])
 
 
 def test_more_than_k_plus_1_centres_on_one_spot_each_get_k_others_but_never_themselves() -> None:
@@ -269,7 +281,8 @@ def test_no_gaussian_is_its_own_neighbour(centres_and_k: tuple[np.ndarray, int])
         by_distance = sorted((centre_distance(centres[point], centres[other]), other)
                              for other in range(tree.n) if other != point)
         assert set(others) == {other for _, other in by_distance[:k]}
-        assert distances == [centre_distance(centres[point], centres[other]) for other in others]
+        check_within_1_ulp(distances, [centre_distance(centres[point], centres[other])
+                                       for other in others])
 
 
 # The Faint_Filter
