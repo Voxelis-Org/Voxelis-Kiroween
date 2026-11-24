@@ -4,8 +4,8 @@ work/frames/ for the Cameras_Step, set_fail, which sets `fail` in the test confi
 and set_cameras, which change its [frames] and [cameras] settings, colmap_options, which gives
 the COLMAP options of the camera solve's options.md, work_calls, which records whose Fake_Step
 work runs, fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg,
-and fake_colmap, which gives FakeColmap, a stand-in for the colmap program in the Cameras_Step's
-solve flow.
+and fake_colmap, which gives FakeColmap, a stand-in for the colmap program, and puts each one it
+builds in place of the Cameras_Step's tools.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
@@ -34,15 +34,20 @@ one on demand, and records what the step asked for. It can also report that ffmp
 filters, or fail the first pass with the Tone_Map, for the HDR tests. So the step's tests run it
 through splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 2.4, 2.5, 13.6, 13.7).
 
-FakeColmap stands in for the colmap program in the Cameras_Step's solve flow, so its tests run
-on a machine with no COLMAP (cameras spec, Req 16.5). fake_colmap gives the class. A test builds
-one with its script and passes its run to solve in place of colmap.run_colmap. The script says
-which runs time out, which exit with a given code and line, what the Calibration does to the
-Calibration_Copy, and how many Picks each Model of each mapper places. FakeColmap records each
-run and writes its Command_Log. Every other run exits with 0 after writing what the real command
-would: the Database with its one camera, the Calibration_Copy's changed camera, and each
-mapper's Models, written with the step's own Model_Writer, with Poses along a walk seen through
-a fixed rigid move.
+FakeColmap stands in for the colmap program in every run of the Cameras_Step, so its tests run
+on a machine with no COLMAP (cameras spec, Req 16.5). fake_colmap gives the class, and installs
+each FakeColmap it builds as the step's tools, so a run through splatpipe.cameras.run, run_step
+or the step's CLI in this process uses it, and finds colmap unless it's built with
+installed=False. A test of the solve flow passes its run to solve instead, in place of
+colmap.run_colmap. The script says which runs time out, which exit with a given code and line,
+what the Calibration does to the Calibration_Copy, how many Picks each Model of each mapper
+places, whether the mappers turn every other camera upside down, and what the image_undistorter
+gets wrong. FakeColmap records each run and writes its Command_Log. Every other run exits with 0
+after writing what the real command would: the Database with its one camera, the
+Calibration_Copy's changed camera, each mapper's Models, written with the step's own
+Model_Writer, with Poses along a walk seen through a fixed rigid move, the Undistortion's PINHOLE
+model and a JPEG per image, and the Mask_Warp's three-channel PNG with a grey edge around every
+black region.
 """
 
 from __future__ import annotations
@@ -60,7 +65,7 @@ import time
 import tomllib
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import closing
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import islice
 from pathlib import Path
 from types import MappingProxyType
@@ -79,10 +84,10 @@ from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
 
 # Named in FakeTools' and FakeColmap's type hints only, so only the tests that run a FakeTools
-# import splatpipe.frames.ffmpeg, and only those that run a FakeColmap import splatpipe.cameras.
+# import splatpipe.frames.ffmpeg, and only those that use a FakeColmap import splatpipe.cameras.
 if TYPE_CHECKING:
     from splatpipe.cameras.colmap import ColmapRun, RunResult
-    from splatpipe.cameras.model import Model
+    from splatpipe.cameras.model import Camera, Model
     from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo
 
 # The names the tests run the Fake_Step under. Each gets a section like the real [fake].
@@ -762,13 +767,29 @@ TILT_SHIFT = (1.5, -0.5, 2.0)
 # at the centre, and a little distortion, k1, k2, p1 and p2.
 MAPPED_FOCAL = 1.1
 MAPPED_DISTORTION = (0.02, -0.01, 0.001, -0.0005)
+# The fake image_undistorter's camera: PINHOLE, COLMAP's model id 1 (F2), and UNDISTORTED_SHRINK
+# pixels smaller each way than the camera it undistorts.
+PINHOLE_ID = 1
+UNDISTORTED_SHRINK = 2
+# The grey of the edge that the fake image_undistorter_standalone puts around every black region
+# of the Mask, like the values that bilinear sampling gives between black and white.
+WARPED_EDGE = 128
+# What FakeColmap's find_colmap gives in place of shutil.which's answer, unless the FakeColmap is
+# built with installed=False. No program is there, and none is run: FakeColmap's run stands in
+# for every COLMAP_Command.
+FAKE_COLMAP = "/fake/bin/colmap"
 
 
 @dataclass(kw_only=True)
 class FakeColmap:
-    """A stand-in for the colmap program, for the runs of the Cameras_Step's solve flow, so the
-    step's tests need no COLMAP (cameras spec, Req 16.5). A test builds one with its script and
-    passes its run to solve, in place of colmap.run_colmap.
+    """A stand-in for the colmap program, for every run of the Cameras_Step, so the step's tests
+    need no COLMAP (cameras spec, Req 16.5). A test builds one with its script through
+    fake_colmap, which installs it as the step's tools. A test of the solve flow passes its run
+    to solve instead, in place of colmap.run_colmap.
+
+    find_colmap() stands in for shutil.which(PROGRAM): it gives FAKE_COLMAP, or None when the
+    FakeColmap is built with installed=False, so the step fails as when colmap isn't on the PATH
+    (Req 2.7).
 
     run(colmap_run) records the ColmapRun in `runs` and writes its Command_Log, a line with the
     command line. Then it follows the script for colmap_run.name:
@@ -801,14 +822,36 @@ class FakeColmap:
       place from 1, as the Database gives it. Each Model has one OPENCV camera with a little
       distortion, from MAPPED_FOCAL and MAPPED_DISTORTION, and the few WALK_POINTS. Its Poses lie
       along the walk of WALK_STEP and WALK_TARGET, seen through the fixed rigid move of
-      TILT_AXIS, TILT_DEGREES and TILT_SHIFT, so the Levelling has a tilt to remove. Each
-      image's 2D points are where the points project through the camera, leaving out its
-      distortion, and each point's track holds every image of its Model.
+      TILT_AXIS, TILT_DEGREES and TILT_SHIFT, so the Levelling has a tilt to remove. With
+      upside_down, every other camera, the one at each odd place, is turned a half turn about
+      its own view axis, so it's upside down. Then the cameras' mean up vector is about 0 long
+      for an even number of them and a third long at most for an odd number from 3, below the real
+      up_agreement of 0.5, so the Levelling keeps the COLMAP_Frame (Req 9.3). Each image's 2D
+      points are where the points project through the camera, leaving out its distortion, and
+      each point's track holds every image of its Model.
+    - image_undistorter: the Model at --input_path, read with the step's read_model, written to
+      --output_path/sparse/ with the step's write_model, with each camera turned PINHOLE and
+      UNDISTORTED_SHRINK pixels smaller each way. fx and fy stay, and the principal point scales
+      with the size, as COLMAP's UndistortCamera does (F7). The images, with their Poses and 2D
+      points, and the points stay as they are. Each image gets a tiny JPEG under its name in
+      --output_path/images/: its Colour_Pick from --image_path, resized to its camera's size.
+      Three flags make it go wrong in the ways the step's checks refuse (Req 8.2):
+      keep_camera_model keeps each camera as it is, its model included, as COLMAP does for a
+      camera with no distortion (F9); second_camera adds a copy of the first camera with the
+      next id, which no image uses; and leave_out_image leaves the Model's last image out, so it
+      gets no JPEG either.
+    - image_undistorter_standalone: the picture that the camera line in --input_file names, read
+      from --image_path, resized to the size the fake image_undistorter gives the line's camera,
+      with WARPED_EDGE on each pixel next to a black one that isn't black itself, like bilinear
+      sampling. It's written as a three-channel PNG under the same name in --output_path (F8).
+    Both undistorters make --output_path, as COLMAP's do. Resizing is by the nearest pixel.
 
-    The defaults take a default cameras_job, of 8 Picks, all the way: the Calibration works, and
-    each mapper writes one Model that places all 8 Picks. A script that names a run this
-    stand-in doesn't know, a calibration it doesn't know or a count below 0 raises ValueError,
-    and so does a mapper whose counts add up to more Picks than --image_path holds.
+    The defaults take a default cameras_job, of 8 Picks, all the way: the Calibration works, each
+    mapper writes one Model that places all 8 Picks, and both undistorters write what the step
+    reads, so the step is done. The fake image_undistorter needs Picks of at least 3 × 3 pixels.
+    A script that names a run this stand-in doesn't know, a calibration it doesn't know or a
+    count below 0 raises ValueError, and so does a mapper whose counts add up to more Picks than
+    --image_path holds.
     """
 
     timeouts: Collection[str] = ()  # the names of the runs that reach their Time_Limit
@@ -816,6 +859,11 @@ class FakeColmap:
     calibration: Literal["worked", "rejected", "no_pairs"] = "worked"
     global_models: Sequence[int] | None = (8,)  # the Picks each Model of global_mapper places
     incremental_models: Sequence[int] | None = (8,)  # the Picks each Model of mapper places
+    upside_down: bool = False  # both mappers turn every other camera upside down
+    keep_camera_model: bool = False  # image_undistorter keeps each camera as it is (F9)
+    second_camera: bool = False  # image_undistorter adds a second camera
+    leave_out_image: bool = False  # image_undistorter leaves the Model's last image out
+    installed: bool = True  # find_colmap finds colmap, or with False gives None (Req 2.7)
     runs: list[ColmapRun] = field(default_factory=list, init=False)  # every run, in order
 
     def __post_init__(self) -> None:
@@ -834,6 +882,11 @@ class FakeColmap:
                                           for count in counts):
                 raise ValueError("FakeColmap's Model counts must be whole numbers, 0 or more, "
                                  f"but they're {counts}.")
+
+    def find_colmap(self) -> str | None:
+        """Stand in for shutil.which(PROGRAM): FAKE_COLMAP, or None when built with
+        installed=False."""
+        return FAKE_COLMAP if self.installed else None
 
     def run(self, colmap_run: ColmapRun) -> RunResult:
         """Stand in for run_colmap(colmap_run), as the class says."""
@@ -870,18 +923,40 @@ class FakeColmap:
                 "sequential_matcher_near": _match,
                 "sequential_matcher_far": _match,
                 "view_graph_calibrator": lambda run: _calibrate(run, self.calibration),
-                "global_mapper": lambda run: _map(run, self.global_models),
-                "mapper": lambda run: _map(run, self.incremental_models)}
+                "global_mapper": lambda run: _map(run, self.global_models, self.upside_down),
+                "mapper": lambda run: _map(run, self.incremental_models, self.upside_down),
+                "image_undistorter": lambda run: _undistort(
+                    run, keep_camera_model=self.keep_camera_model,
+                    second_camera=self.second_camera, leave_out_image=self.leave_out_image),
+                "image_undistorter_standalone": lambda run: _warp_mask(
+                    run, keep_camera_model=self.keep_camera_model)}
 
 
 @pytest.fixture
-def fake_colmap() -> type[FakeColmap]:
-    """Give FakeColmap, so a test builds one with its script, like
-    fake_colmap(calibration="rejected", global_models=None), and passes its run to solve in
-    place of colmap.run_colmap (cameras spec, Req 16.5). Its `runs` then lists every ColmapRun
-    that solve ran, in order. splatpipe.cameras is imported only when a FakeColmap runs, so only
-    the tests that run one need it."""
-    return FakeColmap
+def fake_colmap(monkeypatch: pytest.MonkeyPatch) -> type[FakeColmap]:
+    """Give fake_colmap, which builds a FakeColmap with its script, like
+    fake_colmap(calibration="rejected", global_models=None), and installs it as the Cameras_Step's
+    tools for this test (cameras spec, Req 16.5). Building another one installs that one instead.
+
+    Installing is monkeypatch.setattr("splatpipe.cameras.TOOLS", ...) with a Tools of the
+    FakeColmap's find_colmap and run, so find_colmap gives FAKE_COLMAP, or None when the
+    FakeColmap is built with installed=False (Req 2.7). The step reads TOOLS each time it runs,
+    so a run through splatpipe.cameras.run, run_step or the step's CLI in this process uses the
+    stand-in. A test of the solve flow passes its run to solve instead, in place of
+    colmap.run_colmap. Either way, its `runs` then lists every ColmapRun it stood in for, in
+    order. splatpipe.cameras is imported here, so only the tests that use this fixture need it.
+    """
+    from splatpipe.cameras import Tools
+
+    class Installed(FakeColmap):
+        """A FakeColmap that installs itself as the Cameras_Step's tools once it's built."""
+
+        def __post_init__(self) -> None:
+            super().__post_init__()  # a script it refuses installs nothing
+            monkeypatch.setattr("splatpipe.cameras.TOOLS",
+                                Tools(find_colmap=self.find_colmap, run=self.run))
+
+    return Installed
 
 
 def _extract(run: ColmapRun) -> None:
@@ -926,9 +1001,10 @@ def _calibrate(run: ColmapRun, calibration: str) -> None:
         database.execute("UPDATE cameras SET prior_focal_length = 1")  # worked or rejected
 
 
-def _map(run: ColmapRun, counts: Sequence[int] | None) -> None:
+def _map(run: ColmapRun, counts: Sequence[int] | None, upside_down: bool) -> None:
     """The fake global_mapper or mapper: one Model in --output_path for each of `counts`, as
-    FakeColmap says, and no Model for None or no counts."""
+    FakeColmap says, and no Model for None or no counts. With `upside_down`, every other camera
+    is upside down."""
     from splatpipe.cameras.model import write_model
 
     output = Path(run.value("--output_path"))
@@ -946,13 +1022,15 @@ def _map(run: ColmapRun, counts: Sequence[int] | None) -> None:
     start = 0
     for number, count in enumerate(counts):
         write_model(output / str(number),
-                    _walk_model(names, range(start, start + count), width, height))
+                    _walk_model(names, range(start, start + count), width, height, upside_down))
         start += count
 
 
-def _walk_model(names: Sequence[str], places: range, width: int, height: int) -> Model:
+def _walk_model(names: Sequence[str], places: range, width: int, height: int,
+                upside_down: bool) -> Model:
     """The fake mappers' Model that places the Picks at `places` in `names`, the Picks of
-    --image_path by name, at the Pick_Size `width` by `height`, as FakeColmap says."""
+    --image_path by name, at the Pick_Size `width` by `height`, as FakeColmap says. With
+    `upside_down`, the camera at each odd place is upside down."""
     from splatpipe.cameras.model import POINT2D, TRACK_ELEMENT, Camera, Image, Model, Points
 
     focal = MAPPED_FOCAL * max(width, height)
@@ -969,6 +1047,8 @@ def _walk_model(names: Sequence[str], places: range, width: int, height: int) ->
         # cam_from_world: back from COLMAP's frame to the level world, then into the level
         # camera, which is turned by `yaw` about the y axis to look at WALK_TARGET.
         qvec = _hamilton(_turn((0.0, 1.0, 0.0), -yaw), _turn(TILT_AXIS, -tilt))
+        if upside_down and place % 2:  # then a half turn about the camera's view axis, its z
+            qvec = _hamilton(_turn((0.0, 0.0, 1.0), math.pi), qvec)
         rotation = _matrix(qvec)
         tvec = -rotation @ (move @ centre + TILT_SHIFT)
         seen = xyz @ rotation.T + tvec  # the points in the camera, all in front of it
@@ -986,12 +1066,90 @@ def _walk_model(names: Sequence[str], places: range, width: int, height: int) ->
     return Model(cameras=(camera,), images=tuple(images), points=points)
 
 
+def _undistort(run: ColmapRun, *, keep_camera_model: bool, second_camera: bool,
+               leave_out_image: bool) -> None:
+    """The fake image_undistorter: the Undistorted_Model of the Model at --input_path in
+    --output_path/sparse/, and a JPEG per image in --output_path/images/, with the three flags'
+    faults, as FakeColmap says."""
+    from splatpipe.cameras.model import Model, read_model, write_model
+
+    model = read_model(Path(run.value("--input_path")))
+    cameras = tuple(_undistorted_camera(camera, keep_camera_model) for camera in model.cameras)
+    if second_camera:  # a copy of the first camera with the next id, which no image uses
+        next_id = max(camera.camera_id for camera in cameras) + 1
+        cameras += (replace(cameras[0], camera_id=next_id),)
+    images = model.images[:-1] if leave_out_image else model.images  # without the last image
+    output = Path(run.value("--output_path"))
+    output.mkdir(exist_ok=True)  # as COLMAP makes it
+    write_model(output / "sparse", Model(cameras=cameras, images=images, points=model.points))
+    sizes = {camera.camera_id: (camera.width, camera.height) for camera in cameras}
+    picks, folder = Path(run.value("--image_path")), output / "images"
+    folder.mkdir(exist_ok=True)
+    for image in images:
+        pick = _read_picture(picks / image.name, cv2.IMREAD_COLOR)
+        _write_picture(folder / image.name, _resized(pick, *sizes[image.camera_id]))
+
+
+def _warp_mask(run: ColmapRun, *, keep_camera_model: bool) -> None:
+    """The fake image_undistorter_standalone: the picture that the camera line in --input_file
+    names, at the size the fake image_undistorter gives the line's camera, with a grey edge
+    around every black region, as a three-channel PNG in --output_path, as FakeColmap says."""
+    from splatpipe.cameras.model import Camera
+
+    line = Path(run.value("--input_file")).read_text(encoding="utf-8")
+    name, model, width, height, *params = line.split()  # as mask_camera_line writes it (F8)
+    camera = _undistorted_camera(Camera(camera_id=1, model_id=COLMAP_MODEL_IDS[model],
+                                        width=int(width), height=int(height),
+                                        params=tuple(map(float, params))), keep_camera_model)
+    mask = _resized(_read_picture(Path(run.value("--image_path")) / name, cv2.IMREAD_GRAYSCALE),
+                    camera.width, camera.height)
+    black = mask == 0
+    # The pixels next to a black one that aren't black themselves, where bilinear sampling mixes
+    # black and white.
+    edge = cv2.dilate(black.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~black
+    warped = np.where(edge, WARPED_EDGE, mask).astype(np.uint8)
+    output = Path(run.value("--output_path"))
+    output.mkdir(exist_ok=True)  # as COLMAP makes it
+    _write_picture(output / name, np.repeat(warped[:, :, np.newaxis], 3, axis=2))
+
+
+def _undistorted_camera(camera: Camera, keep_camera_model: bool) -> Camera:
+    """The camera that the fake image_undistorter gives `camera`: PINHOLE and UNDISTORTED_SHRINK
+    pixels smaller each way, with fx and fy kept and the principal point scaled with the size, as
+    COLMAP's UndistortCamera does (F7). With `keep_camera_model`, `camera` as it is, its model
+    included, as COLMAP leaves a camera with no distortion (F9)."""
+    from splatpipe.cameras.model import Camera
+
+    if keep_camera_model:
+        return camera
+    width, height = camera.width - UNDISTORTED_SHRINK, camera.height - UNDISTORTED_SHRINK
+    fx, fy, cx, cy = camera.params[:4]  # every camera model starts with these four (F2)
+    return Camera(camera_id=camera.camera_id, model_id=PINHOLE_ID, width=width, height=height,
+                  params=(fx, fy, cx * width / camera.width, cy * height / camera.height))
+
+
+def _read_picture(path: Path, flags: int) -> np.ndarray:
+    """The picture in the file `path`, decoded with cv2.imdecode and `flags`, like
+    cv2.IMREAD_COLOR."""
+    return cv2.imdecode(np.frombuffer(path.read_bytes(), dtype=np.uint8), flags)
+
+
+def _write_picture(path: Path, picture: np.ndarray) -> None:
+    """Encode `picture` with cv2.imencode in the format of `path`'s suffix, then write it."""
+    ok, data = cv2.imencode(path.suffix, picture)
+    assert ok, f"cv2.imencode couldn't encode {path}"
+    path.write_bytes(data.tobytes())
+
+
+def _resized(picture: np.ndarray, width: int, height: int) -> np.ndarray:
+    """`picture` resized to `width` × `height` pixels, each taking its nearest pixel's value."""
+    return cv2.resize(picture, (width, height), interpolation=cv2.INTER_NEAREST)
+
+
 def _pick_size(folder: Path) -> tuple[int, int]:
     """The width and height of the first Pick in `folder` by name, which every Pick shares: the
     Pick_Size, read from the picture itself, as COLMAP reads it."""
-    first = min(folder.iterdir())
-    picture = cv2.imdecode(np.frombuffer(first.read_bytes(), dtype=np.uint8),
-                           cv2.IMREAD_UNCHANGED)
+    picture = _read_picture(min(folder.iterdir()), cv2.IMREAD_UNCHANGED)
     height, width = picture.shape[:2]
     return width, height
 
