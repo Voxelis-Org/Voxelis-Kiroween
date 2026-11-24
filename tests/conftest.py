@@ -3,8 +3,9 @@ new_job, which make Jobs without ffprobe, cameras_job, which makes a Job with a 
 work/frames/ for the Cameras_Step, set_fail, which sets `fail` in the test config, set_frames
 and set_cameras, which change its [frames] and [cameras] settings, colmap_options, which gives
 the COLMAP options of the camera solve's options.md, work_calls, which records whose Fake_Step
-work runs, and fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and
-ffmpeg.
+work runs, fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg,
+and fake_colmap, which gives FakeColmap, a stand-in for the colmap program in the Cameras_Step's
+solve flow.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
@@ -32,18 +33,33 @@ FakeTools gives the Frames_Step synthetic frames, from a list or from a function
 one on demand, and records what the step asked for. It can also report that ffmpeg has no
 filters, or fail the first pass with the Tone_Map, for the HDR tests. So the step's tests run it
 through splatpipe.frames.run on a machine with no ffmpeg (frames spec, Req 2.4, 2.5, 13.6, 13.7).
+
+FakeColmap stands in for the colmap program in the Cameras_Step's solve flow, so its tests run
+on a machine with no COLMAP (cameras spec, Req 16.5). fake_colmap gives the class. A test builds
+one with its script and passes its run to solve in place of colmap.run_colmap. The script says
+which runs time out, which exit with a given code and line, what the Calibration does to the
+Calibration_Copy, and how many Picks each Model of each mapper places. FakeColmap records each
+run and writes its Command_Log. Every other run exits with 0 after writing what the real command
+would: the Database with its one camera, the Calibration_Copy's changed camera, and each
+mapper's Models, written with the step's own Model_Writer, with Poses along a walk seen through
+a fixed rigid move.
 """
 
 from __future__ import annotations
 
 import enum
 import json
+import math
 import os
 import re
 import shlex
+import sqlite3
+import struct
 import sys
+import time
 import tomllib
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from contextlib import closing
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
@@ -62,7 +78,11 @@ from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
 
-if TYPE_CHECKING:  # named in FakeTools' type hints only, so only its tests import splatpipe.frames
+# Named in FakeTools' and FakeColmap's type hints only, so only the tests that run a FakeTools
+# import splatpipe.frames.ffmpeg, and only those that run a FakeColmap import splatpipe.cameras.
+if TYPE_CHECKING:
+    from splatpipe.cameras.colmap import ColmapRun, RunResult
+    from splatpipe.cameras.model import Model
     from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo
 
 # The names the tests run the Fake_Step under. Each gets a section like the real [fake].
@@ -703,3 +723,299 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch) -> type[FakeTools]:
                                       decode=self.decode))
 
     return Installed
+
+
+# COLMAP's camera model ids of the two Camera_Models (cameras design, F2).
+COLMAP_MODEL_IDS = {"OPENCV": 4, "OPENCV_FISHEYE": 5}
+
+# The cameras table of a COLMAP 4.2.1 database, as its scene/database_sqlite.cc makes it (F12).
+# params holds the camera's parameters as little-endian doubles.
+CAMERAS_TABLE = """\
+CREATE TABLE IF NOT EXISTS cameras
+   (camera_id            INTEGER  PRIMARY KEY AUTOINCREMENT  NOT NULL,
+    model                INTEGER                             NOT NULL,
+    width                INTEGER                             NOT NULL,
+    height               INTEGER                             NOT NULL,
+    params               BLOB,
+    prior_focal_length   INTEGER                             NOT NULL)"""
+
+# What FakeColmap's view_graph_calibrator can do to the Calibration_Copy's camera (O5, F11), and
+# the share of the old focal length that a Calibration that worked gives the camera.
+CALIBRATIONS = ("worked", "rejected", "no_pairs")
+CALIBRATED_SHARE = 0.9
+
+# The fake mappers' scene, in a level world whose up is (0, -1, 0). The camera of the Pick at
+# place p of --image_path, by name, stands at (WALK_STEP * p, 0, 0) and looks level at
+# WALK_TARGET, around which lie the few WALK_POINTS, each with its colour and its error.
+WALK_STEP = 0.5
+WALK_TARGET = (2.0, 0.0, 6.0)
+WALK_POINTS = np.array(WALK_TARGET) + np.array([(-1.0, -0.5, 0.0), (1.0, -0.5, 0.5),
+                                                (0.0, 0.5, -0.5), (0.5, 0.25, 1.0)])
+WALK_COLOURS = ((200, 40, 40), (40, 200, 40), (40, 40, 200), (200, 200, 40))
+WALK_ERRORS = (0.4, 0.6, 0.5, 0.7)
+# The fixed rigid move that takes the level world into COLMAP's frame: a turn of TILT_DEGREES
+# about TILT_AXIS, which isn't vertical, then TILT_SHIFT. So the Levelling has a tilt to remove.
+TILT_AXIS = (1.0, 0.3, 0.6)
+TILT_DEGREES = 35.0
+TILT_SHIFT = (1.5, -0.5, 2.0)
+# The fake mappers' OPENCV camera: fx = fy = MAPPED_FOCAL times the long edge, the principal point
+# at the centre, and a little distortion, k1, k2, p1 and p2.
+MAPPED_FOCAL = 1.1
+MAPPED_DISTORTION = (0.02, -0.01, 0.001, -0.0005)
+
+
+@dataclass(kw_only=True)
+class FakeColmap:
+    """A stand-in for the colmap program, for the runs of the Cameras_Step's solve flow, so the
+    step's tests need no COLMAP (cameras spec, Req 16.5). A test builds one with its script and
+    passes its run to solve, in place of colmap.run_colmap.
+
+    run(colmap_run) records the ColmapRun in `runs` and writes its Command_Log, a line with the
+    command line. Then it follows the script for colmap_run.name:
+    - a name in `timeouts` gives a RunResult with exit_code None, after the run's Time_Limit;
+    - a name in `exits`, mapped to (code, line), writes the line to the Command_Log too and gives
+      that code;
+    - every other run exits with 0, after writing what the real command would write.
+    A run in `timeouts` or `exits` writes nothing else. The RunResult's seconds are the time the
+    stand-in took, or the Time_Limit for a Timeout, and its last_line is the Command_Log's
+    Last_Error_Line, read as run_colmap reads it.
+
+    What each run that exits with 0 writes, at the paths on its command line:
+    - feature_extractor: a SQLite database at --database_path whose cameras table, laid out as
+      COLMAP 4.2.1's, holds one camera of --ImageReader.camera_model at the Pick_Size, the size
+      of the first Pick in --image_path. For OPENCV, fx and fy are
+      --ImageReader.default_focal_length_factor, 1.2 in the config, times the long edge, the
+      principal point is the centre, the distortion is 0 and prior_focal_length is 0. For
+      OPENCV_FISHEYE, the parameters are --ImageReader.camera_params, the Fisheye_Start, and
+      prior_focal_length is 1.
+    - sequential_matcher_near and sequential_matcher_far: nothing.
+    - view_graph_calibrator, on the database at --database_path, which must exist: with
+      `calibration` "worked", fx and fy become CALIBRATED_SHARE times the old fx and
+      prior_focal_length 1; with "rejected", only prior_focal_length becomes 1; with "no_pairs",
+      nothing changes.
+    - global_mapper and mapper: one Model folder, 0/, 1/ and so on, in --output_path for each
+      count in `global_models` or `incremental_models`, written with the step's write_model.
+      None, or no counts, writes no Model. --output_path must be a folder already, as COLMAP's
+      mappers need. Model k places the next that many Picks of --image_path by name: Model 0
+      the first ones, Model 1 the ones after them, and so on. Each image's id is its Pick's
+      place from 1, as the Database gives it. Each Model has one OPENCV camera with a little
+      distortion, from MAPPED_FOCAL and MAPPED_DISTORTION, and the few WALK_POINTS. Its Poses lie
+      along the walk of WALK_STEP and WALK_TARGET, seen through the fixed rigid move of
+      TILT_AXIS, TILT_DEGREES and TILT_SHIFT, so the Levelling has a tilt to remove. Each
+      image's 2D points are where the points project through the camera, leaving out its
+      distortion, and each point's track holds every image of its Model.
+
+    The defaults take a default cameras_job, of 8 Picks, all the way: the Calibration works, and
+    each mapper writes one Model that places all 8 Picks. A script that names a run this
+    stand-in doesn't know, a calibration it doesn't know or a count below 0 raises ValueError,
+    and so does a mapper whose counts add up to more Picks than --image_path holds.
+    """
+
+    timeouts: Collection[str] = ()  # the names of the runs that reach their Time_Limit
+    exits: Mapping[str, tuple[int, str]] = field(default_factory=dict)  # name: (code, line)
+    calibration: Literal["worked", "rejected", "no_pairs"] = "worked"
+    global_models: Sequence[int] | None = (8,)  # the Picks each Model of global_mapper places
+    incremental_models: Sequence[int] | None = (8,)  # the Picks each Model of mapper places
+    runs: list[ColmapRun] = field(default_factory=list, init=False)  # every run, in order
+
+    def __post_init__(self) -> None:
+        """Refuse a script that names a run this stand-in doesn't know, a calibration it doesn't
+        know or a count below 0, so a typo can't pass for a real script."""
+        known = self._writers()
+        unknown = sorted({*self.timeouts, *self.exits} - set(known))
+        if unknown:
+            raise ValueError(f"FakeColmap has no run named {', '.join(unknown)}. Its runs are "
+                             f"{', '.join(known)}.")
+        if self.calibration not in CALIBRATIONS:
+            raise ValueError(f"FakeColmap's calibration is {self.calibration!r}, but it must be "
+                             f"one of {', '.join(CALIBRATIONS)}.")
+        for counts in (self.global_models, self.incremental_models):
+            if counts is not None and any(type(count) is not int or count < 0
+                                          for count in counts):
+                raise ValueError("FakeColmap's Model counts must be whole numbers, 0 or more, "
+                                 f"but they're {counts}.")
+
+    def run(self, colmap_run: ColmapRun) -> RunResult:
+        """Stand in for run_colmap(colmap_run), as the class says."""
+        from splatpipe.cameras.colmap import RunResult, last_error_line
+
+        start = time.perf_counter()
+        self.runs.append(colmap_run)
+        writers = self._writers()
+        name = colmap_run.name
+        if name not in writers:
+            raise AssertionError(f"FakeColmap doesn't stand in for the run {name}, only for "
+                                 f"{', '.join(writers)}.")
+        colmap_run.log.write_text(f"FakeColmap ran in place of: {shlex.join(colmap_run.args)}\n",
+                                  encoding="utf-8")
+        exit_code: int | None
+        if name in self.timeouts:
+            exit_code = None
+        elif name in self.exits:
+            exit_code, line = self.exits[name]
+            with colmap_run.log.open("a", encoding="utf-8") as log:
+                log.write(f"{line}\n")
+        else:
+            exit_code = 0
+            writers[name](colmap_run)
+        with colmap_run.log.open(encoding="utf-8", errors="replace") as lines:
+            last_line = last_error_line(lines)
+        seconds = (float(colmap_run.timeout_seconds) if exit_code is None
+                   else time.perf_counter() - start)
+        return RunResult(exit_code=exit_code, seconds=seconds, last_line=last_line)
+
+    def _writers(self) -> dict[str, Callable[[ColmapRun], None]]:
+        """What each run this stand-in knows writes when it exits with 0, by the run's name."""
+        return {"feature_extractor": _extract,
+                "sequential_matcher_near": _match,
+                "sequential_matcher_far": _match,
+                "view_graph_calibrator": lambda run: _calibrate(run, self.calibration),
+                "global_mapper": lambda run: _map(run, self.global_models),
+                "mapper": lambda run: _map(run, self.incremental_models)}
+
+
+@pytest.fixture
+def fake_colmap() -> type[FakeColmap]:
+    """Give FakeColmap, so a test builds one with its script, like
+    fake_colmap(calibration="rejected", global_models=None), and passes its run to solve in
+    place of colmap.run_colmap (cameras spec, Req 16.5). Its `runs` then lists every ColmapRun
+    that solve ran, in order. splatpipe.cameras is imported only when a FakeColmap runs, so only
+    the tests that run one need it."""
+    return FakeColmap
+
+
+def _extract(run: ColmapRun) -> None:
+    """The fake feature_extractor: a database at --database_path whose cameras table holds one
+    camera of --ImageReader.camera_model at the Pick_Size, as FakeColmap says."""
+    width, height = _pick_size(Path(run.value("--image_path")))
+    if "--ImageReader.camera_params" in run.args:  # the Fisheye_Start, a focal prior (Req 3.4)
+        params = tuple(map(float, run.value("--ImageReader.camera_params").split(",")))
+        prior = 1
+    else:  # the focal length starts at the factor times the long edge, with no prior (Req 3.3)
+        focal = float(run.value("--ImageReader.default_focal_length_factor")) * max(width, height)
+        params = (focal, focal, width / 2, height / 2, 0.0, 0.0, 0.0, 0.0)
+        prior = 0
+    model_id = COLMAP_MODEL_IDS[run.value("--ImageReader.camera_model")]
+    with closing(sqlite3.connect(run.value("--database_path"))) as database, database:
+        database.execute(CAMERAS_TABLE)
+        database.execute("INSERT INTO cameras (model, width, height, params, prior_focal_length) "
+                         "VALUES (?, ?, ?, ?, ?)", (model_id, width, height, _blob(params), prior))
+
+
+def _match(run: ColmapRun) -> None:
+    """The fake sequential_matcher, for both Match_Runs: it writes nothing."""
+
+
+def _calibrate(run: ColmapRun, calibration: str) -> None:
+    """The fake view_graph_calibrator: it changes the camera of the database at --database_path,
+    the Calibration_Copy, as `calibration` says (O5, F11)."""
+    path = Path(run.value("--database_path"))
+    if not path.is_file():
+        raise AssertionError(f"COLMAP's view_graph_calibrator was given the database {path}, "
+                             "which doesn't exist.")
+    if calibration == "no_pairs":  # it found no image pairs to calibrate, so it changes nothing
+        return
+    with closing(sqlite3.connect(path)) as database, database:
+        if calibration == "worked":  # a new focal length, in fx and fy
+            rows = database.execute("SELECT camera_id, params FROM cameras").fetchall()
+            for camera_id, blob in rows:
+                params = list(struct.unpack(f"<{len(blob) // 8}d", blob))
+                params[0] = params[1] = CALIBRATED_SHARE * params[0]
+                database.execute("UPDATE cameras SET params = ? WHERE camera_id = ?",
+                                 (_blob(params), camera_id))
+        database.execute("UPDATE cameras SET prior_focal_length = 1")  # worked or rejected
+
+
+def _map(run: ColmapRun, counts: Sequence[int] | None) -> None:
+    """The fake global_mapper or mapper: one Model in --output_path for each of `counts`, as
+    FakeColmap says, and no Model for None or no counts."""
+    from splatpipe.cameras.model import write_model
+
+    output = Path(run.value("--output_path"))
+    if not output.is_dir():  # COLMAP's mappers stop at once: "`output_path` is not a directory."
+        raise AssertionError(f"COLMAP's {run.command} needs its output folder {output} to exist "
+                             "before it runs.")
+    if not counts:
+        return
+    folder = Path(run.value("--image_path"))
+    names = sorted(path.name for path in folder.iterdir())
+    if sum(counts) > len(names):
+        raise ValueError(f"FakeColmap's {run.name} places {sum(counts)} Picks in its Models, but "
+                         f"{folder} holds only {len(names)}.")
+    width, height = _pick_size(folder)
+    start = 0
+    for number, count in enumerate(counts):
+        write_model(output / str(number),
+                    _walk_model(names, range(start, start + count), width, height))
+        start += count
+
+
+def _walk_model(names: Sequence[str], places: range, width: int, height: int) -> Model:
+    """The fake mappers' Model that places the Picks at `places` in `names`, the Picks of
+    --image_path by name, at the Pick_Size `width` by `height`, as FakeColmap says."""
+    from splatpipe.cameras.model import POINT2D, TRACK_ELEMENT, Camera, Image, Model, Points
+
+    focal = MAPPED_FOCAL * max(width, height)
+    camera = Camera(camera_id=1, model_id=COLMAP_MODEL_IDS["OPENCV"], width=width, height=height,
+                    params=(focal, focal, width / 2, height / 2, *MAPPED_DISTORTION))
+    tilt = math.radians(TILT_DEGREES)
+    move = _matrix(_turn(TILT_AXIS, tilt))  # the level world into COLMAP's frame
+    xyz = WALK_POINTS @ move.T + TILT_SHIFT
+    ids = np.arange(1, len(xyz) + 1, dtype="<u8")
+    images = []
+    for place in places:
+        centre = np.array([WALK_STEP * place, 0.0, 0.0])
+        yaw = math.atan2(WALK_TARGET[0] - centre[0], WALK_TARGET[2] - centre[2])
+        # cam_from_world: back from COLMAP's frame to the level world, then into the level
+        # camera, which is turned by `yaw` about the y axis to look at WALK_TARGET.
+        qvec = _hamilton(_turn((0.0, 1.0, 0.0), -yaw), _turn(TILT_AXIS, -tilt))
+        rotation = _matrix(qvec)
+        tvec = -rotation @ (move @ centre + TILT_SHIFT)
+        seen = xyz @ rotation.T + tvec  # the points in the camera, all in front of it
+        points2d = np.zeros(len(xyz), dtype=POINT2D)
+        points2d["x"] = focal * seen[:, 0] / seen[:, 2] + width / 2
+        points2d["y"] = focal * seen[:, 1] / seen[:, 2] + height / 2
+        points2d["point3d_id"] = ids
+        images.append(Image(image_id=place + 1, qvec=tuple(qvec.tolist()),
+                            tvec=tuple(tvec.tolist()), camera_id=camera.camera_id,
+                            name=names[place], points2d=points2d))
+    tracks = tuple(np.array([(image.image_id, index) for image in images], dtype=TRACK_ELEMENT)
+                   for index in range(len(xyz)))
+    points = Points(ids=ids, xyz=xyz, rgb=np.array(WALK_COLOURS, dtype="u1"),
+                    errors=np.array(WALK_ERRORS, dtype="<f8"), tracks=tracks)
+    return Model(cameras=(camera,), images=tuple(images), points=points)
+
+
+def _pick_size(folder: Path) -> tuple[int, int]:
+    """The width and height of the first Pick in `folder` by name, which every Pick shares: the
+    Pick_Size, read from the picture itself, as COLMAP reads it."""
+    first = min(folder.iterdir())
+    picture = cv2.imdecode(np.frombuffer(first.read_bytes(), dtype=np.uint8),
+                           cv2.IMREAD_UNCHANGED)
+    height, width = picture.shape[:2]
+    return width, height
+
+
+def _blob(params: Sequence[float]) -> bytes:
+    """A camera's parameters as a COLMAP database's params holds them: little-endian doubles."""
+    return struct.pack(f"<{len(params)}d", *params)
+
+
+def _turn(axis: Sequence[float], radians: float) -> np.ndarray:
+    """The unit quaternion (w, x, y, z) of a right-handed turn by `radians` about `axis`."""
+    unit = np.asarray(axis, dtype=float) / np.linalg.norm(axis)
+    return np.array([math.cos(radians / 2), *(math.sin(radians / 2) * unit)])
+
+
+def _hamilton(p: np.ndarray, q: np.ndarray) -> np.ndarray:
+    """The Hamilton product p q of two quaternions (w, x, y, z): the rotation q, then p."""
+    return np.array([p[0] * q[0] - p[1:] @ q[1:],
+                     *(p[0] * q[1:] + q[0] * p[1:] + np.cross(p[1:], q[1:]))])
+
+
+def _matrix(q: np.ndarray) -> np.ndarray:
+    """The rotation matrix of the unit quaternion q = (w, x, y, z), in Hamilton's convention."""
+    w, x, y, z = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                     [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                     [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
