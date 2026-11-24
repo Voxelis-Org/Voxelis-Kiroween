@@ -3,7 +3,8 @@ new_job, which make Jobs without ffprobe, set_fail, which sets `fail` in the tes
 set_frames, set_depth and set_train, which change its [frames], [depth] and [train] settings,
 set_clean, which sets its [clean] settings, work_calls, which records whose Fake_Step work runs,
 fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg, fake_gpu,
-which puts a FakeGpu in place of the Train_Step's GPU_Module, and no_cap_deadline, which keeps
+which puts a FakeGpu in place of the Train_Step's GPU_Module, fake_depth_gpu, which puts a
+FakeDepthGpu in place of the Depth_Step's Depth_GPU_Module, and no_cap_deadline, which keeps
 SPLATPIPE_CAP_DEADLINE out of every test.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
@@ -30,6 +31,12 @@ points by brute force and fakes the training, giving back the Start_Splats it wa
 records what the step asked for. It can also raise from either GPU call, or give back one splat
 or every splat with a NaN opacity. So the step's tests run it through splatpipe.train.run on a
 machine with no GPU and no torch (training spec, Req 11.6, 14.4).
+
+FakeDepthGpu, the Depth_Stand_In, says whether CUDA is there, gives each Frame the MoGe_Output
+the test handed it, or by default plane_moge_output of tests/camera_files.py's plane scene, and
+records every call in order. It can also raise from import_moge, from load_model or from the
+n-th infer. So the Depth_Step's tests run it through splatpipe.depth.run on a machine with no
+GPU, no torch and no MoGe (depth-priors spec, Req 1.8, 18.4).
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, fields, replace
 from itertools import islice
@@ -51,12 +59,14 @@ from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
 
-# Named in FakeTools' and FakeGpu's type hints only, so only their tests import splatpipe.frames
-# and splatpipe.train.
+# Named in FakeTools', FakeGpu's and FakeDepthGpu's type hints only, so only their tests import
+# splatpipe.frames, splatpipe.train and splatpipe.depth.
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from splatpipe.depth.gpu_api import MoGeOutput
     from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo
+    from splatpipe.train.colmap import SparseModel
     from splatpipe.train.gpu_api import GpuInfo, TrainResult
     from splatpipe.train.scene import Scene
     from splatpipe.train.settings import TrainSettings
@@ -812,5 +822,171 @@ def fake_gpu(monkeypatch: pytest.MonkeyPatch) -> type[FakeGpu]:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             monkeypatch.setattr("splatpipe.train.GPU", lambda: self)
+
+    return Installed
+
+
+# The Metres_Per_Unit of FakeDepthGpu's default MoGe_Output: MoGe's metres per unit of the camera
+# solve, so each Frame of the plane scene fits with this scale and an offset of 0. It isn't 1, so
+# a test can tell a Prior scaled by it from one that isn't.
+FAKE_METRES_PER_UNIT = 2.0
+
+
+class FakeMoGe:
+    """The handle FakeDepthGpu's load_model gives back in place of MoGe-2 on the GPU. It keeps
+    the path of the Weights_File it was loaded from. Each load makes a new one, so a test can
+    check that release got the very handle that load_model gave."""
+
+    def __init__(self, weights: Path) -> None:
+        self.weights = weights
+
+    def __repr__(self) -> str:
+        return f"FakeMoGe({str(self.weights)!r})"
+
+
+class FakeDepthGpu:
+    """A stand-in for the Depth_Step's Depth_GPU_Module, the Depth_Stand_In, so the step's tests
+    run its whole flow on a CPU with no torch, MoGe or huggingface_hub (depth-priors spec,
+    Req 1.8, 18.4). The fake_depth_gpu fixture installs one as the step's DEPTH_GPU hook.
+
+    FakeDepthGpu(cuda) is built with whether probe finds CUDA, True by default. Its six methods
+    take the same arguments as the DepthGpu protocol's in splatpipe.depth.gpu_api. It records
+    each call in `calls`, in order, as the method's name and a tuple of the arguments it was
+    given: ("probe", ()), ("import_moge", ()), ("load_model", (weights,)), ("infer", (model, rgb,
+    fov_x, resolution_level, use_fp16, frame)), ("release", (model,)) and
+    ("peak_memory_bytes", ()).
+
+    - probe gives back `cuda`.
+    - import_moge does nothing.
+    - load_model gives back a new FakeMoGe of `weights` and keeps it in `handle`, which stays
+      None until a load works.
+    - infer gives the MoGe_Output for the Frame `frame`: outputs[frame] when the test handed
+      one, and otherwise plane_moge_output of tests/camera_files.py's plane scene at the size of
+      `rgb`, with `metres_per_unit` and the pixels no_geometry[frame], (x, y) column then row,
+      left with no geometry. The plane scene's SparseModel is written by write_model into a
+      temporary folder and read back with read_model, once per FakeDepthGpu, so it's the model
+      the step reads from a Job that holds the plane scene. A test whose Job holds another scene
+      hands that scene's outputs. A Frame that's neither in `outputs` nor in the plane scene is
+      a mistake in the test, and infer raises LookupError naming it.
+    - release does nothing. It takes None, which the step gives it when the load failed.
+    - peak_memory_bytes gives back `peak_bytes`.
+
+    With `import_moge_error` or `load_model_error` set, that call raises it once the call is
+    recorded, like MissingPackage("moge") or OfflineModeOff() from import_moge, and
+    WrongCheckpoint("...") or DepthOutOfMemory(None) from load_model. With `out_of_memory_at`
+    set to n, the n-th infer call, counting from 1, raises DepthOutOfMemory(frame) once it's
+    recorded, and the calls before it give their outputs.
+    """
+
+    def __init__(self, cuda: bool = True, *, outputs: Mapping[str, MoGeOutput] | None = None,
+                 metres_per_unit: float = FAKE_METRES_PER_UNIT,
+                 no_geometry: Mapping[str, Collection[tuple[int, int]]] | None = None,
+                 peak_bytes: int = 0, import_moge_error: Exception | None = None,
+                 load_model_error: Exception | None = None,
+                 out_of_memory_at: int | None = None) -> None:
+        self.cuda = cuda
+        self.outputs = dict(outputs or {})
+        self.metres_per_unit = metres_per_unit
+        self.no_geometry = dict(no_geometry or {})
+        self.peak_bytes = peak_bytes
+        self.import_moge_error = import_moge_error
+        self.load_model_error = load_model_error
+        self.out_of_memory_at = out_of_memory_at
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.handle: FakeMoGe | None = None
+        self._plane: SparseModel | None = None
+
+    def probe(self) -> bool:
+        """Record the call and give back `cuda`."""
+        self.calls.append(("probe", ()))
+        return self.cuda
+
+    def import_moge(self) -> None:
+        """Record the call, then raise import_moge_error when it's set."""
+        self.calls.append(("import_moge", ()))
+        if self.import_moge_error is not None:
+            raise self.import_moge_error
+
+    def load_model(self, weights: Path) -> object:
+        """Record the call, raise load_model_error when it's set, then give back a new FakeMoGe
+        of `weights`, kept in `handle`."""
+        self.calls.append(("load_model", (weights,)))
+        if self.load_model_error is not None:
+            raise self.load_model_error
+        self.handle = FakeMoGe(weights)
+        return self.handle
+
+    def infer(self, model: object, rgb: np.ndarray, fov_x: float, resolution_level: int,
+              use_fp16: bool, frame: str) -> MoGeOutput:
+        """Record the call, raise DepthOutOfMemory(frame) when it's the out_of_memory_at-th
+        infer, then give back the Frame's MoGe_Output, as the class says."""
+        from splatpipe.depth.gpu_api import DepthOutOfMemory
+
+        self.calls.append(("infer", (model, rgb, fov_x, resolution_level, use_fp16, frame)))
+        if sum(name == "infer" for name, _ in self.calls) == self.out_of_memory_at:
+            raise DepthOutOfMemory(frame)
+        if frame in self.outputs:
+            return self.outputs[frame]
+        height, width = rgb.shape[:2]
+        return self._plane_output(frame, width, height)
+
+    def release(self, model: object | None) -> None:
+        """Record the call. `model` is the handle load_model gave, or None."""
+        self.calls.append(("release", (model,)))
+
+    def peak_memory_bytes(self) -> int:
+        """Record the call and give back peak_bytes."""
+        self.calls.append(("peak_memory_bytes", ()))
+        return self.peak_bytes
+
+    def _plane_output(self, frame: str, width: int, height: int) -> MoGeOutput:
+        """plane_moge_output for the plane scene's image named `frame`, at width x height, with
+        metres_per_unit and no_geometry[frame]. Raises LookupError for a name not in the scene."""
+        from camera_files import plane_moge_output
+
+        model = self._plane_model()
+        images = {image.name: image for image in model.images}
+        if frame not in images:
+            raise LookupError(f"FakeDepthGpu has no MoGe output for the frame {frame!r}: the "
+                              "plane scene has no image of that name, and the test handed it "
+                              "none in `outputs`.")
+        return plane_moge_output(model, images[frame], width, height, self.metres_per_unit,
+                                 no_geometry=self.no_geometry.get(frame, ()))
+
+    def _plane_model(self) -> SparseModel:
+        """The plane scene's SparseModel, written by write_model into a temporary folder and read
+        back with read_model the first time it's needed. read_model reads each file whole, so
+        the model holds nothing of the folder once it's gone."""
+        if self._plane is None:
+            from splatpipe.train.colmap import read_model
+
+            from camera_files import PLANE_CAMERA, PLANE_IMAGES, PLANE_POINTS, write_model
+
+            with tempfile.TemporaryDirectory() as folder:
+                write_model(Path(folder), PLANE_CAMERA, PLANE_IMAGES, PLANE_POINTS)
+                self._plane = read_model(Path(folder))
+        return self._plane
+
+
+@pytest.fixture
+def fake_depth_gpu(monkeypatch: pytest.MonkeyPatch) -> type[FakeDepthGpu]:
+    """Give fake_depth_gpu, which builds a FakeDepthGpu as the class does, with
+    fake_depth_gpu(cuda, ...), and installs it as the Depth_Step's Depth_GPU_Module for this
+    test. Building another one installs that one instead.
+
+    Installing is monkeypatch.setattr("splatpipe.depth.DEPTH_GPU", lambda: gpu), with gpu the
+    FakeDepthGpu just built. The step reads DEPTH_GPU each time it runs, so a run through
+    splatpipe.depth.run, run_step, the step's CLI or run_job in this process uses the stand-in,
+    and the test reads what it recorded afterwards. monkeypatch imports splatpipe.depth to set
+    DEPTH_GPU, and FakeDepthGpu's methods import what they need from it when they're called, so
+    only the tests that use this fixture import splatpipe.depth.
+    """
+
+    class Installed(FakeDepthGpu):
+        """A FakeDepthGpu that installs itself once it's built."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            monkeypatch.setattr("splatpipe.depth.DEPTH_GPU", lambda: self)
 
     return Installed

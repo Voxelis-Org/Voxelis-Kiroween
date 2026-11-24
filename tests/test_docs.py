@@ -51,13 +51,16 @@ def test_the_ffmpeg_row_says_what_ffprobe_reads_and_that_the_tools_are_never_ven
 
 def test_numpy_and_headless_opencv_say_yes_and_opencv_never_reads_or_writes_video() -> None:
     """Frames spec, Req 12.6. Training spec, Req 13.16: the opencv-python-headless row also names
-    the train step's JPEG frames and PNG masks."""
+    the train step's JPEG frames and PNG masks. Depth-priors spec, Req 17.7: it also names the
+    depth step's JPEG frames, and still says it never reads or writes video."""
     for name in ("numpy", "opencv-python-headless"):
         assert licence_row(name)["Installed"] == "Yes", f"The {name} row should say Yes"
     how = licence_row("opencv-python-headless")["How we use it"]
     train = ("The train step decodes the camera solve's JPEG frames and PNG masks and scales "
              "them down")
-    assert train in how, f"The opencv-python-headless row should say {train!r}"
+    depth = "The depth step decodes the camera solve's JPEG frames and scales them down"
+    for words in (train, depth):
+        assert words in how, f"The opencv-python-headless row should say {words!r}"
     assert "never reads or writes video" in how, (
         "The opencv-python-headless row should say it never reads or writes video")
 

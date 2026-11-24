@@ -30,7 +30,9 @@ every pixel (Req 1.15). Each refusal is an ExpectedFailure that names the file a
 with both sizes when they differ. Bytes that cv2.imdecode can't decode are refused the same way
 whether it gives None or raises cv2.error, as it does for an empty file and for a header beyond
 OpenCV's size limit. Names from images.bin are shown with repr(). cv2 only decodes still images
-here and never reads or writes video.
+here and never reads or writes video. The decoder, read_training_image, and the scaler,
+scaled_down, are public because the Depth_Step decodes and scales its Frames with them, so it
+refuses a Frame with the same messages (depth-priors spec, Req 2.7).
 
 move_into_out moves the checked Trained_Splat into out/ with one os.replace, so out/ never holds
 a half-written file (Req 8.8). write_record writes the Train_Record with
@@ -158,17 +160,18 @@ def _read_view(cameras: Path, name: str, camera: Camera, width: int, height: int
                threshold: int) -> ImagePixels:
     """The image `name`'s RGB pixels at the Training_Size, and its keep mask, or None when it has
     no Mask_File."""
-    image = _training_image(cameras / IMAGES, name, camera)
-    pixels = cv2.cvtColor(_scaled_down(image, width, height), cv2.COLOR_BGR2RGB)
+    image = read_training_image(cameras / IMAGES, name, camera)
+    pixels = cv2.cvtColor(scaled_down(image, width, height), cv2.COLOR_BGR2RGB)
     keep = _keep(cameras / MASKS, name, _size(image), width, height, threshold)
     return ImagePixels(pixels, keep)
 
 
-def _training_image(folder: Path, name: str, camera: Camera) -> np.ndarray:
+def read_training_image(folder: Path, name: str, camera: Camera) -> np.ndarray:
     """The Training_Image `name` in `folder`, images/, as cv2 decodes it, in BGR.
 
     It must be a file (Req 1.12), a colour image cv2 can decode, and the Shared_Camera's size
-    (Req 1.13).
+    (Req 1.13). The Depth_Step decodes its Frames with this too, so it refuses them with the same
+    messages (depth-priors spec, Req 2.7).
     """
     path = folder / name
     if not path.is_file():
@@ -184,9 +187,11 @@ def _training_image(folder: Path, name: str, camera: Camera) -> np.ndarray:
     return image
 
 
-def _scaled_down(image: np.ndarray, width: int, height: int) -> np.ndarray:
+def scaled_down(image: np.ndarray, width: int, height: int) -> np.ndarray:
     """The image at the Training_Size `width` × `height`, scaled down with INTER_AREA when it's
-    larger (Req 3.2). The Training_Size is never larger than the image."""
+    larger (Req 3.2). The Training_Size is never larger than the image. The Depth_Step scales its
+    Frames to the Prior_Size with this too, which the same rule makes (depth-priors spec,
+    Req 4.1, 4.2)."""
     if _size(image) == (width, height):
         return image
     return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
