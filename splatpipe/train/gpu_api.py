@@ -133,8 +133,10 @@ def out_of_memory_failure(error: GpuOutOfMemory, preset: str, max_splats: int) -
 def non_finite_message(iteration: int, terms: Mapping[str, float]) -> str:
     """NonFiniteLoss's message: the Iteration and each value of `terms`, in order (Req 4.16).
 
-    `terms` holds each Loss_Term's own value, before its weight, then the total, like
-    {"l1": 0.0731, ..., "erank": nan, "total": nan}. Each value is shown to 3 significant figures.
+    `terms` holds the own value, before its weight, of every Loss_Term of the run's Loss_Table,
+    then the total: the five splat-training terms, like {"l1": 0.0731, ..., "erank": nan,
+    "total": nan}, and with a Prior_Set the five Prior_Terms after them (depth-priors spec,
+    Req 13.16). Each value is shown to 3 significant figures.
     """
     values = ", ".join(f"{name} {value:.3g}" for name, value in terms.items())
     return (f"The loss stopped being finite at iteration {iteration:,}: {values}. This is a bug "

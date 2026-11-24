@@ -15,8 +15,15 @@ count from 0, and `planned` is the Preset's `steps`, the Planned_Iterations.
   from one generator seeded with `seed` (A8).
 - depth_schedule (depth-priors spec, Req 11.4, 11.6, A4): the Depth_Schedule of every Iteration
   from 0 to planned, going exponentially from depth_weight_start to depth_weight_end.
+- The Loss_Table's names and weight settings (depth-priors spec, Req 13.1, 13.13): SPLAT_TERMS,
+  PRIOR_TERMS and TERM_WEIGHTS, which gpu.py's tables of term functions follow.
+- depth_normal_start and normal_on (depth-priors spec, Req 13.6, 13.11): when the depth_normal,
+  normal_consistency and normal Loss_Terms are on.
+- active_terms (depth-priors spec, Req 13.15): the names of the Loss_Terms an Iteration works
+  out, in Loss_Table order. With no Prior_Set it's the splat-training rule (Req 13.13, 13.18).
 
-This module imports only numpy and the standard library.
+This module imports only numpy, the standard library and splatpipe.train.settings, for the
+TrainSettings type.
 """
 
 from __future__ import annotations
@@ -26,7 +33,28 @@ from collections.abc import Iterator
 
 import numpy as np
 
+from splatpipe.train.settings import TrainSettings
+
 MAX_SH_DEGREE = 3  # Fixed_Constant: the Splat_Layout's 45 f_rest fields hold up to degree 3
+
+# The Loss_Table's names, in order (depth-priors spec, Req 13.1, 13.13): the splat-training
+# spec's five Loss_Terms, then the five Prior_Terms that a Prior_Set adds after them.
+SPLAT_TERMS = ("l1", "ssim", "opacity_reg", "scale_reg", "erank")
+PRIOR_TERMS = ("depth", "normal", "flatten", "depth_normal", "normal_consistency")
+# Each Loss_Term's weight setting in TrainSettings. depth has None, meaning a weight of 1,
+# because its Depth_Weight is inside the term (Req 13.5).
+TERM_WEIGHTS: dict[str, str | None] = {
+    "l1": "l1_weight",
+    "ssim": "ssim_weight",
+    "opacity_reg": "opacity_reg",
+    "scale_reg": "scale_reg",
+    "erank": "erank_reg",
+    "depth": None,
+    "normal": "normal_weight",
+    "flatten": "flatten_reg",
+    "depth_normal": "depth_normal_weight",
+    "normal_consistency": "normal_consistency_weight",
+}
 
 
 def sh_degree(iteration: int, interval: int) -> int:
@@ -75,6 +103,69 @@ def erank_start(planned: int, fraction: float) -> int:
     It's round(fraction × planned), with fraction the setting erank_start_fraction.
     """
     return round(fraction * planned)
+
+
+def depth_normal_start(planned: int, fraction: float) -> int:
+    """The Depth_Normal_Start, the first Iteration whose loss can hold the depth_normal and
+    normal_consistency Loss_Terms (depth-priors spec, Req 13.11, A4).
+
+    It's round(fraction × planned), with fraction the setting depth_normal_start_fraction, the
+    Erank_Start's rounding: 1,633 for fast, 3,500 for default and 7,000 for quality.
+    """
+    return round(fraction * planned)
+
+
+def normal_on(iteration: int, start: int, every: int) -> bool:
+    """Whether the normal Loss_Term's Iteration rule is on at `iteration` (depth-priors spec,
+    Req 13.6, A4): at or after the Normal_Start `start`, and every `every`-th Iteration from it.
+    """
+    return iteration >= start and (iteration - start) % every == 0
+
+
+def active_terms(iteration: int, settings: TrainSettings, has_priors: bool,
+                 view_has_prior: bool) -> tuple[str, ...]:
+    """The names of the Loss_Terms Iteration `iteration` works out, in Loss_Table order
+    (depth-priors spec, Req 13.15). The Trainer counts every other row of its table as 0.
+
+    A term whose weight is 0 is never on (Req 13.14). The five splat-training terms follow that
+    spec's rule as the Trainer's _loss applied it: each is on when its weight isn't 0, and erank
+    only from the Erank_Start, planned from settings.steps (Req 13.13). Only with a Prior_Set,
+    `has_priors`, come the Prior_Terms: depth and normal on a Prior_View, normal on normal_on's
+    Iterations, flatten on every Iteration (A6), and depth_normal and normal_consistency on a
+    Prior_View from the Depth_Normal_Start. So a Training_Image with no Prior gets only the five
+    splat-training terms and flatten (Req 13.12).
+    """
+    rules = _splat_rules(iteration, settings)
+    names = SPLAT_TERMS
+    if has_priors:
+        rules |= _prior_rules(iteration, settings, view_has_prior)
+        names = SPLAT_TERMS + PRIOR_TERMS
+    return tuple(name for name in names if rules[name] and _weighted(name, settings))
+
+
+def _splat_rules(iteration: int, settings: TrainSettings) -> dict[str, bool]:
+    """The Iteration rule of each splat-training Loss_Term: only erank has one (Req 5.7)."""
+    return {"l1": True, "ssim": True, "opacity_reg": True, "scale_reg": True,
+            "erank": iteration >= erank_start(settings.steps, settings.erank_start_fraction)}
+
+
+def _prior_rules(iteration: int, settings: TrainSettings,
+                 view_has_prior: bool) -> dict[str, bool]:
+    """The Iteration rule of each Prior_Term (depth-priors spec, Req 13.5–13.10, 13.12)."""
+    from_start = iteration >= depth_normal_start(settings.steps,
+                                                 settings.depth_normal_start_fraction)
+    return {"depth": view_has_prior,
+            "normal": view_has_prior and normal_on(iteration, settings.normal_start_step,
+                                                   settings.normal_every),
+            "flatten": True,
+            "depth_normal": view_has_prior and from_start,
+            "normal_consistency": view_has_prior and from_start}
+
+
+def _weighted(name: str, settings: TrainSettings) -> bool:
+    """Whether the Loss_Term `name` has a weight that isn't 0. depth's weight is 1 (Req 13.5)."""
+    setting = TERM_WEIGHTS[name]
+    return setting is None or getattr(settings, setting) != 0
 
 
 def refine_iterations(planned: int, refine_start: int, refine_every: int,

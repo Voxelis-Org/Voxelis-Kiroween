@@ -24,21 +24,30 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
 - The Frames_Step's imports (frames spec, Req 9.9, 13.10): every splatpipe/frames/*.py imports
   only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, so torch, gsplat, boto3 and
   cloud/ stay out.
-- The Train_Step's imports (splat-training spec, Req 9.11, 9.13, 14.7): every
-  splatpipe/train/*.py but gpu.py imports only names in sys.stdlib_module_names, numpy, cv2 and
-  splatpipe, and gpu.py, the GPU_Module, imports only those and torch, gsplat and fused_ssim, so
-  boto3 and cloud/ stay out of all of them. The files are found with glob, so each new file is
-  checked as soon as it lands.
+- The Train_Step's imports (splat-training spec, Req 9.11, 9.13, 14.7, and depth-priors spec,
+  Req 14.9): every splatpipe/train/*.py but gpu.py imports only names in
+  sys.stdlib_module_names, numpy, cv2 and splatpipe, and gpu.py, the GPU_Module, imports only
+  those and torch, gsplat and fused_ssim, so boto3, cloud/ and every other GPU package stay out
+  of all of them. The files are found with glob, so each new file is checked as soon as it
+  lands.
 - The GPU_Module (splat-training spec, Req 2.2, 4.14, 4.15, 8.2, 9.11, 9.12, 14.7): gpu.py is
   read as text and with ast and never imported, because torch, gsplat and fused_ssim exist only
   on the Machine_Image. It starts with the Apache-2.0 note that the gsplat-training skill gives
   for code adapted from gsplat's example trainer, with the note's copyright and licence lines
   before its first import, and its text, comments and docstrings included, names none of
-  rasterization_inria_wrapper, rasterization_2dgs_inria_wrapper and export_splats. It's the only
-  splatpipe/train/*.py that imports torch, gsplat or fused_ssim, and it imports all three.
-  gpu_api.GPU_MODULE, the module load_gpu imports, names that file. A fresh process that imports
-  splatpipe.train and each of its other modules, found with glob, holds none of torch, gsplat
-  and fused_ssim in sys.modules.
+  rasterization_inria_wrapper, rasterization_2dgs_inria_wrapper and export_splats, the
+  Prior_Terms included (depth-priors spec, Req 13.17). It's the only splatpipe/train/*.py that
+  imports torch, gsplat or fused_ssim, and it imports all three. gpu_api.GPU_MODULE, the module
+  load_gpu imports, names that file. A fresh process that imports splatpipe.train and each of
+  its other modules, found with glob, holds none of torch, gsplat and fused_ssim in sys.modules.
+- The Trainer's Loss_Table (depth-priors spec, Req 11.7, 13.1, 13.13, 13.15): gpu.py is read
+  with ast and never imported. Its _TERMS holds exactly the splat-training spec's five rows, l1,
+  ssim, opacity_reg, scale_reg and erank with their weight settings, in that order, and the
+  names and weight settings of _TERMS and _PRIOR_TERMS are SPLAT_TERMS, PRIOR_TERMS and
+  TERM_WEIGHTS from schedules.py. gpu.py calls active_terms and depth_weight, each a Call node
+  in ast, imported from its CPU module and not defined in gpu.py, so the rules the laptop tests
+  check are the ones the Trainer uses. A made-up file shows that a name mentioned only in a
+  docstring or a string is no call.
 - The Depth_Step's imports (depth-priors spec, Req 18.8): every splatpipe/depth/*.py but gpu.py
   imports only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, a relative import
   counting as splatpipe, and gpu.py, the Depth_GPU_Module, imports only those and torch, moge
@@ -86,6 +95,7 @@ from splatpipe.depth.gpu_api import DEPTH_GPU_MODULE
 from splatpipe.run import STEP_LIST
 from splatpipe.step import check_step_name
 from splatpipe.train.gpu_api import GPU_MODULE
+from splatpipe.train.schedules import PRIOR_TERMS, SPLAT_TERMS, TERM_WEIGHTS
 
 SPLATPIPE = REPO_ROOT / "splatpipe"
 # The real config, read by path, because conftest.py points CONFIG_PATH at a test config.
@@ -137,6 +147,18 @@ GSPLAT_NOTE = (
 # PLY_Writer (splat-training spec, Req 4.14, 8.2).
 NEVER_IN_GPU_MODULE = ("rasterization_inria_wrapper", "rasterization_2dgs_inria_wrapper",
                        "export_splats")
+TRAIN_PACKAGE = "splatpipe.train"  # the package gpu.py's relative imports resolve against
+# The splat-training spec's Loss_Table, its Requirement 5, criterion 1: each Loss_Term's name and
+# the setting that holds its weight, in order. gpu.py's _TERMS holds exactly these rows, the
+# whole Loss_Table with no Prior_Set (depth-priors spec, Req 13.13).
+SPLAT_TRAINING_ROWS = (("l1", "l1_weight"), ("ssim", "ssim_weight"),
+                       ("opacity_reg", "opacity_reg"), ("scale_reg", "scale_reg"),
+                       ("erank", "erank_reg"))
+# The CPU functions gpu.py calls, each with the module it imports it from: active_terms decides
+# each Iteration's Loss_Terms and depth_weight gives every training pixel's Depth_Weight
+# (depth-priors spec, Req 11.7, 13.15).
+TRAINER_CALLS = (("active_terms", "splatpipe.train.schedules"),
+                 ("depth_weight", "splatpipe.train.prior_views"))
 # Run in a fresh process with module names as its arguments: it imports splatpipe.train, then
 # each module it's given, and prints the name of every module in sys.modules.
 LOADED_BY_TRAIN = ("import importlib, json, sys\n"
@@ -343,6 +365,43 @@ def lines_naming(text: str, names: tuple[str, ...]) -> list[tuple[int, str]]:
             for name in names if name in line]
 
 
+def table_rows(source: str | bytes, table: str) -> list[tuple[str, str | None]]:
+    """The (name, weight setting) of each row of the Loss_Table `table`, read with ast from the
+    one statement of `source`'s module body that assigns it, and never run.
+
+    Each row must be a tuple of three: the term's name and its weight setting, both constants,
+    the setting None for a weight of 1, and the term's function, a name (depth-priors spec,
+    Req 13.1, 13.13).
+    """
+    values = [statement.value for statement in ast.parse(source).body
+              if isinstance(statement, (ast.Assign, ast.AnnAssign))
+              for target in (statement.targets if isinstance(statement, ast.Assign)
+                             else [statement.target])
+              if isinstance(target, ast.Name) and target.id == table]
+    assert len(values) == 1, f"{table} is assigned {len(values)} times in the module's body"
+    value = values[0]
+    assert isinstance(value, ast.Tuple), f"{table} isn't a tuple of rows"
+    rows: list[tuple[str, str | None]] = []
+    for row in value.elts:
+        assert (isinstance(row, ast.Tuple) and len(row.elts) == 3
+                and isinstance(row.elts[2], ast.Name)), ast.unparse(row)
+        rows.append((ast.literal_eval(row.elts[0]), ast.literal_eval(row.elts[1])))
+    return rows
+
+
+def called_names(source: str | bytes) -> set[str]:
+    """The name of each function `source` calls, as a name, like f(x), or as an attribute, like
+    m.f(x), read from ast's Call nodes, so a name only mentioned in a comment, a docstring or a
+    string isn't a call (depth-priors spec, Req 11.7)."""
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            names.add(node.func.id)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            names.add(node.func.attr)
+    return names
+
+
 def test_the_reader_finds_every_kind_of_import_with_its_line() -> None:
     """Imports inside functions count, relative names are resolved against the package, and an
     import_module call whose name isn't a constant string isn't read."""
@@ -420,9 +479,10 @@ def test_the_frames_step_imports_only_the_standard_library_numpy_cv2_and_splatpi
 
 
 def test_the_train_step_imports_only_the_standard_library_numpy_cv2_and_splatpipe() -> None:
-    """Splat-training spec, Req 9.11, 9.13, 14.7. gpu.py, the GPU_Module, may import torch, gsplat
-    and fused_ssim as well, and no other file may. The files are found with glob, so each file a
-    later task adds is checked as it lands."""
+    """Splat-training spec, Req 9.11, 9.13, 14.7, and depth-priors spec, Req 14.9. gpu.py, the
+    GPU_Module, may import torch, gsplat and fused_ssim as well, and no other GPU package, and no
+    other file may import any of them. The files are found with glob, so each file a later task
+    adds is checked as it lands."""
     found: list[tuple[str, str]] = []
     for path in sorted(SPLATPIPE.glob("train/*.py")):
         allowed = sys.stdlib_module_names | (
@@ -446,13 +506,14 @@ def test_gpu_py_starts_with_the_apache_note_of_gsplats_example_trainer() -> None
 
 def test_gpu_py_names_no_inria_wrapper_and_no_export_splats() -> None:
     """Splat-training spec, Req 4.14, 8.2: anywhere in its text, comments and docstrings
-    included."""
+    included, and still with the Prior_Terms in it (depth-priors spec, Req 13.17)."""
     text = GPU_MODULE_FILE.read_text(encoding="utf-8")
     assert [name for name in NEVER_IN_GPU_MODULE if name in text] == []
 
 
 def test_gpu_py_is_the_only_train_file_that_imports_torch_gsplat_or_fused_ssim() -> None:
-    """Splat-training spec, Req 9.11, 14.7: and gpu.py imports all three."""
+    """Splat-training spec, Req 9.11, 14.7, and depth-priors spec, Req 14.9: and gpu.py imports
+    all three."""
     found = [(where, name) for path in sorted(SPLATPIPE.glob("train/*.py"))
              for where, name in imports_of(path) if top(name) in GPU_NAMES]
     assert {where.rpartition(":")[0] for where, _ in found} == {GPU_MODULE_SHOWN}, found
@@ -479,6 +540,64 @@ def test_importing_splatpipe_train_and_its_cpu_modules_loads_no_gpu_package() ->
     loaded = json.loads(result.stdout)
     assert {"splatpipe.train", *modules} <= set(loaded)
     assert [name for name in loaded if top(name) in GPU_NAMES] == []
+
+
+def test_the_trainer_checks_read_the_rows_and_only_real_calls() -> None:
+    """The helpers that the Trainer's Loss_Table checks use, on a made-up file: a row's function
+    isn't read, a None weight setting is kept, and active_terms, named only in the docstring and
+    in a string, is no call, while prior_views.depth_weight(i) is one."""
+    sample = ('"""Calls active_terms."""\n'
+              "from splatpipe.train import prior_views\n"
+              "_TERMS: tuple = (\n"
+              "    ('l1', 'l1_weight', _l1),\n"
+              "    ('depth', None, _depth),\n"
+              ")\n"
+              "def step(i):\n"
+              "    on = 'active_terms'\n"
+              "    return prior_views.depth_weight(i)\n")
+    assert table_rows(sample, "_TERMS") == [("l1", "l1_weight"), ("depth", None)]
+    assert called_names(sample) == {"depth_weight"}
+
+
+def test_gpu_py_terms_are_exactly_the_splat_training_specs_five_rows() -> None:
+    """Depth-priors spec, Req 13.13: gpu.py's _TERMS, read with ast and never imported, holds
+    exactly the splat-training spec's five Loss_Terms with their weight settings, l1, ssim,
+    opacity_reg, scale_reg and erank in that order (its Requirement 5, criterion 1), so with no
+    Prior_Set the Loss_Table is that spec's."""
+    assert tuple(table_rows(GPU_MODULE_FILE.read_bytes(), "_TERMS")) == SPLAT_TRAINING_ROWS
+
+
+def test_gpu_py_loss_tables_hold_the_schedules_names_and_weight_settings() -> None:
+    """Depth-priors spec, Req 13.1, 13.13: the names of gpu.py's _TERMS and _PRIOR_TERMS, read
+    with ast, are SPLAT_TERMS and PRIOR_TERMS in order, the names active_terms gives, and each
+    row's weight setting is TERM_WEIGHTS's, depth's None included. So the terms the Trainer
+    works out are the ones the laptop tests of active_terms check."""
+    source = GPU_MODULE_FILE.read_bytes()
+    terms = table_rows(source, "_TERMS")
+    prior_terms = table_rows(source, "_PRIOR_TERMS")
+    assert tuple(name for name, _ in terms) == SPLAT_TERMS
+    assert tuple(name for name, _ in prior_terms) == PRIOR_TERMS
+    assert dict(terms + prior_terms) == TERM_WEIGHTS
+
+
+def test_gpu_py_calls_active_terms_and_depth_weight_from_their_cpu_modules() -> None:
+    """Depth-priors spec, Req 11.7, 13.15: gpu.py calls active_terms and depth_weight, each a
+    Call node in ast, as a name or an attribute, so a mention in a comment or a docstring doesn't
+    count. Each is imported from its CPU module, the function itself or the module, and gpu.py
+    defines no function by that name, so the rules the laptop tests check are the ones the
+    Trainer uses."""
+    text = GPU_MODULE_FILE.read_text(encoding="utf-8")
+    called = called_names(text)
+    imported = {name for _, name in imports_in(text, TRAIN_PACKAGE)}
+    defined = {node.name for node in ast.walk(ast.parse(text)) if isinstance(node, FUNCTIONS)}
+    problems = [f"{GPU_MODULE_SHOWN} never calls {name}" for name, _ in TRAINER_CALLS
+                if name not in called]
+    problems += [f"{GPU_MODULE_SHOWN} doesn't import {name} from {module}"
+                 for name, module in TRAINER_CALLS
+                 if f"{module}.{name}" not in imported and module not in imported]
+    problems += [f"{GPU_MODULE_SHOWN} defines its own {name}" for name, _ in TRAINER_CALLS
+                 if name in defined]
+    assert problems == []
 
 
 def test_the_depth_step_imports_only_the_standard_library_numpy_cv2_and_splatpipe() -> None:

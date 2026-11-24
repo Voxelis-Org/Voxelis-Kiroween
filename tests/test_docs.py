@@ -5,7 +5,8 @@ and take the Frames_Record's top-level fields from what splatpipe.frames.files.f
 gives. So the section has to name the keys the real [frames] holds and the fields the step writes.
 The ## Step: train section's Config section test reads the real [train] the same way, so that part
 has to name every key the real [train] and its preset tables hold, and the whole section has to
-name the depth-priors spec's 15 [train] keys, each of which the real [train] must hold. The
+name the depth-priors spec's 15 [train] keys, each of which the real [train] must hold, and its
+five Prior_Terms. The
 ## Step: depth section's Config section test reads the real [depth] the same way.
 
 The Step_Reports' counts and timings are written out here, as the step tests write them out:
@@ -419,6 +420,8 @@ PRIOR_TRAIN_KEYS = ("plain_gradient", "depth_gradient_falloff", "depth_weight_st
                     "normal_start_step", "normal_every", "flatten_reg", "depth_normal_weight",
                     "normal_consistency_weight", "depth_normal_start_fraction",
                     "backproject_share", "backproject_max")
+# The five Prior_Terms the Trainer adds to the Loss_Table with a Prior_Set (Req 13.1).
+PRIOR_TERMS = ("depth", "normal", "flatten", "depth_normal", "normal_consistency")
 # The scale-up of a Prior to the Training_Size and the Prior_Pixels (Req 10.6, 10.7).
 SCALE_UP_PHRASES = ("scaled up bilinearly", "unit length", "scaled up nearest-neighbour",
                     "counts as a prior pixel")
@@ -426,14 +429,15 @@ SCALE_UP_PHRASES = ("scaled up bilinearly", "unit length", "scaled up nearest-ne
 
 def test_the_train_section_names_the_prior_keys_and_counts_and_depth_names_the_scale_up() -> None:
     """Depth-priors spec, Req 17.2, 17.3, 17.9: ## Step: train names every new key of the real
-    [train], the prior index, counts.prior_images, counts.backprojected_splats and the Req 10.3
-    warning, and the depth section's What it writes part names the bilinear and
-    nearest-neighbour scale-up."""
+    [train], the five Prior_Terms, the prior index, counts.prior_images,
+    counts.backprojected_splats and the Req 10.3 warning, and the depth section's What it writes
+    part names the bilinear and nearest-neighbour scale-up."""
     real = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["train"]
     absent = [key for key in PRIOR_TRAIN_KEYS if key not in real]
     assert not absent, f"The real [train] should hold {absent}"
     section = doc_part(pipeline_parts(), 2, TRAIN)
-    names = [*(f"`{key}`" for key in PRIOR_TRAIN_KEYS), "`work/depth/depth.json`",
+    names = [*(f"`{key}`" for key in PRIOR_TRAIN_KEYS), *(f"`{term}`" for term in PRIOR_TERMS),
+             "`work/depth/depth.json`",
              "`counts.prior_images`", "`counts.backprojected_splats`",
              "Training ran without depth priors."]
     missing = [words for words in names if words not in section]

@@ -30,6 +30,7 @@ from splatpipe.config import load_config
 from splatpipe.errors import ExpectedFailure
 from splatpipe.train.gpu_api import (GPU_MODULE, GpuInfo, GpuOutOfMemory, check_gpu, gpu_fits,
                                      load_gpu, non_finite_message, out_of_memory_failure)
+from splatpipe.train.schedules import PRIOR_TERMS, SPLAT_TERMS
 from splatpipe.train.settings import TrainSettings, read_settings
 
 A10G_BYTES = 24_146_608_128  # the 23,028 MiB that nvidia-smi shows for a "24 GB" A10G (Req 2.8)
@@ -196,4 +197,20 @@ def test_non_finite_message_names_the_iteration_each_loss_term_and_the_total() -
     assert non_finite_message(812, terms) == (
         "The loss stopped being finite at iteration 812: l1 0.0731, ssim 0.412, opacity_reg "
         "0.31, scale_reg 0.0204, erank nan, total nan. This is a bug in the training, not a "
+        "problem with your video.")
+
+
+def test_non_finite_message_with_a_prior_set_names_all_ten_loss_terms_and_the_total() -> None:
+    """With a Prior_Set the Trainer passes every Loss_Term of its Loss_Table, the five
+    splat-training terms and then the five Prior_Terms, and the total. The message gives the
+    Iteration and each of the ten terms' own values, a term that's off at 0, then the total
+    (depth-priors spec, Req 13.16)."""
+    terms = {"l1": 0.0731, "ssim": 0.412, "opacity_reg": 0.31, "scale_reg": 0.0204,
+             "erank": 0.00138, "depth": math.nan, "normal": 0.0, "flatten": 0.000512,
+             "depth_normal": 0.0, "normal_consistency": 0.0, "total": math.nan}
+    assert tuple(terms) == SPLAT_TERMS + PRIOR_TERMS + ("total",)
+    assert non_finite_message(3_004, terms) == (
+        "The loss stopped being finite at iteration 3,004: l1 0.0731, ssim 0.412, opacity_reg "
+        "0.31, scale_reg 0.0204, erank 0.00138, depth nan, normal 0, flatten 0.000512, "
+        "depth_normal 0, normal_consistency 0, total nan. This is a bug in the training, not a "
         "problem with your video.")
