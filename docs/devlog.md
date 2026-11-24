@@ -222,3 +222,4 @@ What the test found, and how the rules block it:
 - 2026-11-24 14:13+05:30 | feat/camera-solve | cameras 7.7 Run the tests and commit | splatpipe/cameras/__init__.py, splatpipe/cameras/__main__.py, splatpipe/cameras/outputs.py, tests/conftest.py, tests/test_cameras_step.py, .kiro/specs/cameras/tasks.md, .kiro/specs/cameras/tasks.meta.json
 - 2026-11-24 15:52+05:30 | feat/camera-solve | cameras 8.1 Write the synthetic scene and its picks in `tests/test_cameras_real.py` | .kiro/specs/cameras/tasks.md, .kiro/specs/cameras/tasks.meta.json, tests/test_cameras_real.py
 - 2026-11-24 16:12+05:30 | feat/camera-solve | cameras 8.2 Write the integration test in `tests/test_cameras_real.py` | .kiro/specs/cameras/tasks.md, .kiro/specs/cameras/tasks.meta.json, tests/test_cameras_real.py
+- 2026-11-24 16:15+05:30 | feat/camera-solve | cameras 8.3 Run the tests and commit | tests/test_cameras_real.py, .kiro/specs/cameras/tasks.md, .kiro/specs/cameras/tasks.meta.json
