@@ -317,7 +317,7 @@ def test_the_readme_has_the_run_your_own_copy_section() -> None:
     section = markdown_section(README.read_text(encoding="utf-8"), "Run your own copy")
     assert "GPU quota" in section, (
         "the Run your own copy section should list an AWS account with GPU quota")
-    for figure in ("$2", "75 min"):
+    for figure in ("$3", "75 min"):
         assert figure in section, (
             f"the Run your own copy section should give the image-build estimate {figure!r}")
     assert "estimate" in section.lower(), (

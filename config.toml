@@ -70,8 +70,6 @@ gp3_usd_per_gb_month = 0.08
 root_gb = 150
 # The instance type the smoke test runs on.
 smoke_instance_type = "g5.xlarge"
-# The instance type the image build runs on.
-image_builder_type = "g5.4xlarge"
 # The public SSM parameter that holds the current Base_AMI id.
 base_ami_parameter = "/aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-24.04/latest/ami-id"
 
@@ -228,6 +226,8 @@ train_sh_degree_interval = 5
 # Iteration at which the depth check's prior normal loss starts, so every prior loss runs within train_steps.
 depth_normal_start_step = 8
 [cloud.image]
+# The image builder's types, tried in order like a preset's fallback, each in its zones in turn. Only A10G (g5) types, because fused-ssim compiles for the builder's own GPU.
+fallback = ["g5.8xlarge", "g5.4xlarge"]
 # Expected run time in minutes, for the money quote.
 expected_minutes = 75
 # The Time_Cap in minutes.

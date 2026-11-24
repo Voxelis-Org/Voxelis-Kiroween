@@ -3,8 +3,10 @@
 Two things, as the task and design describe. First, the real config.toml `[cloud]` loads through
 `load_cloud_config`: there are 8 `types`, each a full Machine_Spec; every Preset Fallback_List is
 non-empty and names only Allowed_Types; the pinned primaries and fallbacks and the Q2 minutes are
-present; `[cloud]` holds no `[cloud.needs.*]` table; and `smoke_instance_type` and
-`image_builder_type` are Allowed_Types (Req 2.3, 2.4, 2.6, 2.7, 2.10). `[cloud.smoke]` also holds
+present; `[cloud]` holds no `[cloud.needs.*]` table; `smoke_instance_type` is an Allowed_Type; and
+`[cloud.image].fallback`, the image builder's types, is g5.8xlarge then g5.4xlarge, both A10G types
+(Req 2.3, 2.4, 2.6, 2.7, 2.10). An empty builder list, or one naming a type that isn't an
+Allowed_Type, is a `CloudError` naming `fallback for [cloud.image]`. `[cloud.smoke]` also holds
 the training check's seven numbers at their A11 values (training spec, Req 12.4) and the depth
 check's `depth_normal_start_step` at 8 (depth-priors spec, Req 16.6). Second, corrupting one key
 of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the Config_Loader naming the key
@@ -55,6 +57,10 @@ QUALITY_FALLBACK = ("g6e.4xlarge", "g6e.2xlarge")
 PRESET_MINUTES = {"fast": (30, 120), "default": (60, 180), "quality": (120, 360)}
 SMOKE_MINUTES = (10, 30)
 IMAGE_MINUTES = (75, 120)
+# The image builder's types, tried in order: the g5.8xlarge first, then the g5.4xlarge when AWS has
+# no capacity for it. Both carry the A10G the jobs' fused-ssim is compiled for on the builder.
+IMAGE_BUILDERS = ("g5.8xlarge", "g5.4xlarge")
+A10G_GPU_MEMORY_GB = 24
 
 # The training check's seven [cloud.smoke] numbers, at their A11 values (training spec, Req 12.4).
 TRAIN_SMOKE = {"train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
@@ -130,7 +136,12 @@ def test_the_smoke_machines_settings_load_and_its_video_is_long_enough_for_a_job
 
 def test_the_smoke_and_image_instance_types_are_allowed_types(cc: CloudConfig) -> None:
     assert cc.smoke_instance_type in cc.types
-    assert cc.image_builder_type in cc.types
+    assert cc.image.fallback == IMAGE_BUILDERS
+    for name in cc.image.fallback:
+        assert name in cc.types
+        # A g5 type, with the A10G: fused-ssim compiles for the builder's own GPU only.
+        assert name.startswith("g5.")
+        assert cc.types[name].gpu_memory_gb == A10G_GPU_MEMORY_GB
 
 
 def test_the_real_cloud_section_holds_no_needs_table() -> None:
@@ -183,14 +194,14 @@ def valid_cloud() -> dict[str, Any]:
         "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
                   "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE,
                   "depth_normal_start_step": DEPTH_NORMAL_START_STEP},
-        "image": {"expected_minutes": 45, "cap_minutes": 120},
+        "image": {"fallback": ["g5.8xlarge", "g5.xlarge"], "expected_minutes": 45,
+                  "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
         "ipv4_usd_per_hour": 0.005,
         "gp3_usd_per_gb_month": 0.08,
         "root_gb": 150,
         "smoke_instance_type": "g5.xlarge",
-        "image_builder_type": "g5.xlarge",
         "base_ami_parameter": "/aws/service/ami/latest",
     }
 
@@ -219,6 +230,14 @@ CORRUPTIONS = [
                  id="a bool as a type's vcpus"),
     pytest.param(lambda c: c["presets"]["fast"].update(fallback="g5.8xlarge"), "fallback",
                  id="a string as a preset fallback"),
+    pytest.param(lambda c: c["image"].pop("fallback"), "fallback for [cloud.image]",
+                 id="an image table with no builder list"),
+    pytest.param(lambda c: c["image"].update(fallback=[]), "fallback for [cloud.image]",
+                 id="an empty builder list"),
+    pytest.param(lambda c: c["image"].update(fallback="g5.8xlarge"), "fallback for [cloud.image]",
+                 id="a string as the builder list"),
+    pytest.param(lambda c: c["image"].update(fallback=["g5.8xlarge", "p5.48xlarge"]),
+                 "fallback for [cloud.image]", id="a builder type that isn't an Allowed_Type"),
     pytest.param(lambda c: c["smoke"].pop("check_timeout_seconds"), "check_timeout_seconds",
                  id="a smoke table with no check_timeout_seconds"),
     pytest.param(lambda c: c["smoke"].update(scene_gaussians=2.5), "scene_gaussians",
@@ -289,8 +308,8 @@ cloud_text = st.text(
 @st.composite
 def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     """A valid `[cloud]` mapping that from_mapping accepts: 1-3 Allowed_Types, the three Presets
-    whose fallbacks and the smoke/image instance types all name those types, and positive times,
-    prices and scalars. The smoke table's whole numbers, the training check's seven among them,
+    whose fallbacks, the smoke instance type and the image builder list all name those types, and
+    positive times, prices and scalars. The smoke table's whole numbers, the training check's seven among them,
     are integers above 0, and the depth check's depth_normal_start_step is an integer of 0 or
     more (depth-priors spec, Req 16.6)."""
     names = draw(st.lists(st.sampled_from(ALLOWED_TYPES), min_size=1, max_size=3, unique=True))
@@ -323,14 +342,15 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
                   "video_seconds": draw(cloud_numbers),
                   **{key: draw(st.integers(min_value=1, max_value=4096)) for key in TRAIN_SMOKE},
                   "depth_normal_start_step": draw(st.integers(min_value=0, max_value=4096))},
-        "image": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
+        "image": {"fallback": draw(st.lists(st.sampled_from(names), min_size=1,
+                                            max_size=len(names), unique=True)),
+                  "expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
         "upload_margin_minutes": draw(cloud_numbers),
         "poll_seconds": draw(cloud_numbers),
         "ipv4_usd_per_hour": draw(cloud_numbers),
         "gp3_usd_per_gb_month": draw(cloud_numbers),
         "root_gb": draw(cloud_numbers),
         "smoke_instance_type": draw(st.sampled_from(names)),
-        "image_builder_type": draw(st.sampled_from(names)),
         "base_ami_parameter": draw(cloud_text),
     }
 
@@ -347,8 +367,8 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
         (("gp3_usd_per_gb_month",), "number"),
         (("root_gb",), "number"),
         (("smoke_instance_type",), "string"),
-        (("image_builder_type",), "string"),
         (("base_ami_parameter",), "string"),
+        (("image", "fallback"), "list"),
         (("types",), "table"),
         (("presets",), "table"),
         (("smoke",), "table"),

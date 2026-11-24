@@ -30,7 +30,11 @@ Four kinds of check, all on the CPU with no network, no AWS account and no GPU:
   failed install ends the wait at once and terminates the builder. Its launch request carries
   Property 4's required settings (Req 8.9), checked with the Property-4 helper and constants reused
   from `test_cloud_launch`. Its client token comes from the image's name and the attempt, so two
-  builds at different times send different tokens and each attempt in one build gets its own.
+  builds at different times send different tokens and each attempt in one build gets its own. It
+  tries its builder types in order, g5.8xlarge then g5.4xlarge, each in its zones, the way a Job
+  tries its fallback: no capacity moves on, a quota too small for the first skips it, any other
+  error stops the build with nothing launched, and the spend line prices the type that launched.
+  The quote names both types, with the dearest one's cost at the Time_Cap as the worst case.
 
 - Licence_List: one row for each Machine_Image tool, weight and package, the COLMAP row naming its
   flags and the CUDA Toolkit row NVIDIA's licence (Req 14.5). One row for each package step 7 adds
@@ -69,7 +73,7 @@ from cloud.image import (INSTALL_DONE_MARKER, INSTALL_FAILED_MARKER, MANIFESTS, 
 from cloud.launch import JOB_ID_TAG, client_token
 from cloud.repo import head_file, lock_hashes
 from cloud.spend import SpendRefused
-from cloud.spend_file import LABEL_IMAGE
+from cloud.spend_file import LABEL_IMAGE, rough_cost
 from cloud.stack import StackOutputs
 from cloud.userdata import VENV_PYTHON, UserDataValues, render_user_data
 
@@ -224,10 +228,10 @@ def _config() -> Config:
 
 
 def _fake_aws(cc: CloudConfig, *, marker: str = INSTALL_DONE_MARKER) -> _BuilderAws:
-    """A healthy `_BuilderAws`: the Base_AMI parameter resolves, the builder type is offered a zone
-    with a default subnet, and the G_Quota admits it."""
+    """A healthy `_BuilderAws`: the Base_AMI parameter resolves, the first builder type is offered
+    a zone with a default subnet, and the G_Quota admits it."""
     return _BuilderAws(marker=marker, ssm={cc.base_ami_parameter: BASE_AMI},
-                       offerings={cc.image_builder_type: [ZONE]},
+                       offerings={cc.image.fallback[0]: [ZONE]},
                        subnets={ZONE: SUBNET}, quota=32.0)
 
 
@@ -633,7 +637,7 @@ def test_build_image_reads_ssm_stops_before_imaging_tags_waits_terminates_record
     line = _last_spend_line(root)
     assert line["label"] == LABEL_IMAGE == "image-build"
     assert line["job_id"] == image_id
-    assert line["instance_type"] == cc.image_builder_type
+    assert line["instance_type"] == cc.image.fallback[0]
     assert line["estimate"] is True
     assert line["id"].startswith(f"{image_id}:image-build:")
 
@@ -763,7 +767,7 @@ def test_each_attempt_in_one_build_gets_its_own_token_from_the_images_name(tmp_p
     # a fresh token.
     root = git_repo(tmp_path)
     cc = cloud_config()
-    builder = cc.image_builder_type
+    builder = cc.image.fallback[0]
     aws = _BuilderAws(ssm={cc.base_ami_parameter: BASE_AMI},
                       offerings={builder: ["us-east-1a", "us-east-1b"]},
                       subnets={"us-east-1a": "subnet-a", "us-east-1b": "subnet-b"}, quota=32.0,
@@ -777,6 +781,152 @@ def test_each_attempt_in_one_build_gets_its_own_token_from_the_images_name(tmp_p
     tokens = [request["ClientToken"] for request in aws.run_requests]
     assert tokens == [client_token(name, 0), client_token(name, 1)]
     assert tokens[0] != tokens[1]
+
+
+# With the FakeAws: the build tries its builder types in order, the way a Job tries its fallback.
+
+# The builder list the fake cloud config holds, as config.toml does: the g5.8xlarge, then the
+# g5.4xlarge when AWS has no capacity for it.
+BIG, SMALL = "g5.8xlarge", "g5.4xlarge"
+TWO_ZONES = {"us-east-1a": "subnet-a", "us-east-1b": "subnet-b"}
+
+
+def _two_builder_aws(cc: CloudConfig, **overrides: Any) -> _BuilderAws:
+    """A `_BuilderAws` offering both builder types in two zones with default subnets."""
+    settings: dict[str, Any] = dict(ssm={cc.base_ami_parameter: BASE_AMI},
+                                    offerings={BIG: list(TWO_ZONES), SMALL: list(TWO_ZONES)},
+                                    subnets=TWO_ZONES, quota=32.0)
+    settings.update(overrides)
+    return _BuilderAws(**settings)
+
+
+def _approved_build(aws: _BuilderAws, root: Path, cc: CloudConfig) -> str:
+    """One approved build on `aws`, giving back its image id."""
+    return build_image(aws=aws, config=_config(), cloud_config=cc, outputs=OUTPUTS,
+                       repo_root=root, environ={"APPROVED_SPEND": "1"})
+
+
+def test_the_builder_list_is_the_g5_8xlarge_then_the_g5_4xlarge() -> None:
+    assert cloud_config().image.fallback == (BIG, SMALL)
+
+
+def test_the_first_builder_type_launches_when_it_has_capacity(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    aws = _two_builder_aws(cc)
+
+    _approved_build(aws, root, cc)
+
+    # One launch, of the g5.8xlarge in its first zone, and the spend line prices that type.
+    assert [(request["InstanceType"], request["SubnetId"]) for request in aws.run_requests] == [
+        (BIG, "subnet-a")]
+    line = _last_spend_line(root)
+    assert line["instance_type"] == BIG
+    assert line["estimated_usd"] == round(line["seconds"] / 3600 * cc.spec(BIG).price_per_hour_usd, 2)
+
+
+def test_no_g5_8xlarge_capacity_in_any_zone_moves_on_to_the_g5_4xlarge(tmp_path: Path) -> None:
+    # AWS has no g5.8xlarge in either zone, so the build tries the g5.4xlarge next, zone by zone,
+    # each attempt with its own token, and builds the image on it.
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    aws = _two_builder_aws(cc, no_capacity=[(BIG, "us-east-1a"), (BIG, "us-east-1b")])
+
+    image_id = _approved_build(aws, root, cc)
+
+    assert [(request["InstanceType"], request["SubnetId"]) for request in aws.run_requests] == [
+        (BIG, "subnet-a"), (BIG, "subnet-b"), (SMALL, "subnet-a")]
+    name = aws.images[0].name
+    assert [request["ClientToken"] for request in aws.run_requests] == [
+        client_token(name, attempt) for attempt in range(3)]
+    # The image came from the g5.4xlarge, and the spend line prices the type that launched.
+    assert aws.images[0].id == image_id
+    line = _last_spend_line(root)
+    assert line["instance_type"] == SMALL
+    assert line["estimated_usd"] == round(line["seconds"] / 3600 * cc.spec(SMALL).price_per_hour_usd, 2)
+
+
+def test_a_quota_under_the_g5_8xlarges_vcpus_builds_on_the_g5_4xlarge(tmp_path: Path) -> None:
+    # A 16-vCPU quota has no room for the g5.8xlarge's 32, so the build never asks for one.
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    aws = _two_builder_aws(cc, quota=16.0)
+
+    _approved_build(aws, root, cc)
+
+    assert [request["InstanceType"] for request in aws.run_requests] == [SMALL]
+
+
+def test_an_error_that_isnt_about_capacity_stops_the_build_with_nothing_launched(
+        tmp_path: Path) -> None:
+    # Only a capacity error moves on to the next attempt. Any other error, like a launch the role
+    # refuses, stops the loop at once, as it does for a Job (Req 5.5).
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    aws = _two_builder_aws(cc, launch_failures=[(BIG, "us-east-1a")])
+
+    with pytest.raises(CloudError):
+        _approved_build(aws, root, cc)
+
+    assert [request["InstanceType"] for request in aws.run_requests] == [BIG]
+    assert aws.instances == [] and aws.images == []
+    assert not (root / "data" / "spend.jsonl").exists()
+
+
+def test_no_capacity_for_any_builder_type_names_both_and_launches_nothing(tmp_path: Path) -> None:
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    aws = _two_builder_aws(cc, no_capacity=[(name, zone) for name in (BIG, SMALL)
+                                            for zone in TWO_ZONES])
+
+    with pytest.raises(CloudError) as caught:
+        _approved_build(aws, root, cc)
+
+    assert BIG in str(caught.value) and SMALL in str(caught.value)
+    assert len(aws.run_requests) == 4 and aws.instances == []
+
+
+def test_the_quote_covers_the_whole_builder_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The quote comes before the quota is read, so it names both types: the expected cost is the
+    # first type's over the Expected_Time, and the worst case the dearest type's over the Time_Cap.
+    cc = cloud_config()
+    asked: dict[str, str] = {}
+
+    def refuse(**kwargs: str) -> None:
+        asked.update(kwargs)
+        raise SpendRefused("no")
+
+    monkeypatch.setattr("cloud.image.check_spend", refuse)
+    aws = _two_builder_aws(cc)
+    with pytest.raises(SpendRefused):
+        build_image(aws=aws, config=_config(), cloud_config=cc, outputs=OUTPUTS,
+                    repo_root=tmp_path, environ={})
+    assert aws.calls == []  # the guard still comes before any AWS read
+
+    expected = rough_cost(cc.image.expected_minutes, cc.spec(BIG), cc)
+    worst = rough_cost(cc.image.cap_minutes, cc.spec(BIG), cc)  # the dearer of the two
+    assert asked["machine"] == f"a {BIG} image builder, or on fallback a {SMALL}"
+    assert asked["rough_cost"] == f"about ${expected:.2f}, worst case about ${worst:.2f}"
+    assert asked["expected_time"] == (f"about {cc.image.expected_minutes:g} min, up to the "
+                                      f"{cc.image.cap_minutes:g} min time cap")
+
+
+def test_a_one_type_builder_list_quotes_that_type_alone(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cc = cloud_config(image={"fallback": [SMALL], "expected_minutes": 75, "cap_minutes": 120})
+    asked: dict[str, str] = {}
+
+    def refuse(**kwargs: str) -> None:
+        asked.update(kwargs)
+        raise SpendRefused("no")
+
+    monkeypatch.setattr("cloud.image.check_spend", refuse)
+    with pytest.raises(SpendRefused):
+        build_image(aws=_two_builder_aws(cc), config=_config(), cloud_config=cc, outputs=OUTPUTS,
+                    repo_root=tmp_path, environ={})
+    assert asked["machine"] == f"a {SMALL} image builder"
+    worst = rough_cost(cc.image.cap_minutes, cc.spec(SMALL), cc)
+    assert asked["rough_cost"].endswith(f"worst case about ${worst:.2f}")
 
 
 # Licence_List: the Machine_Image tool rows, the COLMAP row naming its flags (Req 14.5)
