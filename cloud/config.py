@@ -48,6 +48,23 @@ class RunPlan:
 
 
 @dataclass(frozen=True)
+class SmokeChecks:
+    """The smoke machine's own settings, from `[cloud.smoke]` beside its Expected_Time and Time_Cap."""
+
+    check_timeout_seconds: float     # how long each command check may take
+    scene_gaussians: int             # Gaussians in the tiny synthetic scene gsplat renders
+    image_pixels: int                # width and height of the render, the SSIM images and the video
+    video_seconds: float             # length of the test video the fake-step job is made from
+    train_images: int                # images in the training check's tiny scene
+    train_points: int                # points the training check's scene starts from
+    train_splats: int                # most splats the training check may grow to, its splat budget
+    train_steps: int                 # Iterations the training check trains for
+    train_refine_start_step: int     # Iteration after which the training check's MCMC refines
+    train_refine_every: int          # Iterations between the training check's refines
+    train_sh_degree_interval: int    # Iterations between rises of the training check's SH degree
+
+
+@dataclass(frozen=True)
 class PresetPlan:
     """One Preset's ordered Fallback_List and its Expected_Time and Time_Cap, in minutes."""
 
@@ -63,6 +80,7 @@ class CloudConfig:
     types: dict[str, MachineSpec]            # one per Allowed_Type
     presets: dict[str, PresetPlan]           # "fast", "default", "quality"
     smoke: RunPlan                           # expected/cap for the smoke test
+    smoke_checks: SmokeChecks                # the smoke machine's own settings
     image: RunPlan                           # expected/cap for the image build
     upload_margin_minutes: float
     poll_seconds: float
@@ -103,6 +121,7 @@ class CloudConfig:
             types=types,
             presets=_read_presets(data, types),
             smoke=_read_run_plan(data, "smoke"),
+            smoke_checks=_read_smoke_checks(data),
             image=_read_run_plan(data, "image"),
             upload_margin_minutes=_number(data, "upload_margin_minutes", "upload_margin_minutes"),
             poll_seconds=_number(data, "poll_seconds", "poll_seconds"),
@@ -204,6 +223,28 @@ def _read_run_plan(cloud: Mapping[str, object], which: str) -> RunPlan:
     return RunPlan(
         expected_minutes=_number(table, "expected_minutes", f"expected_minutes for [cloud.{which}]"),
         cap_minutes=_number(table, "cap_minutes", f"cap_minutes for [cloud.{which}]"),
+    )
+
+
+def _read_smoke_checks(cloud: Mapping[str, object]) -> SmokeChecks:
+    """The smoke machine's own settings from the `[cloud.smoke]` table, each checked by name."""
+    table = _table(cloud, "smoke", "the [cloud.smoke] table")
+
+    def label(key: str) -> str:
+        return f"{key} for [cloud.smoke]"
+
+    return SmokeChecks(
+        check_timeout_seconds=_number(table, "check_timeout_seconds", label("check_timeout_seconds")),
+        scene_gaussians=_whole(table, "scene_gaussians", label("scene_gaussians")),
+        image_pixels=_whole(table, "image_pixels", label("image_pixels")),
+        video_seconds=_number(table, "video_seconds", label("video_seconds")),
+        train_images=_whole(table, "train_images", label("train_images")),
+        train_points=_whole(table, "train_points", label("train_points")),
+        train_splats=_whole(table, "train_splats", label("train_splats")),
+        train_steps=_whole(table, "train_steps", label("train_steps")),
+        train_refine_start_step=_whole(table, "train_refine_start_step", label("train_refine_start_step")),
+        train_refine_every=_whole(table, "train_refine_every", label("train_refine_every")),
+        train_sh_degree_interval=_whole(table, "train_sh_degree_interval", label("train_sh_degree_interval")),
     )
 
 

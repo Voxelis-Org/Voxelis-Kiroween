@@ -4,9 +4,12 @@ Two things, as the task and design describe. First, the real config.toml `[cloud
 `load_cloud_config`: there are 8 `types`, each a full Machine_Spec; every Preset Fallback_List is
 non-empty and names only Allowed_Types; the pinned primaries and fallbacks and the Q2 minutes are
 present; `[cloud]` holds no `[cloud.needs.*]` table; and `smoke_instance_type` and
-`image_builder_type` are Allowed_Types (Req 2.3, 2.4, 2.6, 2.7, 2.10). Second, corrupting one key
-of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the Config_Loader naming the key
-(Req 2.1), while a missing or wrong-typed key is a `CloudError` naming the key (Req 2.2).
+`image_builder_type` are Allowed_Types (Req 2.3, 2.4, 2.6, 2.7, 2.10). `[cloud.smoke]` also holds
+the training check's seven numbers at their A11 values (training spec, Req 12.4). Second,
+corrupting one key of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the
+Config_Loader naming the key (Req 2.1), while a missing or wrong-typed key is a `CloudError` naming
+the key (Req 2.2). A float, a bool or 0 as one of the training check's numbers is a `CloudError`
+naming it as `<key> for [cloud.smoke]` (training spec, Req 12.5).
 
 Property 2 (any single corruption of a valid `[cloud]` is refused by name) is the Hypothesis test
 at the end of this file (task 1.5): it builds a valid `[cloud]` mapping, corrupts one key, writes it
@@ -27,7 +30,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from splatpipe.config import PRESETS, REPO_ROOT
+from splatpipe.config import PRESETS, REPO_ROOT, load_config
 from splatpipe.errors import PipelineError
 
 from cloud.config import CloudConfig, MachineSpec, load_cloud_config
@@ -49,7 +52,12 @@ QUALITY_FALLBACK = ("g6e.4xlarge", "g6e.2xlarge")
 # The Q2 minutes as (expected, cap), settled in Q2 (Req 2.5, 2.6).
 PRESET_MINUTES = {"fast": (30, 120), "default": (60, 180), "quality": (120, 360)}
 SMOKE_MINUTES = (10, 30)
-IMAGE_MINUTES = (45, 120)
+IMAGE_MINUTES = (75, 120)
+
+# The training check's seven [cloud.smoke] numbers, at their A11 values (training spec, Req 12.4).
+TRAIN_SMOKE = {"train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
+               "train_refine_start_step": 10, "train_refine_every": 10,
+               "train_sh_degree_interval": 5}
 
 
 @pytest.fixture
@@ -96,6 +104,20 @@ def test_each_preset_has_its_q2_minutes(cc: CloudConfig, preset: str) -> None:
 def test_the_smoke_and_image_runs_have_their_q2_minutes(cc: CloudConfig) -> None:
     assert (cc.smoke.expected_minutes, cc.smoke.cap_minutes) == SMOKE_MINUTES
     assert (cc.image.expected_minutes, cc.image.cap_minutes) == IMAGE_MINUTES
+
+
+def test_the_smoke_machines_settings_load_and_its_video_is_long_enough_for_a_job(
+        cc: CloudConfig) -> None:
+    checks = cc.smoke_checks
+    assert checks.check_timeout_seconds > 0
+    assert type(checks.scene_gaussians) is int and checks.scene_gaussians > 0
+    assert type(checks.image_pixels) is int and checks.image_pixels > 0
+    # The smoke machine makes a fake-step job from its test video, so the video has to be at least
+    # the shortest part of a video a job may use, or make_job refuses it.
+    assert checks.video_seconds >= load_config(REAL_CONFIG).jobs().min_used_seconds
+    # The training check's numbers are whole numbers at their A11 values (training spec, Req 12.4).
+    assert {key: getattr(checks, key) for key in TRAIN_SMOKE} == TRAIN_SMOKE
+    assert all(type(getattr(checks, key)) is int for key in TRAIN_SMOKE)
 
 
 def test_the_smoke_and_image_instance_types_are_allowed_types(cc: CloudConfig) -> None:
@@ -150,7 +172,8 @@ def valid_cloud() -> dict[str, Any]:
             "default": {"fallback": ["g5.8xlarge"], "expected_minutes": 60, "cap_minutes": 180},
             "quality": {"fallback": ["g5.8xlarge"], "expected_minutes": 120, "cap_minutes": 360},
         },
-        "smoke": {"expected_minutes": 10, "cap_minutes": 30},
+        "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
+                  "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE},
         "image": {"expected_minutes": 45, "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
@@ -187,6 +210,27 @@ CORRUPTIONS = [
                  id="a bool as a type's vcpus"),
     pytest.param(lambda c: c["presets"]["fast"].update(fallback="g5.8xlarge"), "fallback",
                  id="a string as a preset fallback"),
+    pytest.param(lambda c: c["smoke"].pop("check_timeout_seconds"), "check_timeout_seconds",
+                 id="a smoke table with no check_timeout_seconds"),
+    pytest.param(lambda c: c["smoke"].update(scene_gaussians=2.5), "scene_gaussians",
+                 id="a float as the smoke scene's Gaussian count"),
+    pytest.param(lambda c: c["smoke"].update(image_pixels=0), "image_pixels",
+                 id="zero smoke image pixels"),
+]
+
+
+def set_smoke(key: str, value: object) -> Callable[[dict[str, Any]], object]:
+    """A corruption that sets `key` in the smoke table to `value`."""
+    return lambda c: c["smoke"].update({key: value})
+
+
+# Each of the training check's seven numbers given a float, here its A11 value as a float, so even
+# a whole one is refused, a bool, or 0. The CloudError names it as "<key> for [cloud.smoke]"
+# (training spec, Req 12.5).
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key, a11 in TRAIN_SMOKE.items()
+    for what, value in (("a float", float(a11)), ("a bool", True), ("0", 0))
 ]
 
 
@@ -227,7 +271,8 @@ cloud_text = st.text(
 def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     """A valid `[cloud]` mapping that from_mapping accepts: 1-3 Allowed_Types, the three Presets
     whose fallbacks and the smoke/image instance types all name those types, and positive times,
-    prices and scalars."""
+    prices and scalars. The smoke table's whole numbers, the training check's seven among them,
+    are integers."""
     names = draw(st.lists(st.sampled_from(ALLOWED_TYPES), min_size=1, max_size=3, unique=True))
     types = {
         name: {
@@ -251,7 +296,12 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     return {
         "types": types,
         "presets": presets,
-        "smoke": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
+        "smoke": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers),
+                  "check_timeout_seconds": draw(cloud_numbers),
+                  "scene_gaussians": draw(st.integers(min_value=1, max_value=4096)),
+                  "image_pixels": draw(st.integers(min_value=1, max_value=4096)),
+                  "video_seconds": draw(cloud_numbers),
+                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in TRAIN_SMOKE}},
         "image": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
         "upload_margin_minutes": draw(cloud_numbers),
         "poll_seconds": draw(cloud_numbers),
@@ -265,8 +315,9 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
 
 
 def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
-    """Every single-key corruption target in `mapping`, as (path, category). "whole" is vcpus (a
-    TOML integer); "table" is a sub-table (types, presets, smoke, image)."""
+    """Every single-key corruption target in `mapping`, as (path, category). "whole" is a TOML
+    integer (vcpus, the smoke scene's Gaussian count and image size, and the training check's
+    seven numbers); "table" is a sub-table (types, presets, smoke, image)."""
     targets: list[tuple[tuple[str, ...], str]] = [
         (("upload_margin_minutes",), "number"),
         (("poll_seconds",), "number"),
@@ -300,6 +351,13 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
             ((which, "expected_minutes"), "number"),
             ((which, "cap_minutes"), "number"),
         ]
+    targets += [
+        (("smoke", "check_timeout_seconds"), "number"),
+        (("smoke", "scene_gaussians"), "whole"),
+        (("smoke", "image_pixels"), "whole"),
+        (("smoke", "video_seconds"), "number"),
+    ]
+    targets += [(("smoke", key), "whole") for key in TRAIN_SMOKE]
     return targets
 
 

@@ -50,7 +50,11 @@ image_undistorter needs. Every frame moves, and the test config asks for a Pick 
 the video's 10 s, so the Frames_Step makes 5 Picks, and the corner's 6 stuck pixels, 0.125 of the
 frame, make it use the Mask. 5 Picks need 3 Placed_Frames, at least half of them, and the
 FakeColmap's global mapper places all 5 in its one Model, where its default of 8 would be more
-Picks than there are.
+Picks than there are. The Step_List goes on to the Train_Step and the Clean_Step, so the test
+also gives each the stand-in its own tests use: fake_gpu's FakeGpu for the Train_Step's
+GPU_Module, and for the Clean_Step's export the real export_sog with
+tests/fake_splat_transform.py, set to ok, in place of node and splat-transform. So the whole Job
+runs on a CPU with no COLMAP, GPU or Node.
 
 The tests check:
 
@@ -101,8 +105,9 @@ The tests check:
   (Req 16.9).
 - splatpipe.cameras.__main__.main prints cameras: done on stdout and gives 0 for a done run, and
   gives 1 for a failed one, with its Readable_Error on stderr and no traceback (Req 14.2).
-- run_job with the real Step_List runs the Frames_Step and then the Cameras_Step, and the Job is
-  done once both steps are. work/frames/ then holds the frames spec's layout, mask.png included,
+- run_job with the real Step_List runs the Frames_Step, the Cameras_Step, the Train_Step and the
+  Clean_Step in that order, and the Job is done once all four are. work/frames/ then holds the
+  frames spec's layout, mask.png included,
   and work/cameras/ the design's, with masks/, a Training_Image and a Training_Mask for each of
   the 5 Placed_Frames and the three Model_Files, and out/cameras.json lists the 5 Placed_Frames
   (Req 14.4).
@@ -116,6 +121,7 @@ import shutil
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -126,12 +132,15 @@ import pytest
 # The stand-ins for COLMAP and for the Frames_Step's tools, the options of options.md as the
 # oracle sorts them, and the fake mappers' points.
 from conftest import WALK_POINTS, ColmapOption, FakeColmap, FakeTools
-from splatpipe import cameras
+# The splat-transform stand-in, which the run_job test gives the Clean_Step's export.
+from test_clean_export import find_stand_in, use_stand_in
+from splatpipe import cameras, clean
 from splatpipe.cameras import Tools
 from splatpipe.cameras.__main__ import main as cameras_main
 from splatpipe.cameras.colmap import ColmapRun, RunResult
 from splatpipe.cameras.model import (CAMERA_MODELS, FILES, NO_ERROR, Image, Model, Points,
                                      read_images, read_model, write_model)
+from splatpipe.clean.export import export_sog
 from splatpipe.config import PRESETS, REPO_ROOT, load_config
 from splatpipe.frames.ffmpeg import VideoInfo
 from splatpipe.jobs import open_job
@@ -1037,18 +1046,23 @@ def video_frames() -> list[tuple[float, np.ndarray]]:
 
 def test_run_job_runs_the_frames_step_then_the_cameras_step_and_the_job_is_done(
         new_job: Callable[..., str], set_frames: Callable[..., None],
-        fake_tools: type[FakeTools], fake_colmap: type[FakeColmap]) -> None:
+        fake_tools: type[FakeTools], fake_colmap: type[FakeColmap],
+        fake_gpu: Callable[..., Any], monkeypatch: pytest.MonkeyPatch) -> None:
     job_id = new_job()  # with no work/frames/, which the Frames_Step makes
     set_frames(**TINY_FRAMES)
     fake_tools(VIDEO, video_frames())
     # The global mapper's one Model places every Pick, so the Placed_Check passes.
     fake_colmap(global_models=(VIDEO_PICKS,))
-    # The Job_Runner with the real Step_List: the Frames_Step, then the Cameras_Step. The Job is
-    # done once both steps are (Req 14.4).
+    # The Train_Step's and the Clean_Step's stand-ins, as their own tests install them.
+    fake_gpu()
+    use_stand_in(monkeypatch, "ok")
+    monkeypatch.setattr(clean, "export_sog", partial(export_sog, find=find_stand_in))
+    # The Job_Runner with the real Step_List: the Frames_Step, the Cameras_Step, the Train_Step
+    # and the Clean_Step. The Job is done once all four are (Req 14.4).
     summary = run_job(job_id)
     assert summary["status"] == "done", summary["readable_error"]
     assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
-        ("frames", "done"), ("cameras", "done")]
+        ("frames", "done"), ("cameras", "done"), ("train", "done"), ("clean", "done")]
     folder = folder_of(job_id)
     names = pick_names(range(VIDEO_PICKS))
     # work/frames/ as the frames spec lays it out: each Pick in images/ and its Grey_Copy in grey/

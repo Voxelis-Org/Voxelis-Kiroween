@@ -148,10 +148,10 @@ A step name has lowercase ASCII letters, digits and underscores, and starts with
 
 The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner runs, in order. Each entry is a `StepEntry(name, module, required)`. When a required step fails, the job fails. When an optional step fails, the job goes on without it. The fake step isn't in the list, so it never runs on real jobs. The tests pass their own lists.
 
-The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done. The planned steps are:
+The list holds the frames step, the cameras step and the train step, all three required, and then the clean step, optional: `StepEntry("frames", "splatpipe.frames", True)`, `StepEntry("cameras", "splatpipe.cameras", True)`, `StepEntry("train", "splatpipe.train", True)` and `StepEntry("clean", "splatpipe.clean", False)`. A job is done once all four steps are done, and done with warnings when the three required steps are done and the clean step fails. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
-- Optional steps: depth priors and clean and export.
+- Optional steps: depth priors and clean.
 
 Running a job in the cloud comes in its own spec, and it isn't a step.
 
@@ -325,11 +325,11 @@ The laptop commands, each run as `uv run python -m cloud.<name>`:
 | `cloud.list` | Lists our machines that aren't terminated, with each one's type, state and launch time. Free; read profile. |
 | `cloud.stopall` | Terminates every one of our machines that isn't terminated, the last-resort way to end a run. Free; runner profile. |
 
-On the machine, the Cloud_Runner rebuilds the job folder from the bucket (the `input/`, plus any `out/` and `work/` from an earlier run of the same job), calls `run_job` without `--fresh` so it resumes from the first unfinished step exactly as a laptop run does, uploads each step's report, `work/` and `out/` as they appear with a final sync at the end, writes the spend lines, and powers the machine off when the job ends.
+On the machine, the Cloud_Runner rebuilds the job folder from the bucket (the `input/`, plus any `out/` and `work/` from an earlier run of the same job), calls `run_job` without `--fresh` so it resumes from the first unfinished step exactly as a laptop run does, uploads each step's report, `work/` and `out/` as they appear with a final sync at the end, writes the spend lines, and powers the machine off when the job ends. The machine's user data starts it as `python -m cloud.runner --job <id>`, from the code it extracted to `/opt/job`, once it has read the machine's own instance type from the instance metadata with an IMDSv2 token, for the spend lines. It isn't a laptop command.
 
 ### The cap deadline
 
-The Cloud_Runner sets one environment variable for the steps, `SPLATPIPE_CAP_DEADLINE`: the absolute UTC instant, in ISO 8601, by which a step should have saved and stopped. It's the machine's start time plus the preset's time cap, minus `upload_margin_minutes` from `[cloud]`, leaving room to upload the results before the machine's hard time-cap shutdown. No current step reads it; the training spec will.
+The Cloud_Runner sets one environment variable for the steps, `SPLATPIPE_CAP_DEADLINE`: the absolute UTC instant, in ISO 8601, by which a step should have saved and stopped. It's the machine's start time plus the preset's time cap, minus `upload_margin_minutes` from `[cloud]`, leaving room to upload the results before the machine's hard time-cap shutdown. The train step reads it and stops training early, so that `out/train.ply` is written and checked `clean_reserve_minutes` before the cap deadline.
 
 ### What each step asks the machine for
 
@@ -340,10 +340,25 @@ Each step records the machine it needs in its own config section, per preset, as
 | Picking frames | 16 vCPUs, 16 GB RAM |
 | Solving cameras | 16 vCPUs, 16 GB RAM |
 | Depth priors | a GPU with 16 GB VRAM |
-| Training | a GPU, 32 GB RAM |
-| Clean and export | 8 vCPUs, 8 GB RAM |
+| Training | 4 vCPUs, 32 GB RAM and a GPU with 24 GB (fast and default) or 48 GB (quality) |
+| Clean | 8 vCPUs, 8 GB RAM |
 
 Each step spec adds its own keys when it's built. There is no `[cloud.needs.*]` table; a step's needs live in the step's own section.
+
+### The smoke test
+
+`uv run python -m cloud.smoke` proves a new machine image works before any long job. It launches one machine of the `smoke_instance_type` (a g5.xlarge) from the newest image, and that machine's user data runs `python -m cloud.smoke_runner --job <id>`, which isn't a laptop command either. It runs these checks, a few seconds each, and a failed check doesn't stop the others:
+
+- torch sees the GPU.
+- gsplat renders a tiny synthetic scene, forwards and backwards.
+- fused-ssim runs forwards and backwards.
+- ffmpeg has the `zscale` and `tonemap` filters the frames step's tone map needs.
+- COLMAP, Node and splat-transform run.
+- The MoGe-2 weights match their pinned sha256.
+- In the training check, the real trainer trains a tiny made-up scene on the GPU for a few iterations, with one MCMC refine, then the PLY writer and the PLY check run on its splat. The training check's numbers are in `[cloud.smoke]`, like `train_steps`, the number of iterations.
+- The Cloud_Runner runs a tiny fake-step job end to end. The job is made from a test video under the smoke run's own job id, its `input/` goes up to the bucket, and `run_cloud_job` downloads it again, runs the fake step and uploads the results.
+
+The results go to `jobs/_smoke/<image id>.log` in the bucket, pass or fail, with the account id redacted. When every check passes, the machine writes the smoke marker, `jobs/_smoke/<image id>.json`, which records how long the machine took to be ready for work after it booted. `cloud.start` checks for that marker before it starts a job on the image. Then the machine powers itself off. The check timeout, the scene's size and the test video's length are in `[cloud.smoke]`. Each later spec that adds a GPU code path adds a check for it to `SMOKE_CHECKS` in `cloud/smoke_runner.py`, and the training check is the first of them.
 
 ## Step: fake
 
@@ -433,7 +448,7 @@ work/frames/
 
 - `images/` holds the picks, as JPEGs at `jpeg_quality`. Each is named after its number in time order, from `000000.jpg`, padded to 6 digits. A pick is the same video frame as its score frame, in colour at the pick size. The pick size is the video's size as a player shows it, with its rotation and sample aspect ratio applied, scaled so the long edge is `long_edge` pixels. A video whose long edge is `long_edge` or shorter keeps its own size, so a pick is never larger than the video.
 - `grey/` holds a grey copy of each pick, with the pick's name and size. Each one is the pick turned grey with global histogram equalisation (OpenCV's `equalizeHist`), as a JPEG at `jpeg_quality`. Only matching uses the grey copies.
-- `mask.png` is one mask for every pick: an 8-bit grey PNG at the pick size that holds only 0 and 255. Black (0) marks a pixel stuck to the camera, and white (255) every other pixel. Each mask pixel copies the score frame pixel under its centre, and nothing grows, shrinks or smooths the stuck pixels. COLMAP takes the mask as its single camera mask, `--ImageReader.camera_mask_path`, and the training loss reads the same file. For both, black means ignore. The step writes the mask only when it uses it: when it has at least 2 mask samples and the stuck pixels cover from `mask_min_coverage` to `mask_max_coverage` of the frame.
+- `mask.png` is one mask for every pick: an 8-bit grey PNG at the pick size that holds only 0 and 255. Black (0) marks a pixel stuck to the camera, and white (255) every other pixel. Each mask pixel copies the score frame pixel under its centre, and nothing grows, shrinks or smooths the stuck pixels. COLMAP takes the mask as its single camera mask, `--ImageReader.camera_mask_path`, and the camera solve step passes it on to training as one mask per image in `work/cameras/masks/`. For both, black means ignore. The step writes the mask only when it uses it: when it has at least 2 mask samples and the stuck pixels cover from `mask_min_coverage` to `mask_max_coverage` of the frame.
 - `frames.json` is the frames record, below. The step writes it after every pick, every grey copy and the mask. So a run that fails leaves no `frames.json`, and a work folder without it is unfinished, whatever else it holds.
 
 The step writes nothing before the pick pass. The step runner empties `work/frames/` before the step runs, so a run that fails before the pick pass leaves it empty.
@@ -1077,3 +1092,336 @@ The step removes an earlier `out/cameras.json` when its own code starts, before 
 A run that the step runner stops before the step's code starts, like one on a `[cameras]` section with a missing preset table, leaves the earlier run's `work/cameras/` and `out/cameras.json` in place, next to a failed report. So a reader that needs this run's cameras checks first that `out/reports/cameras.json` says done.
 
 Its report, `out/reports/cameras.json`, comes from the step runner, like every step's.
+
+## Step: train
+
+The train step is in `splatpipe/train/`, built like the fake step. It trains the job's 3D Gaussian splat on the job machine's GPU, from the frames, cameras and points that the camera solve step writes to `work/cameras/`, and writes the splat to `out/train.ply`, where the clean step reads it. It trains with its own trainer, written on gsplat 1.5.3's `rasterization()` and MCMC strategy.
+
+Its CLI is `uv run python -m splatpipe.train --job <id> [--preset P]`, and its plain function is `splatpipe.train.run(job_id, preset=None)`.
+
+It works in this order:
+
+1. It removes `out/train.ply`, first of all, so a run that fails leaves no splat from an earlier run in `out/`.
+2. It checks every setting.
+3. It reads the cap deadline from `SPLATPIPE_CAP_DEADLINE`, when that's set, and works out the stop time.
+4. It checks that the camera solve output's `images/` folder and its three model files are there, without reading them. This comes before the GPU checks, so a job without the camera solve output fails with the camera solve's message on any machine, a laptop included.
+5. It imports the GPU module, `splatpipe/train/gpu.py`, and checks the GPU: torch must see a CUDA GPU, gsplat must be 1.5.3, and the GPU must have the memory the preset needs. Nothing is read and nothing goes onto the GPU before this.
+6. The load: it reads the sparse model, the training images and their masks, and sets up the scene at the training size. It starts a splat at each point of the sparse model, or at `max_splats` of them chosen at random when there are more, and sizes each splat from its nearest other points, which the GPU finds.
+7. The training: the trainer trains the splats on the GPU for the preset's `steps` iterations, unless the stop time comes first. Each iteration renders one training image, turns the render's colours with that image's own exposure fix, works out the loss against the image with its masked pixels left out, and updates the splats and the fix. The trainer goes through every image once per pass, in a new order each pass. Every `refine_every` iterations for most of the run, gsplat's MCMC strategy moves nearly transparent splats onto opaque ones and adds new ones, up to `max_splats`.
+8. The write: it bakes the mean of the images' exposure fixes into the splats' colours, leaves out every splat with a NaN or an infinity, and writes the rest to `work/train/train.ply`.
+9. The PLY check reads the file back and checks its header, its size and that every value is finite.
+10. One move puts the checked file at `out/train.ply`.
+11. Last of all, it writes the train record, `work/train/train.json`.
+
+### What it reads
+
+- The camera solve output in `work/cameras/`, below.
+- `SPLATPIPE_CAP_DEADLINE`, the cap deadline, when the cloud runner sets it.
+- Its settings, from `[train]` and from the job's preset table, like `[train.fast]`.
+- torch, gsplat 1.5.3 and fused-ssim, which only the job's machine image has. Only the GPU module, `splatpipe/train/gpu.py`, imports them, and the step imports that module only when it runs. So `splatpipe.train` imports on a laptop, and there the step fails at its GPU checks with a readable error that says to run the job with `uv run python -m cloud.start`.
+
+The camera solve output is the contract between the camera solve step and this one, and the camera solve spec writes exactly this layout. The names are fixed in `splatpipe/train/files.py`, not in `config.toml`.
+
+```
+work/cameras/
+  images/<stem>.jpg ...   the undistorted colour frames, one for each image in images.bin
+  masks/<stem>.png ...    an image's mask, only when it has one
+  sparse/
+    cameras.bin           one shared PINHOLE camera
+    images.bin            each image's id, pose, camera id, name and keypoints
+    points3D.bin          each point's id, position, 8-bit RGB colour, error and track
+```
+
+- `images/` holds the training images: one undistorted colour JPEG for each image in `images.bin`, under the name `images.bin` gives it, at the shared camera's size. A name is a stem of one or more characters with no `/`, `\`, `:` or NUL, then `.jpg` in lower case. The step decodes each image as it's stored, ignoring any EXIF orientation, so the pixels stay the ones the camera solve worked on. An image larger than the training size is scaled down to it with OpenCV's `INTER_AREA`.
+- `masks/` holds the masks. A mask is matched to its image by stem: the mask of `000123.jpg` is `masks/000123.png`. Each image's mask is optional on its own. An image with a mask leaves its masked pixels out of the loss, and an image without one trains on every pixel. A mask is a grey PNG at its image's size, and black means ignore: any value below 128, the `mask_threshold`, counts as black. So the camera solve step should write only 0 and 255. At a smaller training size, each training pixel takes the mask pixel under its centre.
+- `sparse/` holds COLMAP's binary model. `cameras.bin` holds one camera, shared by every image, of COLMAP's PINHOLE model (model id 1), with its width, height, fx, fy, cx and cy in pixels. `images.bin` holds each image's id, its pose as a quaternion (qw, qx, qy, qz) and a translation, its camera id and its name. `points3D.bin` holds each point's position and 8-bit RGB colour. The step reads past the keypoints, the errors and the tracks, and ignores every other file in `sparse/`, like the `rigs.bin` and `frames.bin` that COLMAP 3.12 and later write.
+- The model is in the levelled frame, the world frame the camera solve step leaves it in. The step uses the poses, the camera and the points exactly as they are, so the trained splat lies in the same frame as the cameras.
+- The step reads the model with its own reader, written with numpy and Python's `struct` module. It runs no COLMAP program and uses no pycolmap.
+- It trains on every image in `images.bin`, in that file's order, and holds none out for evaluation. It opens only the files those images name, so it ignores any other file in `images/` and `masks/`.
+
+The step fails with a readable error that names the file and says what to do when:
+
+- `images/` or one of the three model files is missing. The error names the path and says that the camera solve step writes it, so that step has to run first.
+- `cameras.bin` holds more or fewer than one camera, or a camera whose model isn't PINHOLE, because the step needs undistorted frames.
+- A model file ends inside a record, holds bytes after its last record, or gives a count its size can't hold.
+- The camera's width, height, fx or fy isn't above 0, a camera parameter, a pose or a point's position isn't finite, or a quaternion is four zeros.
+- `images.bin` holds no image, an image of another camera, two images with one name, or a name that isn't a stem and `.jpg`. A bad name is given by its image's id, never as the name itself.
+- `points3D.bin` holds fewer than `start_scale_neighbours` + 1 points, 4 with the real settings.
+- An image has no file in `images/`, or its file can't be decoded as a colour JPEG or isn't the shared camera's size. When the sizes differ, the error gives both.
+- A mask can't be decoded as a grey image, isn't its image's size, or masks every pixel once it's scaled to the training size.
+
+`SPLATPIPE_CAP_DEADLINE` is the cap deadline the cloud runner sets, as "The cap deadline" says. When it's set, the stop time is the cap deadline minus `clean_reserve_minutes` and `save_margin_minutes`, 15 minutes before it with the real settings, and the trainer starts no iteration at or after the stop time. That leaves `save_margin_minutes` to copy the splats off the GPU and to write and check the file, so `out/train.ply` is in place `clean_reserve_minutes` before the cap deadline, for the clean step. When the variable isn't set, as on a laptop, every planned iteration runs. Its value must be a date and time with a UTC offset, like `2026-11-21T14:25:30Z` or `2026-11-21T14:25:30.123456+00:00`. An empty value, a value that isn't a date and time, and one with no UTC offset each fail the step with a readable error. An empty value doesn't count as unset, because the machine's user data leaves the variable empty only when working out the deadline failed.
+
+### What it writes
+
+The step writes only `work/train/train.ply`, `work/train/train.json` and `out/train.ply`. Its report comes from the step runner.
+
+```
+work/train/
+  train.ply             the trained splat while it's written and checked, then moved to out/
+  train.json            the train record, written last, once out/train.ply is in place
+out/
+  train.ply             the trained splat, removed when the step starts, there again once it's done
+  reports/train.json    the step's report, which the step runner writes
+```
+
+A done run leaves `work/train/` holding only `train.json`, because the move takes `train.ply` out of it. A run that fails before the move leaves no `out/train.ply` and no `train.json`, and when the PLY check fails, the file it refused stays in `work/train/`. The step runner empties `work/train/` before the step runs.
+
+`train.ply` is the trained splat: a binary little-endian PLY in the standard 3DGS layout, the one gsplat's `export_splats(format="ply")` writes and splat-transform 3.8.0 reads. The step writes it with its own numpy code, in `splatpipe/train/ply.py`, which also fixes the layout's field names. The header is ASCII, each line ending in `\n`, with nothing else in it: no comment, no other element and no normals.
+
+```
+ply
+format binary_little_endian 1.0
+element vertex <N>
+property float x
+property float y
+property float z
+property float f_dc_0
+property float f_dc_1
+property float f_dc_2
+property float f_rest_0
+...                          one line for each of f_rest_1 to f_rest_43
+property float f_rest_44
+property float opacity
+property float scale_0
+property float scale_1
+property float scale_2
+property float rot_0
+property float rot_1
+property float rot_2
+property float rot_3
+end_header
+```
+
+Then come N records of 236 bytes, one per splat, each holding the 59 fields as little-endian float32 values, in the header's order:
+
+| Fields | Byte offset in the record | What they hold |
+|---|---|---|
+| `x`, `y`, `z` | 0, 4, 8 | The splat's centre, in the levelled frame. |
+| `f_dc_0` to `f_dc_2` | 12 to 20 | Band 0 of the spherical harmonics for R, G and B, with the mean exposure fix baked in. |
+| `f_rest_0` to `f_rest_44` | 24 to 200 | Bands 1 to 3, 15 coefficients for each colour channel, channel by channel: `f_rest_k` is channel k // 15's coefficient k % 15, so R's 15 come first, then G's, then B's. |
+| `opacity` | 204 | The opacity as a logit, before the sigmoid. |
+| `scale_0` to `scale_2` | 208 to 216 | The log of the splat's size along each of its axes. |
+| `rot_0` to `rot_3` | 220 to 232 | The rotation as a quaternion, w first, as the trainer holds it, not scaled to length 1. |
+
+The header is 1,472 bytes for 1 to 9 splats and one byte longer for each extra digit of N. So a file is 1,471 bytes plus the digits of N plus 236 bytes per splat: 708,001,478 bytes for 3,000,000 splats.
+
+While it trains, each training image has its own exposure fix: a 3 × 4 colour transform [A | b] that turns each rendered colour c into A·c + b, so the phone's changing exposure doesn't end up as blotches in the splat. Before the write, the step bakes the mean fix, the element-wise mean of every image's fix, into every splat's colours, so a viewer that shows the splat with no fix shows the average frame's exposure. Then it leaves out every splat with a NaN or an infinity in any of its 59 values, judging each value as the float32 it would be written as, so a baked colour too big for float32 leaves its splat out too. The splats left are written in the trainer's order.
+
+`train.json`, the train record, holds the numbers that aren't whole and so can't be report counts. This example is from a run with a cap deadline:
+
+```json
+{
+  "near_plane": 0.0912,
+  "median_scene_depth": 3.04,
+  "scene_extent": 4.87,
+  "means_lr_start": 0.0007792,
+  "width_ratio": 1.0,
+  "height_ratio": 1.0,
+  "mean_exposure": [[1.021, 0.004, -0.008, 0.012],
+                    [0.002, 0.993, 0.006, -0.004],
+                    [-0.006, 0.001, 1.017, 0.003]],
+  "cap_deadline": "2026-11-21T14:25:30+00:00",
+  "stop_time": "2026-11-21T14:10:30+00:00"
+}
+```
+
+| Field | What it holds |
+|---|---|
+| `near_plane` | The near plane, `near_plane_factor` times the median scene depth. The renderer leaves out every splat nearer a camera than this. |
+| `median_scene_depth` | The median scene depth: for each camera with at least one point in front of it, the median depth of the points in front of it, then the median of those. |
+| `scene_extent` | The scene extent: `scene_extent_factor` times the largest distance from a camera centre to the cameras' mean position. |
+| `means_lr_start` | The positions' learning rate at iteration 0, `means_lr` times the scene extent. |
+| `width_ratio`, `height_ratio` | The training size's width and height over the shared camera's. 1.0 when the step didn't scale the images down. |
+| `mean_exposure` | The mean exposure fix as 3 rows of 4 numbers, R's row first. Each row holds that row of the mean A, then the mean b's value for it. |
+| `cap_deadline` | The cap deadline in UTC, in ISO 8601, or `null` when `SPLATPIPE_CAP_DEADLINE` isn't set. |
+| `stop_time` | The stop time in UTC, or `null` with no cap deadline. |
+
+Every value is plain JSON, and floats keep full precision.
+
+### Config section
+
+| Key | Table | Value | What it is |
+|---|---|---|---|
+| `long_edge` | `[train]` | `1600` | The longest edge of the images the step trains at, in pixels. A camera with a longer edge is scaled down to it, keeping its shape. A smaller camera isn't scaled up. |
+| `mask_threshold` | `[train]` | `128` | A training pixel whose mask value, from 0 to 255, is below this is left out of the loss. A whole number from 1 to 255. |
+| `seed` | `[train]` | `42` | The seed for the random subset of points, the order of the images and torch's random numbers. |
+| `sh_degree_interval` | `[train]` | `1000` | The iterations between each rise of the spherical harmonics degree, which starts at 0 and stops at 3. |
+| `scene_extent_factor` | `[train]` | `1.1` | The scene extent is this times the largest distance from a camera centre to the cameras' mean position. |
+| `near_plane_factor` | `[train]` | `0.03` | The near plane is this times the median scene depth. The renderer leaves out splats nearer a camera than the near plane. |
+| `start_opacity` | `[train]` | `0.5` | The opacity every splat starts at, above 0 and below 1. |
+| `start_scale_factor` | `[train]` | `0.1` | A splat's starting size, the same on all three axes, is this times the root mean square of its distances to its `start_scale_neighbours` nearest other points. |
+| `start_scale_neighbours` | `[train]` | `3` | How many nearest other points set a splat's starting size. |
+| `neighbour_chunk_pairs` | `[train]` | `100000000` | The most point pairs one chunk of the nearest-point search holds on the GPU, about 400 MB. |
+| `means_lr` | `[train]` | `0.00016` | The starting learning rate of the splats' positions, times the scene extent. |
+| `means_lr_final` | `[train]` | `0.01` | The share of its start that the positions' learning rate falls to, exponentially, by the end of the last planned iteration. Above 0 and at most 1. |
+| `scales_lr` | `[train]` | `0.005` | The learning rate of the splats' log scales. |
+| `quats_lr` | `[train]` | `0.001` | The learning rate of the splats' rotations. |
+| `opacities_lr` | `[train]` | `0.05` | The learning rate of the splats' opacity logits. |
+| `sh_dc_lr` | `[train]` | `0.0025` | The learning rate of the splats' band-0 colours. |
+| `sh_rest_lr` | `[train]` | `0.000125` | The learning rate of the splats' higher spherical harmonics. |
+| `adam_eps` | `[train]` | `1e-15` | Adam's epsilon, for every optimiser. |
+| `exposure_lr` | `[train]` | `0.001` | The learning rate of each image's exposure fix. |
+| `l1_weight` | `[train]` | `0.8` | The weight of the L1 colour loss between the image and its render after the exposure fix, with the masked pixels left out. 0 turns it off. |
+| `ssim_weight` | `[train]` | `0.2` | The weight of the SSIM loss, 1 − SSIM between the image and its render after the exposure fix, with the masked pixels left out. 0 turns it off. |
+| `opacity_reg` | `[train]` | `0.01` | The weight of the splats' mean opacity, which fades splats the images don't need. 0 turns it off. |
+| `scale_reg` | `[train]` | `0.01` | The weight of the splats' mean scale in units of the scene extent, which keeps them small. 0 turns it off. |
+| `erank_reg` | `[train]` | `0.01` | The weight of the effective-rank term, which keeps splats from turning into needles. 0 turns it off. |
+| `erank_epsilon` | `[train]` | `1e-5` | A small number inside the effective-rank term's log, so the term stays finite. |
+| `erank_start_fraction` | `[train]` | `0.23333333333333334` | The share of the iterations from which the effective-rank term is on, the float nearest 7/30. |
+| `refine_start_step` | `[train]` | `500` | The iteration after which MCMC starts moving and adding splats. |
+| `refine_every` | `[train]` | `100` | The iterations between MCMC's refines. |
+| `refine_stop_step` | `[train]` | `25000` | The iteration at which MCMC stops refining, at the latest. |
+| `refine_stop_fraction` | `[train]` | `0.9` | MCMC also stops refining at this share of the iterations, when that comes first. |
+| `clean_reserve_minutes` | `[train]` | `10` | The minutes before the cap deadline by which the splat must be written and checked, left for the clean step. |
+| `save_margin_minutes` | `[train]` | `5` | How many minutes before that time the last iteration may start, leaving time to copy the splats off the GPU and to write and check the file. |
+| `gpu_memory_slack` | `[train]` | `0.9` | The share of the preset's `min_gpu_memory_gb` that the GPU must report, because a "24 GB" card reports a little less. |
+| `min_vcpus` | `[train]` | `4` | The fewest vCPUs the job's cloud machine needs for this step. |
+| `min_memory_gb` | `[train]` | `32` | The least memory the job's cloud machine needs for this step, in GB. |
+| `steps` | `[train.fast]`, `[train.default]` and `[train.quality]` | `7000`, `15000` and `30000` | The iterations the step trains for, the planned iterations. |
+| `max_splats` | `[train.fast]`, `[train.default]` and `[train.quality]` | `1000000`, `2000000` and `3000000` | The splat budget: the most splats the step trains, MCMC's `cap_max`. |
+| `min_gpu_memory_gb` | `[train.fast]`, `[train.default]` and `[train.quality]` | `24`, `24` and `48` | The least GPU memory the job's machine needs for this step, in GB. The step checks it. |
+
+- An iteration worked out from a share of `steps` is rounded to the nearest whole iteration. So the effective-rank term is on from iteration 1,633 with `fast`, 3,500 with `default` and 7,000 with `quality`. MCMC refines every 100 iterations after iteration 500 and before iteration 6,300, 13,500 and 25,000. The spherical harmonics degree goes up by one every 1,000 iterations and reaches 3 at iteration 3,000.
+- The step checks every setting before it reads the cap deadline or any file. A value of the wrong kind fails the step with a readable error that names the key, its table and what it must be, like "The setting mask_threshold in [train] is 0, but it must be a whole number from 1 to 255. Change it to a whole number from 1 to 255." A bool is never a number here. A missing key fails the step with the step runner's message, which names `[train]`, the preset's table and the key. The step also fails when `max_splats` is below `start_scale_neighbours` + 1, naming both settings, their tables and their values.
+
+`min_vcpus`, `min_memory_gb` and `min_gpu_memory_gb` are the step's machine needs: the job's cloud machine needs at least 4 vCPUs, 32 GB of memory and a 24 GB GPU for `fast` and `default`, or a 48 GB GPU for `quality`. The cloud spec reads them to pick the machine. Of the three, the step itself checks only the GPU's memory, against the GPU need: `gpu_memory_slack` × `min_gpu_memory_gb` × 10⁹ bytes, since a GB is 10⁹ bytes here, as in `[cloud.types]`. So `fast` and `default` take a GPU whose total memory, as torch reports it, is at least 21.6 GB, and `quality` one with at least 43.2 GB, which no 24 GB card has. The step checks `min_vcpus` and `min_memory_gb` like the other settings, but never uses them.
+
+### Step report fields
+
+- `settings`: the 35 settings in `[train]` and the preset's `steps`, `max_splats` and `min_gpu_memory_gb`.
+- `timings.load`: reading the camera solve output and setting up the scene and the starting splats, the nearest-point search on the GPU included.
+- `timings.train`: the trainer, the upload of the images to the GPU and the copy of the splats back included.
+- `timings.write_ply`: the exposure bake, leaving out the splats with a NaN or an infinity, and writing `work/train/train.ply`.
+- `timings.check_ply`: the PLY check.
+- `counts.steps_planned`: the planned iterations, the preset's `steps`.
+- `counts.gpu_memory_bytes`: the GPU's total memory in bytes, as torch reports it. The step adds it only when torch sees a CUDA GPU.
+- `counts.images`: the images in `images.bin`, which are the training images.
+- `counts.sparse_points`: the points in `points3D.bin`.
+- `counts.image_width` and `counts.image_height`: the training size, in pixels.
+- `counts.masked_images`: the training images with a mask.
+- `counts.start_splats`: the splats the training started from.
+- `counts.steps_run`: the iterations run.
+- `counts.sh_degree`: the spherical harmonics degree of the last iteration, 0 when none ran.
+- `counts.peak_gpu_memory_bytes`: the most GPU memory torch's allocator held at once from the GPU check on, from `torch.cuda.max_memory_allocated()`.
+- `counts.splats`: the splats the step wrote: those the trainer gave back, less those left out for a NaN or an infinity.
+- `counts.ply_bytes`: the trained splat's size in bytes.
+- `warnings`, each only when it applies:
+  - When the camera solve gave more points than the splat budget: "The camera solve gave <points> points, more than this preset's splat budget of <max_splats>, so training started from <max_splats> of them, chosen at random."
+  - When the trainer stopped at the stop time, before the last planned iteration: "Training stopped early, after <steps_run> of <steps> iterations, to leave time for the clean step before the job's time cap."
+  - When the step left out splats that held a NaN or an infinity: "Splats left out of out/train.ply because they held a NaN or an infinity: <n>.", where <n> is how many it left out, and `counts.splats` counts the splats it wrote. A run that leaves out every splat writes a file of no splats and fails at the PLY check's "holds no splats", with this warning in its report.
+- `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message, saying what went wrong and what to do. Those failures are:
+  - a bad or missing setting, or `max_splats` below `start_scale_neighbours` + 1;
+  - a bad `SPLATPIPE_CAP_DEADLINE`;
+  - a camera solve output that's missing or that the step refuses, as "What it reads" lists, too few points included;
+  - a machine without torch, gsplat or fused-ssim, one where torch sees no CUDA GPU, a gsplat other than 1.5.3, or a GPU with less memory than the preset needs, like "This GPU has 24.1 GB of memory, but the quality preset needs a 48 GB GPU, and the step accepts 0.9 of that, 43.2 GB, because a card reports a little less than its size. Run the job with a preset that needs less GPU memory, or on a machine with a larger GPU.";
+  - cameras that all sit in one place, no point in front of any camera, or points that all sit on top of each other;
+  - torch running out of GPU memory in the nearest-point search or in training. The error gives the iteration it reached, or says it happened while the step set up the scene, gives the preset's `max_splats`, and says to use a preset with a smaller splat budget or a GPU with more memory;
+  - no time left to train, because the stop time came before the first iteration;
+  - a file that can't be written or moved, like on a full disk;
+  - a trained splat that fails the PLY check: no splats, a header other than the layout's, a size other than the header's plus 236 bytes per splat, or a value that isn't finite, with how many splats hold one and each field's count.
+
+A loss that stops being finite is a bug in the training, not a problem with the video. The trainer checks the loss after each iteration's backward pass, before any optimiser step, so the bad values never reach a splat, and it stops at once. The step then fails with the general bug message and `expected` is `false`. The message in `technical` gives the iteration, the value of each of the five loss terms, `l1`, `ssim`, `opacity_reg`, `scale_reg` and `erank`, and the total. Any other error is a bug too, with the general message.
+
+The counts are whole numbers, so the scene's distances, the starting learning rate and the mean exposure fix are in `train.json` instead. The step adds each count as soon as it knows it, in the order above, so a failed report holds the counts and timings the step had worked out before it failed.
+
+### Files in out/
+
+- `out/train.ply`: the trained splat, in the layout under "What it writes". The step removes it when it starts, so a run that fails leaves none, not even an earlier run's. It writes it whole once the PLY check passes: one move takes the checked file from `work/train/`, so `out/` never holds a half-written splat. The clean step reads it from there, and it's the job's result when the clean step fails or doesn't run. The largest splat budget, `quality`'s 3,000,000 splats, is within the 8,000,000 splats the clean step takes, its `max_source_splats`.
+
+Its report, `out/reports/train.json`, comes from the step runner, like every step's.
+
+## Step: clean
+
+The clean step is in `splatpipe/clean/`. It reads the splat the training step wrote, drops the Gaussians a viewer shouldn't see and writes the rest as the clean splat, a binary PLY. Then it makes the viewer copy, a small `.sog` for the web viewer, from the clean splat with PlayCanvas splat-transform. These two files are what the person who filmed the place gets back. The step is built like the fake step. It's the step list's last entry, an optional one, and it also runs on its own.
+
+Its CLI is `uv run python -m splatpipe.clean --job <id> [--preset P]`, and its plain function is `splatpipe.clean.run(job_id, preset=None)`.
+
+### What it reads
+
+- `out/<train_ply>`, which is `out/train.ply` with the real config: the splat the training step writes. This is the contract between the two steps: the training step writes it as a standard 3DGS binary PLY, `binary_little_endian` with float32 values, whose `vertex` element has one row per Gaussian and these properties:
+  - `x`, `y` and `z`, the centre.
+  - `f_dc_0` to `f_dc_2`, the base colour.
+  - `f_rest_*`, the higher spherical harmonics: 45 of them at SH degree 3, or 0, 9 or 24 at a lower degree.
+  - `opacity`, stored before the sigmoid.
+  - `scale_0` to `scale_2`, stored as logarithms.
+  - `rot_0` to `rot_3`, the rotation quaternion.
+  - Sometimes `nx`, `ny` and `nz`, which nothing uses.
+- Its settings, from `[clean]` and from the job's preset table, like `[clean.fast]`.
+
+The step reads meaning only into `x`, `y`, `z`, `opacity`, `scale_0` to `scale_2` and `rot_0` to `rot_3`. It carries every other property through to the clean splat unchanged, a NaN or an infinity in a colour included. It never writes `out/<train_ply>`, so the trained splat survives a failed clean.
+
+### What it writes
+
+The step works in this order, and each filter gets what the one before it kept:
+
+1. It fails when the trained splat holds more than `max_source_splats` (8,000,000) Gaussians, before it reads their rows.
+2. The broken filter drops every Gaussian with a NaN or an infinity in `x`, `y`, `z`, `opacity`, `scale_0` to `scale_2` or `rot_0` to `rot_3`, or with a rotation of zero length, because nothing can draw one. It looks at no other property.
+3. The faint filter judges every faint Gaussian together with the rest of its cube. A Gaussian is faint when its real opacity, the sigmoid of its `opacity`, is below `min_opacity` (0.005). Every Gaussian that isn't faint is kept, and no Gaussian is dropped for its opacity alone. Space is cut into cubes whose side is the trimmed extent divided by `faint_cube_divisions` (128). The trimmed extent is the longest side of the box that leaves out `extent_trim_percent` (1%) of the centres at each end of each axis, so a few far-off Gaussians can't make the cubes huge. A cube keeps all its faint Gaussians when it holds at least `faint_min_per_cube` (8) of them and they paint more than `faint_min_paint_share` (10%) of what the whole cube paints, and drops them all otherwise. A Gaussian's paint is its real opacity × π × its two largest real scales, the exponentials of its `scale_*`. So a sheet of faint Gaussians that together paint a visible surface stays, and scattered faint specks go.
+4. The isolated filter drops every Gaussian whose mean distance to its `neighbours` (8) nearest other Gaussians is more than `isolation_ratio` (8) times the median of that number over those neighbours. The test is a local ratio, so the sky and the far background, sparse but even, survive.
+5. The limits, all checked before either output is written, in this order:
+   - The removal cap. The faint and isolated filters together may remove at most `max_removed_fraction` (70%) of the trained splat's Gaussians. Broken Gaussians are always removed and don't count toward the cap. Past the cap, the step fails and writes neither output, rather than trim the removals back to the cap.
+   - Fewer than `min_kept_splats` (10,000) Gaussians left fails the step the same way.
+   - Keeping less than `warn_kept_fraction` (50%) of the trained splat's Gaussians adds a warning, and the step goes on.
+6. `work/clean/<clean_ply>`, the clean splat: the kept Gaussians as a `binary_little_endian` PLY, with every property of the trained splat in the same order and with the same type, and the trained splat's `comment` lines.
+7. `work/clean/<clean_sog>`, the viewer copy: splat-transform 3.8.0 makes it from the clean splat, as one bundled `.sog` file that keeps at most `sog_sh_bands` bands of spherical harmonics. The step writes splat-transform's whole output to `work/clean/splat-transform.log`.
+8. Then it moves both into `out/`, as "Files in out/" says.
+
+When the step fails, the trained splat is still in `out/`, as it was. The clean step is an optional step in the step list, so a failed clean ends the job done with warnings.
+
+Every part of the step is CPU work. The Python side uses numpy and scipy, and splat-transform runs with `-g cpu`, which puts its GPU work on the CPU. The step is sized for the 8 vCPUs and 8 GB a step gets on the job machine: `max_workers` is at most 8, and `max_source_splats` keeps the trained splat's data, at 62 float32 properties a Gaussian, under a quarter of the 8 GB.
+
+The viewer copy is SOG meta version 2, because splat-transform is pinned at 3.8.0, so the web viewer has to be checked against the version 2 spec.
+
+The step needs Node 22 or newer, and `npm ci` at the repo root, which installs splat-transform 3.8.0 into `node_modules/`.
+
+### Config section
+
+| Key | Table | Value | What it is |
+|---|---|---|---|
+| `train_ply` | `[clean]` | `"train.ply"` | The trained splat's file in `out/`, which the training step writes and this step reads. |
+| `clean_ply` | `[clean]` | `"clean.ply"` | The clean splat's file in `out/`. It must end in `.ply`. |
+| `clean_sog` | `[clean]` | `"clean.sog"` | The viewer copy's file in `out/`. It must end in `.sog`. |
+| `min_opacity` | `[clean]` | `0.005` | The real opacity below which a Gaussian is faint. |
+| `faint_cube_divisions` | `[clean]` | `128` | The side of the faint filter's cubes is the trimmed extent divided by this. |
+| `faint_min_per_cube` | `[clean]` | `8` | The fewest faint Gaussians a cube must hold to keep them. |
+| `faint_min_paint_share` | `[clean]` | `0.10` | A cube keeps its faint Gaussians only when they paint more than this share of what the cube paints. |
+| `extent_trim_percent` | `[clean]` | `1` | The percent of the centres left out at each end of each axis for the trimmed extent. |
+| `neighbours` | `[clean]` | `8` | How many nearest other Gaussians the isolated filter looks at. |
+| `isolation_ratio` | `[clean]` | `8.0` | The isolated filter drops a Gaussian whose mean distance to its nearest neighbours is more than this many times the median of that number over those neighbours. |
+| `max_removed_fraction` | `[clean]` | `0.70` | The removal cap: the largest share of the trained splat's Gaussians that the faint and isolated filters may remove together. |
+| `min_kept_splats` | `[clean]` | `10000` | The fewest Gaussians the clean splat may hold. Fewer fails the step. |
+| `warn_kept_fraction` | `[clean]` | `0.5` | The step warns when it keeps less than this share of the trained splat's Gaussians. |
+| `max_source_splats` | `[clean]` | `8000000` | The most Gaussians the step takes in. More fails the step before it reads their rows. |
+| `max_workers` | `[clean]` | `4` | The worker threads for the isolated filter's neighbour search and for splat-transform, at most 8. At 0, splat-transform encodes inline and the search uses 1. |
+| `splat_transform_timeout_seconds` | `[clean]` | `3600` | The longest time splat-transform may take to make the viewer copy, in seconds. Past it, the step stops splat-transform and fails. |
+| `sog_sh_bands` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `3`, `3` and `3` | The bands of higher spherical harmonics the viewer copy keeps, from 0 to 3. |
+| `sh_iterations` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `10`, `10` and `20` | The iterations of splat-transform's spherical harmonic compression. |
+
+All three presets clean the splat the same way, and only `sh_iterations` differs between their viewer copies. The real `config.toml` has a comment on the line directly above every key.
+
+### Step report fields
+
+- `counts.source_splats`: the Gaussians in the trained splat.
+- `counts.dropped_broken`, `counts.dropped_faint` and `counts.dropped_isolated`: the Gaussians each filter dropped.
+- `counts.kept_splats`: the Gaussians left after the three filters.
+- `counts.clean_ply_bytes` and `counts.clean_sog_bytes`: the sizes of the clean splat and the viewer copy, in bytes.
+- `timings.read_ply`, `timings.clean`, `timings.write_ply` and `timings.export_sog`: the seconds it took to read the trained splat, run the three filters, write the clean splat and run splat-transform.
+- `warnings`, which gets a warning in each of these cases:
+  - When the step keeps less than `warn_kept_fraction` of the trained splat's Gaussians. The warning gives both counts and the share the faint and isolated filters removed.
+  - When the preset's `sog_sh_bands` is more than the bands the trained splat has. The warning names both numbers, and the viewer copy keeps the trained splat's bands.
+
+There's no `removed_percent` count, because `step.add_count` takes only whole numbers. The share the faint and isolated filters removed is in the first warning and in the readable error of a run that stops at the removal cap.
+
+### Files in out/
+
+- `out/<clean_ply>`, which is `out/clean.ply` with the real config: the clean splat.
+- `out/<clean_sog>`, which is `out/clean.sog` with the real config: the viewer copy, made from that clean splat.
+
+A done run replaces both. Once its settings pass their checks, the step removes both from `out/`, the viewer copy first, before it writes either. It makes the new ones in `work/clean/` and moves them into `out/` only once both are whole, the clean splat first and the viewer copy straight after. Each move is a rename, so `out/` never holds a half-written file. So:
+
+- A failure after that removal leaves neither file in `out/`, an earlier run's pair included. That holds for an expected failure, a bug and Ctrl+C alike. When a failure falls between the two moves, the step removes the clean splat it had already moved.
+- A hard stop the step can't see, like a killed process or a power cut, can leave a whole clean splat alone in `out/`: this run's, between the two moves into `out/`, or the earlier one, between the two removals. No done report goes with it, and the next run of the step removes it first.
+- A viewer copy never sits in `out/` without the clean splat it was made from, because the viewer copy is removed first and moved last.
+
+Trust the pair only when the step's report, `out/reports/clean.json`, says done. That report comes from the step runner, like every step's.
