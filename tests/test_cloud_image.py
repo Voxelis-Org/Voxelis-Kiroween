@@ -29,7 +29,8 @@ Four kinds of check, all on the CPU with no network, no AWS account and no GPU:
   builder and records an `image-build` Spend_Line under `data/` (Req 9.1, 9.7, 9.8, 9.9, 12.2). A
   failed install ends the wait at once and terminates the builder. Its launch request carries
   Property 4's required settings (Req 8.9), checked with the Property-4 helper and constants reused
-  from `test_cloud_launch`.
+  from `test_cloud_launch`. Its client token comes from the image's name and the attempt, so two
+  builds at different times send different tokens and each attempt in one build gets its own.
 
 - Licence_List: one row for each Machine_Image tool, weight and package, the COLMAP row naming its
   flags and the CUDA Toolkit row NVIDIA's licence (Req 14.5). One row for each package step 7 adds
@@ -50,6 +51,7 @@ import hashlib
 import json
 import re
 import shlex
+from datetime import datetime, timezone
 from itertools import takewhile
 from pathlib import Path
 from typing import Any
@@ -64,7 +66,7 @@ from cloud.config import CloudConfig
 from cloud.errors import CloudError
 from cloud.image import (INSTALL_DONE_MARKER, INSTALL_FAILED_MARKER, MANIFESTS, MOGE_WEIGHTS,
                          build_image, install_script, manifest_prefix)
-from cloud.launch import JOB_ID_TAG
+from cloud.launch import JOB_ID_TAG, client_token
 from cloud.repo import head_file, lock_hashes
 from cloud.spend import SpendRefused
 from cloud.spend_file import LABEL_IMAGE
@@ -714,6 +716,67 @@ def test_build_image_launch_request_satisfies_property_4_shape(tmp_path: Path) -
     assert all(tag["Key"] != JOB_ID_TAG for tag in instance_tags)
     for forbidden in FORBIDDEN_KEYS:
         assert forbidden not in request
+
+
+# With the FakeAws: each build sends its own client token, made from its image's name.
+
+# Two build times: the 22 November build's, and a later one's.
+FIRST_BUILD = datetime(2026, 11, 22, 18, 8, 53, tzinfo=timezone.utc)
+SECOND_BUILD = datetime(2026, 11, 24, 9, 30, 0, tzinfo=timezone.utc)
+
+
+def _build_at(when: datetime, aws: _BuilderAws, root: Path, cc: CloudConfig,
+              monkeypatch: pytest.MonkeyPatch) -> str:
+    """Run one approved build with the clock stopped at `when`, and give back its image id."""
+    monkeypatch.setattr("cloud.image._utc_now", lambda: when)
+    return build_image(aws=aws, config=_config(), cloud_config=cc, outputs=OUTPUTS,
+                       repo_root=root, environ={"APPROVED_SPEND": "1"})
+
+
+def test_two_builds_at_different_times_send_different_client_tokens(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # EC2 remembers a RunInstances client token after its machine has ended, and refuses one it has
+    # seen with other parameters (IdempotentParameterMismatch). Each build's user data names the
+    # build's own manifests, so each build has to send its own token: the one made from its image's
+    # name, which build_image fixes before the launch.
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    aws = _fake_aws(cc)  # the same account for both builds
+
+    _build_at(FIRST_BUILD, aws, root, cc, monkeypatch)
+    _build_at(SECOND_BUILD, aws, root, cc, monkeypatch)
+
+    names = [image.name for image in aws.images]
+    assert names == ["voxelis-kiroween-image-20261122-180853",
+                     "voxelis-kiroween-image-20261124-093000"]
+    tokens = [request["ClientToken"] for request in aws.run_requests]
+    assert tokens == [client_token(name, 0) for name in names]
+    assert tokens[0] != tokens[1]
+    # Neither is the fixed token every build used to send.
+    assert client_token(LABEL_IMAGE, 0) not in tokens
+
+
+def test_each_attempt_in_one_build_gets_its_own_token_from_the_images_name(tmp_path: Path) -> None:
+    # The first zone has no capacity, so the build tries a second zone with another subnet. Each
+    # attempt's token comes from the image's name and the attempt alone, so a repeat of one attempt
+    # in this build sends the same token and starts nothing new, while the next zone's attempt gets
+    # a fresh token.
+    root = git_repo(tmp_path)
+    cc = cloud_config()
+    builder = cc.image_builder_type
+    aws = _BuilderAws(ssm={cc.base_ami_parameter: BASE_AMI},
+                      offerings={builder: ["us-east-1a", "us-east-1b"]},
+                      subnets={"us-east-1a": "subnet-a", "us-east-1b": "subnet-b"}, quota=32.0,
+                      no_capacity=[(builder, "us-east-1a")])
+
+    build_image(aws=aws, config=_config(), cloud_config=cc, outputs=OUTPUTS, repo_root=root,
+                environ={"APPROVED_SPEND": "1"})
+
+    name = aws.images[0].name
+    assert [request["SubnetId"] for request in aws.run_requests] == ["subnet-a", "subnet-b"]
+    tokens = [request["ClientToken"] for request in aws.run_requests]
+    assert tokens == [client_token(name, 0), client_token(name, 1)]
+    assert tokens[0] != tokens[1]
 
 
 # Licence_List: the Machine_Image tool rows, the COLMAP row naming its flags (Req 14.5)

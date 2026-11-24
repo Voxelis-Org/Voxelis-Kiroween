@@ -9,9 +9,9 @@ key pair, launch template, market option or API-termination setting, so the mach
 the Stop_All_Command can terminate it, and every condition in the Runner_Role's launch policy is met
 (Req 8.1-8.6).
 
-`client_token` derives a stable idempotency token from a Job_Id (or a smoke/image label) and the
-attempt index, so repeating one attempt starts nothing new while each zone/type attempt gets a fresh
-token (Req 5.6). `launch_with_fallback` tries each `(type, subnet, zone)` in order: a
+`client_token` derives a stable idempotency token from a label that names one run (the Job_Id for a
+Job or a Smoke_Test, the image's name for an Image_Build) and the attempt index, so repeating one
+attempt starts nothing new while each zone/type attempt gets a fresh token (Req 5.6). `launch_with_fallback` tries each `(type, subnet, zone)` in order: a
 `CapacityUnavailable` moves on to the next attempt, any other error (a `CloudError`) stops the loop
 with nothing more started, a success returns the instance with its type and zone, and an exhausted
 plan is a `CloudError` naming the types and zones tried (Req 5.1, 5.3, 5.4, 5.5).
@@ -76,10 +76,13 @@ def build_run_instances_request(*, image_id: str, instance_type: str, subnet_id:
 def client_token(label: str, attempt: int) -> str:
     """A stable `RunInstances` client token from a label and the attempt index (Req 5.6).
 
-    `label` is a Job_Id for a Job, or a smoke/image label otherwise. The token is a deterministic
-    hash of the two, so repeating one attempt mints the same token (EC2 treats the retry as the same
-    request and starts nothing new) while each zone/type attempt, with its own index, gets a fresh
-    one. The 64-character hex digest is within EC2's 64-character client-token limit.
+    `label` names one run: the Job_Id for a Job or a Smoke_Test, the image's name for an
+    Image_Build. The token is a deterministic hash of the two, so repeating one attempt mints the
+    same token (EC2 treats the retry as the same request and starts nothing new) while each
+    zone/type attempt, with its own index, gets a fresh one. Two runs must never share a label: EC2
+    remembers a token after its machine has ended and refuses it with other parameters
+    (IdempotentParameterMismatch). The 64-character hex digest is within EC2's 64-character
+    client-token limit.
     """
     return hashlib.sha256(f"{label}:{attempt}".encode("utf-8")).hexdigest()
 

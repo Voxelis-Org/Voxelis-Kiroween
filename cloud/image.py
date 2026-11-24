@@ -311,7 +311,8 @@ def build_image(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs:
     `image_builder_type` against the real G_Quota; name the image and upload HEAD's MANIFESTS under
     its `jobs/_image/<name>/` prefix, which the builder downloads; launch the builder from the
     Base_AMI with the Requirement 8 request, a root-volume `BlockDeviceMappings` entry sized from
-    `root_gb` and `install_script` as the User_Data (Req 9.9); wait for the install to finish on
+    `root_gb`, `install_script` as the User_Data and a client token made from the image's name, so
+    each build sends its own (Req 9.9); wait for the install to finish on
     the console, terminating the builder and stopping with a Readable_Error if it fails or runs past
     the Time_Cap; stop the builder through the EC2 API and wait for it to stop (never triggering
     terminate-on-shutdown, the skill's stop-first rule); make the Machine_Image from the stopped
@@ -351,13 +352,17 @@ def build_image(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs:
     _upload_manifests(aws, repo_root, prefix)
 
     # 6. Launch the builder from the Base_AMI with the Requirement 8 request plus the root-volume
-    #    size, trying each admitted zone in turn (Req 9.9).
+    #    size, trying each admitted zone in turn (Req 9.9). Each attempt's client token comes from
+    #    this build's image name and the attempt, so a repeat of one attempt sends the same token,
+    #    while each build sends its own. EC2 remembers a token after its machine has ended and
+    #    refuses it with other parameters (IdempotentParameterMismatch), and every build's User_Data
+    #    differs, so a token shared by all builds fails every build after the first at the launch.
     def build(attempt: int, instance_type: str, subnet_id: str) -> dict[str, Any]:
         request = build_run_instances_request(
             image_id=base_ami, instance_type=instance_type, subnet_id=subnet_id,
             instance_profile_arn=outputs.job_instance_profile_arn,
             security_group_id=outputs.security_group_id, user_data=user_data,
-            client_token=client_token(LABEL_IMAGE, attempt), project_tag=project_tag, job_id=None)
+            client_token=client_token(name, attempt), project_tag=project_tag, job_id=None)
         request["BlockDeviceMappings"] = [_root_device_mapping(cc.root_gb)]
         return request
 
