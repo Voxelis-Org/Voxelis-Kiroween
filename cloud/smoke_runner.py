@@ -5,8 +5,10 @@ It's separate from the laptop's Smoke_Command, `cloud.smoke`, which only launche
 `run_smoke_test` runs each check in SMOKE_CHECKS, a few seconds each (Req 11.2): torch sees the GPU,
 gsplat renders a tiny synthetic scene forwards and backwards, fused-ssim runs forwards and
 backwards, ffmpeg has the zscale and tonemap filters, COLMAP, Node and splat-transform run, the
-MoGe-2 weights match their pinned sha256, the Trainer trains the tiny Smoke_Scene on the GPU and the
-PLY it gives passes the PLY_Check, and the Cloud_Runner runs a tiny Fake_Step Job end to end.
+MoGe-2 weights match their pinned sha256, MoGe-2 runs on a made-up image and the Trainer trains the
+tiny Prior_Smoke_Scene with its depth priors on the GPU (the depth check), the Trainer trains the
+tiny Smoke_Scene on the GPU and the PLY it gives passes the PLY_Check, and the Cloud_Runner runs a
+tiny Fake_Step Job end to end.
 For that last check it makes the Job from a test video, uploads its input, and runs `run_cloud_job`,
 which downloads the input again, runs the Step and uploads the results. A failing check doesn't stop
 the others. The results are printed on the console and put, Account_Redacted, at
@@ -19,8 +21,10 @@ here, starting with training (Req 11.5). A check is a function that gets a Smoke
 back a short line for the log, or raises when the check fails. Its numbers come from
 `[cloud.smoke]`.
 
-The GPU checks import torch, gsplat and fused-ssim inside their functions, and the training check
-imports the GPU_Module inside its function with `load_gpu`, so this module imports on a laptop.
+The GPU checks import torch, gsplat and fused-ssim inside their functions, the depth check imports
+the Depth_GPU_Module and the GPU_Module inside its function with `load_depth_gpu` and `load_gpu`,
+and the training check imports the GPU_Module inside its function with `load_gpu`, so this module
+imports on a laptop.
 There the Test_Suite runs `run_smoke_test` with stand-in checks, and the checks that need no GPU,
 on the CPU with the Fake_AWS. A cloud module may import `splatpipe` to call its public functions;
 `splatpipe` never imports `cloud`. This module imports no boto3 of its own.
@@ -44,6 +48,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from splatpipe.config import load_config
+from splatpipe.depth.gpu_api import load_depth_gpu
+from splatpipe.depth.smoke import DepthSmokeSizes, run_smoke_depth
 from splatpipe.errors import PipelineError
 from splatpipe.frames.ffmpeg import has_filters
 from splatpipe.jobs import check_job_id, job_folder, remove_tree
@@ -315,6 +321,23 @@ def _check_moge_weights(context: SmokeContext) -> str:
     return "the MoGe-2 weights match their pinned sha256"
 
 
+def _check_depth(context: SmokeContext) -> str:
+    """MoGe-2 runs on a made-up image, then the Trainer trains the Prior_Smoke_Scene with its depth
+    priors on the GPU and the PLY it gives passes the PLY_Check (depth-priors spec, Req 16).
+
+    The sizes are the training check's, from `[cloud.smoke]`, with `depth_normal_start_step` as
+    the Normal_Start, and `run_smoke_depth` does the rest in this check's own scratch folder.
+    `load_depth_gpu` and `load_gpu`, both looked up in this module when the check runs, import the
+    Depth_GPU_Module, the GPU_Module and torch only then, so this module still imports on a laptop
+    and a test can patch each with a stand-in (Req 16.10). Like the training check, it has no
+    timeout of its own. On an image built before MoGe's code went in, it fails with the Depth_Step's
+    Req 3.2 message until the next image build (Req 16.11, A19).
+    """
+    sizes = DepthSmokeSizes(train=_train_sizes(context),
+                            normal_start=context.cloud_config.smoke_checks.depth_normal_start_step)
+    return run_smoke_depth(context.config, sizes, context.scratch, load_depth_gpu(), load_gpu())
+
+
 def _check_training(context: SmokeContext) -> str:
     """The Trainer trains the Smoke_Scene on the GPU, and the PLY it gives passes the PLY_Check.
 
@@ -324,13 +347,18 @@ def _check_training(context: SmokeContext) -> str:
     with a GPU_Stand_In. Like the gsplat and fused-ssim checks, it has no timeout of its own: the
     log records its seconds (Req 12.11).
     """
+    return run_smoke_training(context.config, _train_sizes(context), context.scratch, load_gpu())
+
+
+def _train_sizes(context: SmokeContext) -> SmokeSizes:
+    """The training check's eight numbers from `[cloud.smoke]`, which the depth check trains with
+    too (Req 12.3; depth-priors spec, Req 16.5)."""
     checks = context.cloud_config.smoke_checks
-    sizes = SmokeSizes(images=checks.train_images, points=checks.train_points,
-                       pixels=checks.image_pixels, splats=checks.train_splats,
-                       steps=checks.train_steps, refine_start_step=checks.train_refine_start_step,
-                       refine_every=checks.train_refine_every,
-                       sh_degree_interval=checks.train_sh_degree_interval)
-    return run_smoke_training(context.config, sizes, context.scratch, load_gpu())
+    return SmokeSizes(images=checks.train_images, points=checks.train_points,
+                      pixels=checks.image_pixels, splats=checks.train_splats,
+                      steps=checks.train_steps, refine_start_step=checks.train_refine_start_step,
+                      refine_every=checks.train_refine_every,
+                      sh_degree_interval=checks.train_sh_degree_interval)
 
 
 def _check_cloud_runner(context: SmokeContext) -> str:
@@ -366,7 +394,9 @@ def _check_cloud_runner(context: SmokeContext) -> str:
 
 # The checks, in the order they run. The Cloud_Runner check comes last, so the copy of cloud-init's
 # log it uploads with the fake-step job already holds every other check's result. Each later spec
-# that adds a GPU code path adds a check for it here, starting with training (Req 11.5).
+# that adds a GPU code path adds a check for it here, starting with training (Req 11.5). The depth
+# check comes after the weights it loads are checked and before training (depth-priors spec,
+# Req 16.1).
 SMOKE_CHECKS: tuple[SmokeCheck, ...] = (
     SmokeCheck("torch-gpu", _check_torch),
     SmokeCheck("gsplat", _check_gsplat),
@@ -376,6 +406,7 @@ SMOKE_CHECKS: tuple[SmokeCheck, ...] = (
     SmokeCheck("node", _check_node),
     SmokeCheck("splat-transform", _check_splat_transform),
     SmokeCheck("moge-weights", _check_moge_weights),
+    SmokeCheck("depth", _check_depth),
     SmokeCheck("training", _check_training),
     SmokeCheck("cloud-runner", _check_cloud_runner),
 )

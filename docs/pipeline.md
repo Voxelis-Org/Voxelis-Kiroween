@@ -355,10 +355,11 @@ Each step spec adds its own keys when it's built. There is no `[cloud.needs.*]` 
 - ffmpeg has the `zscale` and `tonemap` filters the frames step's tone map needs.
 - COLMAP, Node and splat-transform run.
 - The MoGe-2 weights match their pinned sha256.
+- In the depth check, MoGe-2 loads from the image's weights the way the depth step loads it and runs on a tiny made-up image. Then the real trainer trains a tiny made-up scene with made-up depth priors, with every prior loss and some splats started from the priors, and the PLY writer and the PLY check run on its splat. Its own number, `depth_normal_start_step`, is in `[cloud.smoke]`.
 - In the training check, the real trainer trains a tiny made-up scene on the GPU for a few iterations, with one MCMC refine, then the PLY writer and the PLY check run on its splat. The training check's numbers are in `[cloud.smoke]`, like `train_steps`, the number of iterations.
 - The Cloud_Runner runs a tiny fake-step job end to end. The job is made from a test video under the smoke run's own job id, its `input/` goes up to the bucket, and `run_cloud_job` downloads it again, runs the fake step and uploads the results.
 
-The results go to `jobs/_smoke/<image id>.log` in the bucket, pass or fail, with the account id redacted. When every check passes, the machine writes the smoke marker, `jobs/_smoke/<image id>.json`, which records how long the machine took to be ready for work after it booted. `cloud.start` checks for that marker before it starts a job on the image. Then the machine powers itself off. The check timeout, the scene's size and the test video's length are in `[cloud.smoke]`. Each later spec that adds a GPU code path adds a check for it to `SMOKE_CHECKS` in `cloud/smoke_runner.py`, and the training check is the first of them.
+The results go to `jobs/_smoke/<image id>.log` in the bucket, pass or fail, with the account id redacted. When every check passes, the machine writes the smoke marker, `jobs/_smoke/<image id>.json`, which records how long the machine took to be ready for work after it booted. `cloud.start` checks for that marker before it starts a job on the image. Then the machine powers itself off. The check timeout, the scene's size and the test video's length are in `[cloud.smoke]`. Each later spec that adds a GPU code path adds a check for it to `SMOKE_CHECKS` in `cloud/smoke_runner.py`, and the training check and the depth check are the checks later specs added.
 
 ## Step: fake
 

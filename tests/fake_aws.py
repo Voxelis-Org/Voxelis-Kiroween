@@ -245,7 +245,7 @@ def _base_cloud_mapping() -> dict[str, Any]:
                   "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4,
                   "train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
                   "train_refine_start_step": 10, "train_refine_every": 10,
-                  "train_sh_degree_interval": 5},
+                  "train_sh_degree_interval": 5, "depth_normal_start_step": 8},
         "image": {"expected_minutes": 75, "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,

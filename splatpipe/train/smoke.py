@@ -7,7 +7,9 @@ GPU_Stand_In instead, so the whole check runs on a laptop with no torch (Req 12.
 - SmokeSizes: the check's eight numbers from [cloud.smoke].
 - smoke_settings (Req 12.3, A11): the [train] settings of the Preset that [jobs].default_preset
   names, with steps, max_splats, refine_start_step, refine_every and sh_degree_interval taken from
-  the sizes, checked by the step's own read_settings.
+  the sizes, and any other [train] values the caller replaces, checked by the step's own
+  read_settings. The depth smoke check, splatpipe/depth/smoke.py, replaces normal_start_step
+  (depth-priors spec, Req 16.5); this check replaces nothing more.
 - smoke_scene (Req 12.2): the Smoke_Scene, a Sparse_Model and its images, with everything random
   drawn from one generator seeded with [train]'s seed. One PINHOLE camera, image_pixels square, is
   shared by train_images cameras on the circle of radius 1 in the x–z plane, each looking at the
@@ -71,19 +73,29 @@ class SmokeSizes:
     sh_degree_interval: int  # train_sh_degree_interval
 
 
-def smoke_settings(config: Config, sizes: SmokeSizes) -> tuple[str, TrainSettings]:
+def smoke_settings(config: Config, sizes: SmokeSizes,
+                   **overrides: object) -> tuple[str, TrainSettings]:
     """The Preset that [jobs].default_preset names, and the settings the check trains with
     (Req 12.3, A11).
 
     They're that Preset's [train] settings with steps, max_splats, refine_start_step,
     refine_every and sh_degree_interval replaced by the sizes, checked by the step's own
-    read_settings, so the check's numbers are checked as a Job's are.
+    read_settings, so the check's numbers are checked as a Job's are. Each of `overrides`
+    replaces one more [train] value, like the depth smoke check's normal_start_step
+    (depth-priors spec, Req 16.5). The training check passes none. A name that isn't a [train]
+    key is a bug in the caller, refused with ValueError, so a misspelt override never trains
+    with the Preset's value unnoticed.
     """
     preset = config.jobs().default_preset
     values = dict(config.step_settings(_STEP, preset))
+    unknown = sorted(name for name in overrides if name not in values)
+    if unknown:
+        raise ValueError(f"smoke_settings can't replace {', '.join(unknown)}: "
+                         f"[{_STEP}] has no such setting.")
     values.update(steps=sizes.steps, max_splats=sizes.splats,
                   refine_start_step=sizes.refine_start_step, refine_every=sizes.refine_every,
                   sh_degree_interval=sizes.sh_degree_interval)
+    values.update(overrides)
     settings = StepSettings(values, section=_STEP, preset=preset)
     return preset, read_settings(settings, _STEP, preset)
 

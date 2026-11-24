@@ -448,17 +448,31 @@ def test_the_train_section_names_the_prior_keys_and_counts_and_depth_names_the_s
 
 
 # The smoke test and cap deadline parts of ## Running a job in the cloud (training spec,
-# Req 12.13, 13.9, 13.11)
+# Req 12.13, 13.9, 13.11; depth-priors spec, Req 16.12, 17.5)
 
 CLOUD = "Running a job in the cloud"
+
+
+def smoke_part() -> str:
+    """The text of the ### The smoke test part in the ## Running a job in the cloud section."""
+    cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
+    return doc_part(cloud, 3, "The smoke test", f"The ## {CLOUD} section")
 
 
 def test_the_smoke_test_part_names_the_training_check_train_steps_and_cloud_smoke() -> None:
     """Training spec, Req 12.13, 13.11: the smoke test part lists the training check and says its
     numbers are in [cloud.smoke]."""
-    cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
-    smoke = doc_part(cloud, 3, "The smoke test", f"The ## {CLOUD} section")
+    smoke = smoke_part()
     phrases = ("training check", "`train_steps`", "`[cloud.smoke]`")
+    missing = [words for words in phrases if words not in smoke]
+    assert not missing, f"The part headed The smoke test should name {missing}"
+
+
+def test_the_smoke_test_part_names_the_depth_check_and_depth_normal_start_step() -> None:
+    """Depth-priors spec, Req 16.12, 17.5, 17.9: the smoke test part lists the depth check and says
+    its number, depth_normal_start_step, is in [cloud.smoke]."""
+    smoke = smoke_part()
+    phrases = ("depth check", "`depth_normal_start_step`", "`[cloud.smoke]`")
     missing = [words for words in phrases if words not in smoke]
     assert not missing, f"The part headed The smoke test should name {missing}"
 

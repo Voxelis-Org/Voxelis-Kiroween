@@ -12,14 +12,19 @@ the CPU with no network, no GPU and no AWS account, against the `FakeAws` seam (
 - The checks that need no GPU run here, with stand-ins for the tools: COLMAP, Node, splat-transform,
   the ffmpeg filter check and the MoGe-2 sha256. The Cloud_Runner check runs for real, on a tiny
   Fake_Step Job, when ffmpeg is installed, and is skipped when it isn't.
-- The GPU checks (torch, gsplat, fused-ssim and training) need the machine image's GPU packages, so
-  their bodies run only on the real machine. On a laptop without those packages, each fails on its
-  own and the smoke test goes on. The training check imports the GPU_Module through
-  `splatpipe.train.gpu_api.importlib`, which that test replaces with a stand-in that raises as a
-  machine with no torch does, so the check fails with the training spec's Req 2.2 message and no
-  test imports splatpipe/train/gpu.py.
+- The GPU checks (torch, gsplat, fused-ssim, depth and training) need the machine image's GPU
+  packages, so their bodies run only on the real machine. On a laptop without those packages, each
+  fails on its own and the smoke test goes on. The training check imports the GPU_Module through
+  `splatpipe.train.gpu_api.importlib`, and the depth check imports the Depth_GPU_Module through
+  `splatpipe.depth.gpu_api.importlib`. That test replaces each with a stand-in that raises as a
+  machine with no torch does, so the training check fails with the training spec's Req 2.2
+  message, the depth check with the depth-priors spec's Req 3.2 message, and no test imports
+  splatpipe/train/gpu.py or splatpipe/depth/gpu.py.
 - The training check also runs here whole, with `cloud.smoke_runner.load_gpu` patched to give a
   FakeGpu, the GPU_Stand_In, in place of the GPU_Module (training spec, Req 12.9, 14.10).
+- The depth check runs here whole too, with `cloud.smoke_runner.load_depth_gpu` patched to give a
+  FakeDepthGpu, the Depth_Stand_In, and `load_gpu` a FakeGpu, and the test config's
+  `moge_weights` pointing at a stand-in Weights_File (depth-priors spec, Req 16.10, 18.11).
 """
 
 from __future__ import annotations
@@ -35,11 +40,14 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import numpy as np
 import pytest
 
 import cloud.runner
 import cloud.smoke_runner
 from splatpipe.config import load_config
+from splatpipe.depth.gpu_api import MoGeOutput
+from splatpipe.depth.smoke import SMOKE_FRAME
 from splatpipe.run import StepEntry
 
 from cloud.errors import CloudError
@@ -48,6 +56,7 @@ from cloud.runner import CAP_DEADLINE_ENV
 from cloud.smoke import smoke_log_key, smoke_marker_key
 from cloud.smoke_runner import SMOKE_CHECKS, SmokeCheck, SmokeContext, run_smoke_test
 
+from conftest import FakeDepthGpu, FakeGpu
 from fake_aws import FakeAws, cloud_config
 
 IMAGE_ID = "ami-0123456789abcdef0"
@@ -235,11 +244,12 @@ def test_main_refuses_without_the_image_id(
 # The checks
 
 def test_the_smoke_checks_cover_the_image_in_order() -> None:
-    # The user's list, then training, the first of the GPU paths later specs add (Req 11.5;
-    # training spec, Req 12.1), just before the Cloud_Runner on a fake-step job, which stays last.
+    # The user's list, then the GPU paths later specs add (Req 11.5): the depth check, after the
+    # MoGe-2 weights it loads are checked (depth-priors spec, Req 16.1), and training (training
+    # spec, Req 12.1), just before the Cloud_Runner on a fake-step job, which stays last.
     assert [check.name for check in SMOKE_CHECKS] == [
         "torch-gpu", "gsplat", "fused-ssim", "ffmpeg-zscale", "colmap", "node",
-        "splat-transform", "moge-weights", "training", "cloud-runner"]
+        "splat-transform", "moge-weights", "depth", "training", "cloud-runner"]
 
 
 # What each tool prints for its version, as _run_command gives it back: stdout, a line break, then
@@ -330,13 +340,19 @@ def test_the_moge_check_passes_only_on_the_pinned_sha256(
 NO_TORCH = ("The train step runs only on the GPU machine image, which has torch, gsplat and "
             "fused-ssim, and this machine has no torch. Run the job there with "
             "`uv run python -m cloud.start`.")
+# load_depth_gpu's Readable_Error on a machine with no torch, as the depth-priors spec's Req 3.2
+# words it.
+NO_DEPTH_TORCH = ("The depth step runs only on a GPU machine image built with MoGe's code, and "
+                  "this machine has no torch. Rebuild the machine image with "
+                  "`uv run python -m cloud.image`, or run the job there with "
+                  "`uv run python -m cloud.start`.")
 
 
 class NoTorchImportlib:
-    """A stand-in for splatpipe.train.gpu_api's importlib, as the GPU interface's tests use one.
-    Its import_module records each name it's asked to import in `names`, then raises the
-    ModuleNotFoundError that importing the GPU_Module raises on a machine with no torch, so no
-    test imports splatpipe/train/gpu.py."""
+    """A stand-in for splatpipe.train.gpu_api's or splatpipe.depth.gpu_api's importlib, as the
+    GPU interfaces' tests use one. Its import_module records each name it's asked to import in
+    `names`, then raises the ModuleNotFoundError that importing either GPU module raises on a
+    machine with no torch, so no test imports splatpipe/train/gpu.py or splatpipe/depth/gpu.py."""
 
     def __init__(self) -> None:
         self.names: list[str] = []
@@ -351,21 +367,92 @@ class NoTorchImportlib:
                     reason="torch is installed here, so this isn't a machine without the GPU packages")
 def test_without_the_gpu_packages_each_gpu_check_fails_on_its_own(
         monkeypatch: pytest.MonkeyPatch) -> None:
-    stand_in = NoTorchImportlib()
-    monkeypatch.setattr("splatpipe.train.gpu_api.importlib", stand_in)
+    train_stand_in, depth_stand_in = NoTorchImportlib(), NoTorchImportlib()
+    monkeypatch.setattr("splatpipe.train.gpu_api.importlib", train_stand_in)
+    monkeypatch.setattr("splatpipe.depth.gpu_api.importlib", depth_stand_in)
     aws = FakeAws()
-    gpu = [CHECKS[name] for name in ("torch-gpu", "gsplat", "fused-ssim", "training")]
+    gpu = [CHECKS[name] for name in ("torch-gpu", "gsplat", "fused-ssim", "depth", "training")]
     assert smoke(aws, [*gpu, SmokeCheck("after", passing("fine"))], []) is False
     log = log_of(aws)
     for check in gpu:
         assert f"FAIL {check.name}" in log
     assert "ModuleNotFoundError" in log
-    # The training check asked the stand-in for the GPU_Module and failed with the Req 2.2
-    # message, as it is, and the check after it still ran.
-    assert stand_in.names == ["splatpipe.train.gpu"]
-    training = next(line for line in log.splitlines() if line.startswith("FAIL training "))
+    # The depth check asked its stand-in for the Depth_GPU_Module and failed with the depth-priors
+    # spec's Req 3.2 message, as it is, before it asked for the GPU_Module. The training check
+    # after it still ran: it asked its own stand-in for the GPU_Module and failed with the Req 2.2
+    # message, and the check after that still ran too.
+    assert depth_stand_in.names == ["splatpipe.depth.gpu"]
+    assert train_stand_in.names == ["splatpipe.train.gpu"]
+    lines = log.splitlines()
+    depth = next(line for line in lines if line.startswith("FAIL depth "))
+    assert depth.endswith(f": {NO_DEPTH_TORCH}")
+    training = next(line for line in lines if line.startswith("FAIL training "))
     assert training.endswith(f": {NO_TORCH}")
     assert "PASS after" in log
+
+
+# The pixels, (row, column), where smoke_moge_output finds no geometry, so the depth check's line
+# counts 4,096 − 3 = 4,093 Geometry_Pixels of the 64 x 64 made-up image.
+NO_GEOMETRY = ((0, 0), (17, 3), (63, 63))
+
+
+def smoke_moge_output(side: int) -> MoGeOutput:
+    """A MoGe_Output the depth check accepts for its `side` x `side` made-up image: depth 2 and the
+    normal (0, 0, −1) where the mask is true, and at the NO_GEOMETRY pixels a false mask with
+    MoGe's +inf depth and a 0 normal."""
+    depth = np.full((side, side), 2.0, dtype=np.float32)
+    normal = np.zeros((side, side, 3), dtype=np.float32)
+    normal[...] = (0.0, 0.0, -1.0)
+    mask = np.ones((side, side), dtype=bool)
+    for row, column in NO_GEOMETRY:
+        depth[row, column] = np.inf
+        normal[row, column] = 0.0
+        mask[row, column] = False
+    return MoGeOutput(depth=depth, normal=normal, mask=mask)
+
+
+def test_the_depth_check_runs_moge_then_trains_with_the_smoke_numbers_and_gives_its_line(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, set_depth: Callable[..., None]) -> None:
+    # The step's own machine check needs moge_weights to be a file, so the test config points it
+    # at a stand-in Weights_File outside the scratch folder, which FakeDepthGpu never reads.
+    weights = tmp_path / "weights" / "model.pt"
+    weights.parent.mkdir()
+    weights.write_bytes(b"a few bytes standing in for the weights")
+    set_depth(moge_weights=str(weights))
+    checks = cloud_config().smoke_checks
+    depth_gpu = FakeDepthGpu(outputs={SMOKE_FRAME: smoke_moge_output(checks.image_pixels)})
+    gpu = FakeGpu()
+    monkeypatch.setattr(cloud.smoke_runner, "load_depth_gpu", lambda: depth_gpu)
+    monkeypatch.setattr(cloud.smoke_runner, "load_gpu", lambda: gpu)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    detail = CHECKS["depth"].run(context_in(scratch))
+
+    assert detail == ("MoGe-2 found geometry at 4,093 of 4,096 pixels; trained 30 iterations with "
+                      "depth priors, from 133 back-projected and 200 sparse splats, to 333 splats, "
+                      "and the PLY check passed")
+    assert (scratch / "train.ply").is_file()  # in the check's own scratch folder
+    # MoGe-2 was loaded from moge_weights, ran once on the image_pixels square made-up image, and
+    # was released.
+    assert [name for name, _ in depth_gpu.calls] == ["probe", "import_moge", "load_model",
+                                                     "infer", "release"]
+    assert depth_gpu.calls[2] == ("load_model", (weights,))
+    _, rgb, _, _, _, frame = depth_gpu.calls[3][1]
+    assert (rgb.shape, frame) == ((checks.image_pixels, checks.image_pixels, 3), SMOKE_FRAME)
+    # The Trainer got the training check's [cloud.smoke] numbers with depth_normal_start_step as
+    # the Normal_Start, a Prior on every view and no Stop_Time.
+    assert [name for name, _ in gpu.calls] == ["probe", "nearest_distances", "train"]
+    scene, _, settings, stop = gpu.calls[-1][1]
+    assert stop is None
+    assert (len(scene.views), scene.width, scene.height) == (
+        checks.train_images, checks.image_pixels, checks.image_pixels)
+    assert all(view.prior is not None for view in scene.views)
+    assert (settings.steps, settings.max_splats, settings.refine_start_step,
+            settings.refine_every, settings.sh_degree_interval, settings.normal_start_step) == (
+        checks.train_steps, checks.train_splats, checks.train_refine_start_step,
+        checks.train_refine_every, checks.train_sh_degree_interval,
+        checks.depth_normal_start_step)
 
 
 def test_the_training_check_trains_with_the_smoke_numbers_and_gives_its_line(

@@ -62,6 +62,7 @@ class SmokeChecks:
     train_refine_start_step: int     # Iteration after which the training check's MCMC refines
     train_refine_every: int          # Iterations between the training check's refines
     train_sh_degree_interval: int    # Iterations between rises of the training check's SH degree
+    depth_normal_start_step: int     # Iteration at which the depth check's prior normal loss starts
 
 
 @dataclass(frozen=True)
@@ -245,6 +246,8 @@ def _read_smoke_checks(cloud: Mapping[str, object]) -> SmokeChecks:
         train_refine_start_step=_whole(table, "train_refine_start_step", label("train_refine_start_step")),
         train_refine_every=_whole(table, "train_refine_every", label("train_refine_every")),
         train_sh_degree_interval=_whole(table, "train_sh_degree_interval", label("train_sh_degree_interval")),
+        depth_normal_start_step=_whole_or_zero(table, "depth_normal_start_step",
+                                               label("depth_normal_start_step")),
     )
 
 
@@ -299,6 +302,16 @@ def _whole(table: Mapping[str, object], key: str, label: str) -> int:
         raise CloudError(
             f"In the [cloud] config, {label} is {_shown(value)}, but it must be a whole number "
             "above 0. Fix it in config.toml, then run the command again.")
+    return value
+
+
+def _whole_or_zero(table: Mapping[str, object], key: str, label: str) -> int:
+    """A whole number of 0 or more for `key`. A bool or a float is refused."""
+    value = _get(table, key, label)
+    if type(value) is not int or value < 0:
+        raise CloudError(
+            f"In the [cloud] config, {label} is {_shown(value)}, but it must be a whole number "
+            "of 0 or more. Fix it in config.toml, then run the command again.")
     return value
 
 

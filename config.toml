@@ -225,6 +225,8 @@ train_refine_start_step = 10
 train_refine_every = 10
 # Iterations between each rise of the smoke training's spherical harmonics degree.
 train_sh_degree_interval = 5
+# Iteration at which the depth check's prior normal loss starts, so every prior loss runs within train_steps.
+depth_normal_start_step = 8
 [cloud.image]
 # Expected run time in minutes, for the money quote.
 expected_minutes = 75
