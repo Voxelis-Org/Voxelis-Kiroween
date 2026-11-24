@@ -1,11 +1,13 @@
 """Tests for the Cameras_Step in splatpipe/cameras/, run through splatpipe.cameras.run or through
-its CLI's main, so the Step_Runner runs it and writes its real report.
+its CLI's main, so the Step_Runner runs it and writes its real report, and in the last test
+through run_job, the Job_Runner, after the Frames_Step.
 
-Each test makes its Job with cameras_job from tests/conftest.py, in the temporary Jobs_Folder: 8
-Picks of 16 × 12 pixels, with the Mask, mask.png, when the test asks for it. The Job's Preset is
-fast. A FakeColmap from fake_colmap stands in for every COLMAP_Command, and the step finds it
-through its TOOLS, so no test needs COLMAP (Req 16.5). The test config's [cameras] is the real
-config's with min_placed_frames at 1, so 8 Picks need max(1, 0.5 × 8) = 4 Placed_Frames.
+Each test but the last makes its Job with cameras_job from tests/conftest.py, in the temporary
+Jobs_Folder: 8 Picks of 16 × 12 pixels, with the Mask, mask.png, when the test asks for it. The
+Job's Preset is fast. A FakeColmap from fake_colmap stands in for every COLMAP_Command, and the
+step finds it through its TOOLS, so no test needs COLMAP (Req 16.5). The test config's [cameras]
+is the real config's with min_placed_frames at 1, so 8 Picks need max(1, 0.5 × 8) = 4
+Placed_Frames.
 
 By default the Calibration works and each mapper writes one Model that places all 8 Picks, with
 an OPENCV camera at the Pick_Size and the fake's 4 points. The fake image_undistorter turns that
@@ -36,6 +38,19 @@ each run failed with an ExpectedFailure, so the report's error.expected is true,
 Readable_Error holds no traceback (Req 14.10, 16.9). A test that needs an earlier run's
 out/cameras.json writes one first, and one test puts a runner around the FakeColmap, as
 edit_models does, that looks for that file as each COLMAP_Command starts.
+
+The last test runs the real Step_List through run_job, so the Frames_Step makes work/frames/
+itself. Its Job comes from new_job, as in tests/test_frames_step.py, with a video of a few bytes
+that nothing reads, because a FakeTools from fake_tools stands in for ffprobe, ffmpeg's filter
+check and the ffmpeg decode. FakeTools gives the video's 20 frames, 0.5 s apart from 0 s: frame k
+is a checkerboard of 25 + 10k ± 20, with the 2 rows of 3 pixels at the bottom right at 0 in every
+frame, a corner stuck to the camera. set_frames sets score_width to 8 and long_edge to 16, so the
+Picks are 16 × 12, like a cameras_job Job's, and bigger than the 3 × 3 pixels that the fake
+image_undistorter needs. Every frame moves, and the test config asks for a Pick every 2 s of
+the video's 10 s, so the Frames_Step makes 5 Picks, and the corner's 6 stuck pixels, 0.125 of the
+frame, make it use the Mask. 5 Picks need 3 Placed_Frames, at least half of them, and the
+FakeColmap's global mapper places all 5 in its one Model, where its default of 8 would be more
+Picks than there are.
 
 The tests check:
 
@@ -86,6 +101,11 @@ The tests check:
   (Req 16.9).
 - splatpipe.cameras.__main__.main prints cameras: done on stdout and gives 0 for a done run, and
   gives 1 for a failed one, with its Readable_Error on stderr and no traceback (Req 14.2).
+- run_job with the real Step_List runs the Frames_Step and then the Cameras_Step, and the Job is
+  done once both steps are. work/frames/ then holds the frames spec's layout, mask.png included,
+  and work/cameras/ the design's, with masks/, a Training_Image and a Training_Mask for each of
+  the 5 Placed_Frames and the three Model_Files, and out/cameras.json lists the 5 Placed_Frames
+  (Req 14.4).
 """
 
 import errno
@@ -103,9 +123,9 @@ import cv2
 import numpy as np
 import pytest
 
-# The stand-in for COLMAP, the options of options.md as the oracle sorts them, and the fake
-# mappers' points.
-from conftest import WALK_POINTS, ColmapOption, FakeColmap
+# The stand-ins for COLMAP and for the Frames_Step's tools, the options of options.md as the
+# oracle sorts them, and the fake mappers' points.
+from conftest import WALK_POINTS, ColmapOption, FakeColmap, FakeTools
 from splatpipe import cameras
 from splatpipe.cameras import Tools
 from splatpipe.cameras.__main__ import main as cameras_main
@@ -113,8 +133,10 @@ from splatpipe.cameras.colmap import ColmapRun, RunResult
 from splatpipe.cameras.model import (CAMERA_MODELS, FILES, NO_ERROR, Image, Model, Points,
                                      read_images, read_model, write_model)
 from splatpipe.config import PRESETS, REPO_ROOT, load_config
+from splatpipe.frames.ffmpeg import VideoInfo
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json, write_json
+from splatpipe.run import run_job
 
 # The runs of a done run, by their names, which are also the names of their timings and of their
 # Command_Logs.
@@ -988,3 +1010,66 @@ def test_the_cli_prints_the_readable_error_on_stderr_and_gives_1_when_the_step_f
     assert (report["error"]["expected"], report["error"]["readable"]) == (True, NOT_INSTALLED)
     assert (captured.out, captured.err) == ("", report["error"]["readable"] + "\n")
     assert "Traceback" not in captured.err
+
+
+# Both steps through the Job_Runner (Req 14.4)
+
+# The Job's video as FakeTools' probe gives it to the Frames_Step: its first video stream that
+# isn't cover art, at index 0, 640 × 480, with no colour transfer, so no Tone_Map.
+VIDEO = VideoInfo(stream_index=0, width=640, height=480, colour_transfer=None)
+# The [frames] settings for set_frames that make the Frames_Step's Score_Frames 8 × 6 and its
+# Picks 16 × 12, a cameras_job Job's Pick_Size.
+TINY_FRAMES = {"score_width": 8, "long_edge": 16}
+SCORE_SHAPE = (6, 8)  # a Score_Frame's rows and columns, the size of each frame FakeTools gives
+VIDEO_PICKS = 5  # the Picks the Frames_Step makes of the video's frames
+
+
+def video_frames() -> list[tuple[float, np.ndarray]]:
+    """The video's 20 frames, as FakeTools takes them: 0.5 s apart from 0 s, each 6 rows of 8
+    pixels. Frame k is a checkerboard of 25 + 10k ± 20, so every frame moves, with the 2 rows of 3
+    pixels at the bottom right at 0 in every frame, a corner stuck to the camera."""
+    rows, columns = np.indices(SCORE_SHAPE)
+    checkerboard = np.where((rows + columns) % 2 == 0, 20, -20)
+    stuck = (rows >= 4) & (columns >= 5)
+    return [(k * 0.5, np.where(stuck, 0, 25 + 10 * k + checkerboard).astype(np.uint8))
+            for k in range(20)]
+
+
+def test_run_job_runs_the_frames_step_then_the_cameras_step_and_the_job_is_done(
+        new_job: Callable[..., str], set_frames: Callable[..., None],
+        fake_tools: type[FakeTools], fake_colmap: type[FakeColmap]) -> None:
+    job_id = new_job()  # with no work/frames/, which the Frames_Step makes
+    set_frames(**TINY_FRAMES)
+    fake_tools(VIDEO, video_frames())
+    # The global mapper's one Model places every Pick, so the Placed_Check passes.
+    fake_colmap(global_models=(VIDEO_PICKS,))
+    # The Job_Runner with the real Step_List: the Frames_Step, then the Cameras_Step. The Job is
+    # done once both steps are (Req 14.4).
+    summary = run_job(job_id)
+    assert summary["status"] == "done", summary["readable_error"]
+    assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
+        ("frames", "done"), ("cameras", "done")]
+    folder = folder_of(job_id)
+    names = pick_names(range(VIDEO_PICKS))
+    # work/frames/ as the frames spec lays it out: each Pick in images/ and its Grey_Copy in grey/
+    # under the same name, frames.json, and mask.png, because the stuck corner makes the
+    # Frames_Step use the Mask.
+    frames = folder / "work" / "frames"
+    record = read_json(frames / "frames.json")
+    assert record["mask_used"] is True
+    assert [pick["file"] for pick in record["picks"]] == names
+    assert names_in(frames) == sorted(["images", "grey", "frames.json", "mask.png"])
+    assert names_in(frames / "images") == names
+    assert names_in(frames / "grey") == names
+    # work/cameras/ as the design lays it out, with masks/ for the Mask: a Training_Image and a
+    # Training_Mask for each of the 5 Placed_Frames, and exactly the three Model_Files in sparse/
+    # (Req 10.5, 11.1 to 11.5).
+    work = folder / "work" / "cameras"
+    assert names_in(work) == work_layout(mask=True)
+    assert names_in(work / "colmap") == colmap_layout(mask=True)
+    assert names_in(work / "images") == names
+    assert names_in(work / "masks") == mask_names(names)
+    assert names_in(work / "sparse") == sorted(FILES)
+    # out/cameras.json, the Viewer_Cameras, lists the 5 Placed_Frames in Pick_Number order.
+    viewer = read_json(folder / "out" / "cameras.json")
+    assert [frame["name"] for frame in viewer["frames"]] == names

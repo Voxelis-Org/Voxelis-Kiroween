@@ -74,8 +74,9 @@ tests/test_frames_ffmpeg.py (Req 13.5). Each makes its clip in tmp_path with ffm
 a second and 64 × 48, smaller than the test config's long_edge of 1600. The first clip is lavfi's
 testsrc, 3 s long. The second, the ramp, is 2 s long, and its frame k is flat grey at a
 brightness of 16 + 10k, from 16 to 206, so neighbouring frames are 10 apart. The ramp's test runs
-the Job through run_job with the real Step_List, whose only entry is the Frames_Step, so the Job
-is done once the step is (Req 11.4). The runs that make the clips have a limit of 60 s, and the
+the Job through run_job with the Step_List's frames entry alone, so it still checks the
+Frames_Step on its own, and the Job is done once the step is (Req 11.4, and cameras spec,
+Req 14.6). The runs that make the clips have a limit of 60 s, and the
 step's own ffprobe and ffmpeg runs take the test config's limits, also 60 s (Req 13.11). make_job
 would refuse either clip, which is bigger than the test config's max_video_bytes of 1024, so each
 test makes the Job with new_job and then copies its clip over the Job's input/video.mp4. The step
@@ -104,7 +105,7 @@ from splatpipe.frames.__main__ import main as frames_main
 from splatpipe.frames.ffmpeg import DecodePlan, ToneMap, VideoInfo, decode, decode_command
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json
-from splatpipe.run import run_job
+from splatpipe.run import STEP_LIST, run_job
 
 # A Frame_Time in seconds and its picture, as FakeTools takes them.
 Pair = tuple[float, np.ndarray]
@@ -903,9 +904,10 @@ def make_ramp_clip(folder: Path) -> Path:
 def test_run_job_with_the_real_ffmpeg_is_done_and_each_colour_pick_shows_the_frame_its_entry_names(
         new_job: Callable[..., str], tmp_path: Path) -> None:
     job_id = real_job(new_job, make_ramp_clip(tmp_path))
-    # The Job_Runner with the real Step_List, whose only entry is the Frames_Step, and the real
-    # TOOLS, so ffprobe and ffmpeg read the ramp. The Job is done once the step is (Req 11.4).
-    summary = run_job(job_id)
+    # The Job_Runner with the Step_List's frames entry alone, so the test still checks the
+    # Frames_Step on its own, and with the real TOOLS, so ffprobe and ffmpeg read the ramp.
+    # The Job is done once the step is (Req 11.4, and cameras spec, Req 14.6).
+    summary = run_job(job_id, steps=[entry for entry in STEP_LIST if entry.name == "frames"])
     assert summary["status"] == "done", summary["readable_error"]
     record = record_of(job_id)
     picks = record["picks"]

@@ -242,8 +242,9 @@ def test_importing_splatpipe_run_loads_only_skeleton_modules() -> None:
 
 
 def test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section() -> None:
-    """The Frames_Step is the first entry, so this loads [frames] from the real config for each
-    of the three Presets (frames spec, Req 11.7)."""
+    """The Frames_Step is the first entry and the Cameras_Step is the second, so this loads
+    [frames] and [cameras] from the real config for each of the three Presets (frames spec,
+    Req 11.7, and cameras spec, Req 14.7)."""
     config = load_config(REAL_CONFIG)
     for entry in STEP_LIST:
         assert check_step_name(entry.name) == entry.name

@@ -44,10 +44,12 @@ class StepEntry:
     required: bool  # a Required_Step's failure fails the Job, an Optional_Step's doesn't
 
 
-# The Step_List. The Frames_Step is its first entry, and each later step spec adds its own entry
-# after it, in order (Req 8.2, and frames spec, D1, Req 11.3). The Fake_Step stays out, so it
-# never runs on real Jobs, and tests that run it pass their own list.
-STEP_LIST: tuple[StepEntry, ...] = (StepEntry("frames", "splatpipe.frames", True),)
+# The Step_List. The Frames_Step is its first entry and the Cameras_Step is its second. Each
+# later step spec adds its own entry after the Cameras_Step, in order (Req 8.2, frames spec, D1,
+# Req 11.3, and cameras spec, D1, Req 14.3). The Fake_Step stays out, so it never runs on real
+# Jobs, and tests that run it pass their own list.
+STEP_LIST: tuple[StepEntry, ...] = (StepEntry("frames", "splatpipe.frames", True),
+                                    StepEntry("cameras", "splatpipe.cameras", True))
 
 
 @dataclass(frozen=True)

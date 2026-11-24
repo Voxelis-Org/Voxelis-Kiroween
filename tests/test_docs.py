@@ -148,21 +148,24 @@ def test_the_pipeline_doc_starts_with_the_skeleton_headings() -> None:
 
 
 def test_the_pipeline_doc_has_a_step_section_for_the_fake_step_and_every_listed_step() -> None:
-    """Req 13.2, 13.3. Frames spec, Req 11.8: with frames in the Step_List, this finds ## Step: frames."""
+    """Req 13.2, 13.3. Frames spec, Req 11.8, and cameras spec, Req 14.8: with frames and cameras in
+    the Step_List, this finds ## Step: frames and ## Step: cameras."""
     parts = pipeline_parts()
     for name in ("fake", *(entry.name for entry in STEP_LIST)):
         doc_part(parts, 2, f"Step: {name}")
 
 
-def test_the_step_list_part_names_the_frames_step_as_the_first_required_entry() -> None:
-    """Frames spec, Req 12.5."""
+def test_the_step_list_part_names_the_frames_and_cameras_steps_as_required_entries() -> None:
+    """Cameras spec, Req 14.8, 15.7. The words that named the camera solve spec are gone, and so
+    are the empty list's words (frames spec, Req 12.5)."""
     step_list = doc_part(pipeline_parts(), 2, "The step list")
-    phrases = ("The list holds the frames step as its first, required entry",
-               "Each later step spec adds its own entry after the frames step",
-               "Until the camera solve spec adds its entry, a job is done once the frames step is done")
+    phrases = ("The list holds the frames step and then the cameras step, both required",
+               "Each later step spec adds its own entry after the cameras step",
+               "Until the training spec adds its entry, a job is done once the cameras step is done")
     missing = [words for words in phrases if words not in step_list]
     assert not missing, f"The part headed The step list should say {missing}"
-    gone = ("The list starts empty", "No steps are set up yet")
+    gone = ("Until the camera solve spec adds its entry", "The list starts empty",
+            "No steps are set up yet")
     left = [words for words in gone if words in step_list]
     assert not left, f"The part headed The step list should no longer say {left}"
 

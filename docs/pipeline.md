@@ -148,7 +148,7 @@ A step name has lowercase ASCII letters, digits and underscores, and starts with
 
 The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner runs, in order. Each entry is a `StepEntry(name, module, required)`. When a required step fails, the job fails. When an optional step fails, the job goes on without it. The fake step isn't in the list, so it never runs on real jobs. The tests pass their own lists.
 
-The list holds the frames step as its first, required entry: `StepEntry("frames", "splatpipe.frames", True)`. Each later step spec adds its own entry after the frames step. Until the camera solve spec adds its entry, a job is done once the frames step is done. The planned steps are:
+The list holds the frames step and then the cameras step, both required: `StepEntry("frames", "splatpipe.frames", True)` and `StepEntry("cameras", "splatpipe.cameras", True)`. Each later step spec adds its own entry after the cameras step. Until the training spec adds its entry, a job is done once the cameras step is done. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
 - Optional steps: depth priors and clean and export.

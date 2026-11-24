@@ -308,7 +308,13 @@ Note for the design: ffmpeg can give two frames the same timestamp. The design s
 1. THE Frames_Step SHALL be a package `splatpipe/frames/` built like the Fake_Step: `work(step)`, `run(job_id, preset=None, *, config=None)` and a `__main__.py` whose `main(argv)` calls the Skeleton's `step_main`.
 2. THE CLI `uv run python -m splatpipe.frames --job <id> [--preset P]` SHALL run the step on one Job, print `frames: done` on standard output and exit with 0 when the step is done, and print the Readable_Error on standard error with no traceback and exit with 1 when the step failed.
 3. THE Step_List in `splatpipe/run.py` SHALL be `(StepEntry("frames", "splatpipe.frames", True),)`, with the Step_List's comment saying that the Frames_Step is the first entry and that each later step spec adds the spec's own entry after it, in order (D1).
+
+   Note: The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it.
+
 4. WHILE the Frames_Step is the only entry in the Step_List, THE Job_Runner SHALL give a Job the Job_Status `done` once the Frames_Step is done (D1).
+
+   Note: The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it.
+
 5. IF a caller gives the Job_Runner an empty Step_List, THEN THE Job_Runner SHALL still refuse with the Readable_Error that starts "No steps are set up yet", before the Job_Runner writes anything (D1).
 6. THE `tests/test_run.py` SHALL change in the same task as the Step_List: the test that asserted `STEP_LIST == ()` SHALL assert the Step_List of criterion 3, the test that ran the default Step_List with `steps=None` and the CLI test that expected "No steps are set up yet" SHALL set the Step_List to empty for that test, and the test that runs `python -m splatpipe.run --job ../x` SHALL expect "That isn't a job id." (D1).
 7. THE `tests/test_imports.py` SHALL load `[frames]` from the real Config for each of the three Presets through the existing Step_List check, with the check's docstrings no longer saying the Step_List starts empty (D1).
@@ -330,6 +336,9 @@ Note for the design: ffmpeg can give two frames the same timestamp. The design s
 3. THE `### What it writes` part SHALL give the Work_Folder's layout and the Frames_Record's fields as the contract the Camera_Solve_Step reads, say that only matching uses the Grey_Copies, and say that COLMAP takes the Mask as `--ImageReader.camera_mask_path` and the training loss reads the same file (D3).
 4. THE Frames_Step's section SHALL state the Machine_Needs, at least 16 vCPUs and 16 GB of memory on the Job's cloud machine, and say that the step itself never checks the machine (D4).
 5. THE Pipeline_Doc's "The step list" section SHALL say that the Step_List holds the Frames_Step as the Step_List's first, required entry, that each later step spec adds the spec's own entry after it, and that a Job is done after the Frames_Step alone until the camera solve spec adds the camera solve's entry, in place of the paragraph that says the list starts empty (D1).
+
+   Note: The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it.
+
 6. THE Licence_List SHALL mark numpy and `opencv-python-headless` as installed and keep scipy's row at "Not yet", and the ffmpeg row SHALL say that ffmpeg decodes the frames of the Used_Part and tone maps HDR video with `zscale` and `tonemap` when the ffmpeg build has both filters, in the same task that adds the dependencies.
 7. THE Licence_List SHALL gain a line for zimg (libzimg, WTFPL), which ffmpeg's `zscale` filter needs, only after Samarth has OKed the licence, and the task that builds the Tone_Map SHALL stop for Samarth's answer, because the review left O1 open (O1).
 8. THE Frames_Step's section SHALL say that the Job's machine image needs ffmpeg and ffprobe 5.1 or newer, because the Frames_Step uses ffmpeg's `-fps_mode` option, and that Ubuntu 24.04's packaged ffmpeg, version 6.1, is new enough (D5).
