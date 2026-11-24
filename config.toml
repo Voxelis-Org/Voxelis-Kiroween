@@ -494,7 +494,7 @@ global_mapper_gp_max_num_iterations = 100
 global_mapper_ba_refine_focal_length = true
 # --GlobalMapper.ba_refine_principal_point: bundle adjustment refines the principal point.
 global_mapper_ba_refine_principal_point = false
-# --GlobalMapper.ba_refine_extra_params: bundle adjustment refines the distortion. Keep it true for the undistortion.
+# --GlobalMapper.ba_refine_extra_params: bundle adjustment refines the distortion. Must be true: the undistortion needs it.
 global_mapper_ba_refine_extra_params = true
 # --GlobalMapper.refine_sensor_from_rig: refine each camera's place in its rig. Each pick is its own frame.
 global_mapper_refine_sensor_from_rig = true
@@ -572,7 +572,7 @@ mapper_max_extra_param = 1.0
 mapper_ba_refine_focal_length = true
 # --Mapper.ba_refine_principal_point: bundle adjustment refines the principal point.
 mapper_ba_refine_principal_point = false
-# --Mapper.ba_refine_extra_params: bundle adjustment refines the distortion. Keep it true for the undistortion.
+# --Mapper.ba_refine_extra_params: bundle adjustment refines the distortion. Must be true: the undistortion needs it.
 mapper_ba_refine_extra_params = true
 # --Mapper.ba_refine_sensor_from_rig: refine each camera's place in its rig. Each pick is its own frame.
 mapper_ba_refine_sensor_from_rig = true

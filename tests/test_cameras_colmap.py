@@ -28,7 +28,8 @@ as it is (Req 2.4). format_value and fisheye_start get the design's examples.
 
 Property 1 draws with Hypothesis any settings that read_settings accepts: every key of [cameras]
 and the Preset's near_overlap, each from its Range in the design's "The settings checks", which
-this file writes out rather than reading settings.py. Whole numbers often take their range's
+this file writes out rather than reading settings.py, so the two ba_refine_extra_params keys are
+always true (D20). Whole numbers often take their range's
 ends, 2147483647 among them. Decimals are TOML floats or TOML integers, and often take -0.0,
 5e-324, 1e-300, 1e300 and the largest float wherever their range holds them. The two settings of
 each cross check are put in order. It also draws mask_used and a Pick_Size from 1 × 1 to
@@ -346,6 +347,7 @@ def number(low: int, high: int | None = None, *, above: bool = False,
 
 # The Ranges of the design's "The settings checks", each drawing the values it allows.
 BOOL = st.booleans()
+TRUE = st.just(True)  # the two ba_refine_extra_params keys accept only true (Req 12.16, D20)
 WHOLE_MINUS_1_OR_ABOVE_0 = st.just(-1) | whole(1)
 WHOLE_MINUS_1_OR_MORE = whole(-1)
 WHOLE_0_OR_MORE = whole(0)
@@ -362,7 +364,8 @@ ABOVE_0_AT_MOST_360 = number(0, 360, above=True)
 ABOVE_0_BELOW_90 = number(0, 90, above=True, below=True)
 
 # The design's table of the Option_Keys, row by row: each Range with its keys. The bools are the
-# keys whose value in the design's [cameras] block is true or false.
+# keys whose value in the design's [cameras] block is true or false, but the two
+# ba_refine_extra_params keys, which are always true.
 OPTION_ROWS: tuple[tuple[st.SearchStrategy[Any], tuple[str, ...]], ...] = (
     (BOOL, (
         "sift_extraction_estimate_affine_shape", "sift_extraction_upright",
@@ -382,17 +385,18 @@ OPTION_ROWS: tuple[tuple[st.SearchStrategy[Any], tuple[str, ...]], ...] = (
         "global_mapper_skip_retriangulation", "global_mapper_gp_optimize_positions",
         "global_mapper_gp_optimize_points", "global_mapper_gp_optimize_scales",
         "global_mapper_ba_refine_focal_length", "global_mapper_ba_refine_principal_point",
-        "global_mapper_ba_refine_extra_params", "global_mapper_refine_sensor_from_rig",
+        "global_mapper_refine_sensor_from_rig",
         "global_mapper_ba_refine_rig_from_world", "global_mapper_ba_refine_points3d",
         "global_mapper_ba_skip_fixed_rotation_stage",
         "global_mapper_ba_skip_joint_optimization_stage", "global_mapper_ra_use_gravity",
         "global_mapper_ra_use_stratified", "mapper_ignore_watermarks", "mapper_multiple_models",
         "mapper_structure_less_registration_fallback", "mapper_structure_less_registration_only",
         "mapper_extract_colors", "mapper_ba_refine_focal_length",
-        "mapper_ba_refine_principal_point", "mapper_ba_refine_extra_params",
+        "mapper_ba_refine_principal_point",
         "mapper_ba_refine_sensor_from_rig", "mapper_fix_existing_frames",
         "mapper_ba_global_ignore_redundant_points3d", "mapper_tri_ignore_two_view_tracks",
     )),
+    (TRUE, ("mapper_ba_refine_extra_params", "global_mapper_ba_refine_extra_params")),
     (WHOLE_MINUS_1_OR_ABOVE_0, (
         "feature_extraction_num_threads", "feature_matching_num_threads",
         "global_mapper_num_threads", "mapper_num_threads", "undistortion_num_threads",

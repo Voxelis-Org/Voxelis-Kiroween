@@ -4,8 +4,8 @@ splatpipe/cameras/settings.py.
 The real config is read by path, because tests/conftest.py points CONFIG_PATH at a test config.
 Its Option_Keys are checked against .kiro/skills/colmap-cli/references/options.md through the
 colmap_options oracle, which parses options.md with its own code. The comment check in
-tests/test_config.py reads every key of the real config, [cameras] included, so no test here
-checks the comments.
+tests/test_config.py reads every key of the real config, [cameras] included, so the only
+comments checked here are the two refine keys', which must say the keys stay true.
 
 The kinds and ranges of the design's "The settings checks" are written out here, not read from
 settings.py. Every key of [cameras] and its Preset tables gets values of other kinds and values
@@ -110,6 +110,9 @@ def below(bound: float) -> float:
 
 # A TOML bool, which refuses an int and text.
 BOOL = Kind("bool", wrong=(1, "true"), edges=(True, False))
+# A TOML bool that is true. It refuses an int and text, then false, the one bool outside its
+# range (Req 12.16).
+TRUE_ONLY = Kind("bool", wrong=(1, "true", False), edges=(True,))
 # The whole numbers. Each refuses a bool, a float and text, then the values just outside its
 # range, and 2147483648, which doesn't fit a 32-bit int.
 WHOLE_MINUS_1_OR_ABOVE_0 = Kind("whole", wrong=(True, 2.0, "2", -2, 0, TOO_BIG),
@@ -138,8 +141,19 @@ def names(*known: str, unknown: str) -> Kind:
     return Kind("name", wrong=(1, unknown), edges=known)
 
 
+# The two keys that must stay true, each with its COLMAP option (Req 12.16, D20).
+TRUE_ONLY_KEYS = {
+    "global_mapper_ba_refine_extra_params": "--GlobalMapper.ba_refine_extra_params",
+    "mapper_ba_refine_extra_params": "--Mapper.ba_refine_extra_params",
+}
+# The reason of Req 12.16 that their refusal gives, as the design writes it.
+REFINE_REASON = ("Bundle adjustment has to refine the distortion: with it off, the distortion "
+                 "stays 0, COLMAP's undistorter keeps the camera's own model and copies the "
+                 "picks unwarped, and the step can't hand the train step a PINHOLE camera.")
+
 # The design's table of the Option_Keys, row by row: each kind and range with its keys. The
-# bools are the keys whose value in the design's [cameras] block is true or false.
+# bools are the keys whose value in the design's [cameras] block is true or false, but the two
+# that must stay true.
 OPTION_ROWS: tuple[tuple[Kind, tuple[str, ...]], ...] = (
     (BOOL, (
         "sift_extraction_estimate_affine_shape", "sift_extraction_upright",
@@ -159,17 +173,18 @@ OPTION_ROWS: tuple[tuple[Kind, tuple[str, ...]], ...] = (
         "global_mapper_skip_retriangulation", "global_mapper_gp_optimize_positions",
         "global_mapper_gp_optimize_points", "global_mapper_gp_optimize_scales",
         "global_mapper_ba_refine_focal_length", "global_mapper_ba_refine_principal_point",
-        "global_mapper_ba_refine_extra_params", "global_mapper_refine_sensor_from_rig",
-        "global_mapper_ba_refine_rig_from_world", "global_mapper_ba_refine_points3d",
+        "global_mapper_refine_sensor_from_rig", "global_mapper_ba_refine_rig_from_world",
+        "global_mapper_ba_refine_points3d",
         "global_mapper_ba_skip_fixed_rotation_stage",
         "global_mapper_ba_skip_joint_optimization_stage", "global_mapper_ra_use_gravity",
         "global_mapper_ra_use_stratified", "mapper_ignore_watermarks", "mapper_multiple_models",
         "mapper_structure_less_registration_fallback", "mapper_structure_less_registration_only",
         "mapper_extract_colors", "mapper_ba_refine_focal_length",
-        "mapper_ba_refine_principal_point", "mapper_ba_refine_extra_params",
-        "mapper_ba_refine_sensor_from_rig", "mapper_fix_existing_frames",
-        "mapper_ba_global_ignore_redundant_points3d", "mapper_tri_ignore_two_view_tracks",
+        "mapper_ba_refine_principal_point", "mapper_ba_refine_sensor_from_rig",
+        "mapper_fix_existing_frames", "mapper_ba_global_ignore_redundant_points3d",
+        "mapper_tri_ignore_two_view_tracks",
     )),
+    (TRUE_ONLY, tuple(TRUE_ONLY_KEYS)),
     (WHOLE_MINUS_1_OR_ABOVE_0, (
         "feature_extraction_num_threads", "feature_matching_num_threads",
         "global_mapper_num_threads", "mapper_num_threads", "undistortion_num_threads",
@@ -402,6 +417,18 @@ def test_the_real_cameras_section_holds_the_designs_values_for_the_other_setting
     assert shared["undistortion_blank_pixels"] == 0  # Req 8.6
 
 
+@pytest.mark.parametrize(("key", "option"), list(TRUE_ONLY_KEYS.items()))
+def test_the_real_config_holds_true_in_each_refine_key_with_a_comment_saying_it_must_stay_true(
+        key: str, option: str) -> None:
+    assert real_shared()[key] is True
+    lines = REAL_CONFIG.read_text(encoding="utf-8").splitlines()
+    at = [number for number, line in enumerate(lines) if line.partition("=")[0].strip() == key]
+    assert len(at) == 1
+    comment = lines[at[0] - 1]  # the comment right above the key
+    assert comment.startswith(f"# {option}: ")
+    assert "Must be true" in comment
+
+
 @pytest.mark.parametrize("preset", PRESET_NAMES)
 def test_the_real_cameras_section_loads_for_each_preset(preset: str) -> None:
     settings = load_config(REAL_CONFIG).step_settings("cameras", preset)
@@ -430,6 +457,16 @@ def test_a_refusal_reads_as_the_designs_example() -> None:
         "The setting sift_extraction_max_num_features in [cameras] (COLMAP's "
         "--SiftExtraction.max_num_features) is 0, but it must be a whole number above 0. Change "
         "it to a whole number above 0.")
+
+
+@pytest.mark.parametrize(("key", "option"), list(TRUE_ONLY_KEYS.items()))
+def test_a_refine_key_set_to_false_is_refused_with_its_reason_and_true_passes(
+        key: str, option: str) -> None:
+    message = refusal(cameras_settings(**{key: False}))
+    assert message == (f"The setting {key} in [cameras] (COLMAP's {option}) is false, but it "
+                       f"must be true. Change it to true. {REFINE_REASON}")  # Req 12.16
+    assert "Traceback" not in message  # Req 16.9
+    assert read(cameras_settings(**{key: True})).options[key] is True
 
 
 EDGES = [pytest.param(key, value, id=f"{key} {value!r}")

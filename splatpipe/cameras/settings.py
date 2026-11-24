@@ -43,11 +43,13 @@ _INT_MAX = 2**31 - 1
 
 @dataclass(frozen=True)
 class Range:
-    """What a setting must be: one kind of TOML value, and a range within that kind."""
+    """What a setting must be: one kind of TOML value, and a range within that kind, with the
+    sentence its refusal adds after "Change it to ...", if any."""
 
     kind: Literal["bool", "whole", "number", "name"]
     wanted: str  # for the messages, like "a whole number above 0"
     test: Callable[[Any], bool]  # the range, on a value already of the kind
+    why: str = ""  # a sentence after the refusal, for the true-only Range (C22)
 
     def accepts(self, value: object) -> bool:
         """Whether `value` is of the kind and passes the test.
@@ -110,6 +112,12 @@ def _keys(commands: tuple[str, ...], rows: tuple[tuple[str, str, Range], ...]
 
 # The Ranges of "The settings checks" in the design, each with the words its refusal uses.
 _BOOL = Range("bool", "true or false", lambda v: True)
+# The two ba_refine_extra_params keys must stay true, and the refusal says why (Req 12.16, D20).
+_TRUE_ONLY = Range("bool", "true", lambda v: v is True,
+                   why="Bundle adjustment has to refine the distortion: with it off, the "
+                       "distortion stays 0, COLMAP's undistorter keeps the camera's own model "
+                       "and copies the picks unwarped, and the step can't hand the train step a "
+                       "PINHOLE camera.")
 _WHOLE_MINUS_ONE_OR_ABOVE_ZERO = Range("whole", "a whole number: -1, or above 0",
                                        lambda v: v == -1 or v > 0)
 _WHOLE_MINUS_ONE_OR_MORE = Range("whole", "a whole number of -1 or more", lambda v: v >= -1)
@@ -254,7 +262,8 @@ _GLOBAL_MAPPER = (
      _WHOLE_ABOVE_ZERO),
     ("global_mapper_ba_refine_focal_length", "--GlobalMapper.ba_refine_focal_length", _BOOL),
     ("global_mapper_ba_refine_principal_point", "--GlobalMapper.ba_refine_principal_point", _BOOL),
-    ("global_mapper_ba_refine_extra_params", "--GlobalMapper.ba_refine_extra_params", _BOOL),
+    ("global_mapper_ba_refine_extra_params", "--GlobalMapper.ba_refine_extra_params",
+     _TRUE_ONLY),
     ("global_mapper_refine_sensor_from_rig", "--GlobalMapper.refine_sensor_from_rig", _BOOL),
     ("global_mapper_ba_refine_rig_from_world", "--GlobalMapper.ba_refine_rig_from_world", _BOOL),
     ("global_mapper_ba_refine_points3d", "--GlobalMapper.ba_refine_points3D", _BOOL),
@@ -306,7 +315,7 @@ _MAPPER = (
     ("mapper_max_extra_param", "--Mapper.max_extra_param", _ABOVE_ZERO),
     ("mapper_ba_refine_focal_length", "--Mapper.ba_refine_focal_length", _BOOL),
     ("mapper_ba_refine_principal_point", "--Mapper.ba_refine_principal_point", _BOOL),
-    ("mapper_ba_refine_extra_params", "--Mapper.ba_refine_extra_params", _BOOL),
+    ("mapper_ba_refine_extra_params", "--Mapper.ba_refine_extra_params", _TRUE_ONLY),
     ("mapper_ba_refine_sensor_from_rig", "--Mapper.ba_refine_sensor_from_rig", _BOOL),
     ("mapper_ba_local_function_tolerance", "--Mapper.ba_local_function_tolerance", _ZERO_OR_MORE),
     ("mapper_ba_local_max_num_iterations", "--Mapper.ba_local_max_num_iterations",
@@ -469,12 +478,14 @@ def _checked(settings: Mapping[str, Any], key: str, table: str, rng: Range,
     """settings[key], as Config gave it, once it's of the Range's kind and passes its test.
 
     `table` is the table that holds the key, and `option` COLMAP's option for an Option_Key.
+    The refusal ends with the Range's `why`, when it has one.
     """
     value = settings[key]  # a missing key raises the Step_Runner's own message (Req 12.7)
     if not rng.accepts(value):
         must = _must_be(rng, value)
-        raise ExpectedFailure(f"The setting {_named(key, table, option)} is {_shown(value)}, "
-                              f"but it must be {must}. Change it to {must}.")
+        message = (f"The setting {_named(key, table, option)} is {_shown(value)}, "
+                   f"but it must be {must}. Change it to {must}.")
+        raise ExpectedFailure(f"{message} {rng.why}" if rng.why else message)
     return value
 
 
