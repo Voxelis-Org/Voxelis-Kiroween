@@ -173,6 +173,42 @@ def test_client_token_differs_per_attempt() -> None:
     assert len(set(tokens)) == 3
 
 
+# Req 5.4: an exhausted plan names each type, its zones and AWS's answers.
+
+def test_an_exhausted_plan_names_the_types_zones_and_awss_answers() -> None:
+    # A shortage (InsufficientInstanceCapacity) passes, while Unsupported keeps failing, so the
+    # message says which answers AWS gave, and how often.
+    aws = FakeAws(
+        subnets={"us-east-1a": "subnet-a", "us-east-1b": "subnet-b"},
+        no_capacity={("g5.8xlarge", "us-east-1a"), ("g5.8xlarge", "us-east-1b"),
+                     ("g5.4xlarge", "us-east-1a")},
+        unsupported={("g5.4xlarge", "us-east-1b")})
+    plan = [
+        ("g5.8xlarge", "subnet-a", "us-east-1a"),
+        ("g5.8xlarge", "subnet-b", "us-east-1b"),
+        ("g5.4xlarge", "subnet-a", "us-east-1a"),
+        ("g5.4xlarge", "subnet-b", "us-east-1b"),
+    ]
+
+    with pytest.raises(CloudError) as caught:
+        launch_with_fallback(aws, plan, _recording_build([]))
+
+    message = str(caught.value)
+    assert "g5.8xlarge in us-east-1a, us-east-1b; g5.4xlarge in us-east-1a, us-east-1b" in message
+    assert "AWS answered InsufficientInstanceCapacity 3 times and Unsupported once." in message
+    assert aws.instances == []
+
+
+def test_an_exhausted_plan_with_one_answer_says_it_once() -> None:
+    aws = FakeAws(subnets={"us-east-1a": "subnet-a"},
+                  no_capacity={("g5.8xlarge", "us-east-1a")})
+
+    with pytest.raises(CloudError) as caught:
+        launch_with_fallback(aws, [("g5.8xlarge", "subnet-a", "us-east-1a")], _recording_build([]))
+
+    assert "AWS answered InsufficientInstanceCapacity once." in str(caught.value)
+
+
 # Property 4: Every launch request carries the required settings (Req 8.1-8.6, 8.9, 16.5)
 
 # The 8 Allowed_Types, from the real [cloud] shape: the property draws its instance type from these,

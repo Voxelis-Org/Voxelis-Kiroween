@@ -98,13 +98,13 @@ def launch_with_fallback(aws: Aws, plan: Sequence[tuple[str, str, str]],
     propagates, stopping the loop with nothing more started. On success the instance, its type and
     its zone are returned. An exhausted plan raises a `CloudError` naming the types and zones tried.
     """
-    tried: list[tuple[str, str]] = []
+    tried: list[tuple[str, str, str]] = []  # (type, zone, AWS's code) of each refused attempt
     for attempt, (instance_type, subnet_id, zone) in enumerate(plan):
-        tried.append((instance_type, zone))
         request = build(attempt, instance_type, subnet_id)
         try:
             instance = aws.run_instances(request)
-        except CapacityUnavailable:
+        except CapacityUnavailable as error:
+            tried.append((instance_type, zone, error.code))
             continue  # no On-Demand capacity here; try the next zone or type
         return instance, instance_type, zone
     raise CloudError(_exhausted_message(tried))
@@ -124,18 +124,32 @@ def _tags(project_tag: tuple[str, str], job_id: str | None) -> list[dict[str, st
     return tags
 
 
-def _exhausted_message(tried: Sequence[tuple[str, str]]) -> str:
-    """A Readable_Error for an exhausted plan, naming the types and zones that were tried (Req 5.4)."""
+def _exhausted_message(tried: Sequence[tuple[str, str, str]]) -> str:
+    """A Readable_Error for an exhausted plan, naming the types and zones that were tried and the
+    code AWS answered each with (Req 5.4).
+
+    InsufficientInstanceCapacity means AWS has no machine of that type there right now, while
+    Unsupported means it won't start that type there, so the codes tell a shortage that passes from
+    a request that will keep failing.
+    """
     if not tried:
         return ("No machine could start because no fallback type had a zone with both capacity and a "
                 "default subnet to try. Check the preset's fallback list, then run the command again.")
     by_type: dict[str, list[str]] = {}
-    for instance_type, zone in tried:
+    codes: dict[str, int] = {}
+    for instance_type, zone, code in tried:
         zones = by_type.setdefault(instance_type, [])
         if zone and zone not in zones:
             zones.append(zone)
+        codes[code] = codes.get(code, 0) + 1
     parts = [f"{instance_type} in {', '.join(zones)}" if zones else instance_type
              for instance_type, zones in by_type.items()]
+    answers = " and ".join(f"{code} {_times(count)}" for code, count in codes.items())
     return ("No machine could start: AWS had no On-Demand capacity for any fallback type in any zone "
-            f"tried ({'; '.join(parts)}). Wait a few minutes and run the command again, or try a "
-            "different preset.")
+            f"tried ({'; '.join(parts)}). AWS answered {answers}. Wait a few minutes and run the "
+            "command again, or try a different preset.")
+
+
+def _times(count: int) -> str:
+    """`once`, `twice` or `<n> times`, for how often AWS gave one answer."""
+    return {1: "once", 2: "twice"}.get(count, f"{count} times")
