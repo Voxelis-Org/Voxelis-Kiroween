@@ -1,0 +1,1333 @@
+{
+  "pbtResults": {
+    "1.5 Widen the property test for Property 1 in `tests/test_train_colmap.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795514150425
+    },
+    "1.7 Write the property test for Property 4 in `tests/test_train_priors.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795514157658
+    },
+    "2.8 Write the property test for Property 2 in `tests/test_depth_fit.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795519196065
+    },
+    "2.9 Write the property test for Property 3 in `tests/test_depth_fit.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795519196935
+    },
+    "5.6 Write the property test for Property 5 in `tests/test_train_prior_views.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795524846498
+    },
+    "6.4 Write the property test for Property 6 in `tests/test_train_backproject.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795526837543
+    },
+    "7.4 Write the property test for Property 7 in `tests/test_train_schedules.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795528253563
+    }
+  },
+  "executionHistory": {
+    "1.1 Keep the point ids and the Observed_Points in `splatpipe/train/colmap.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512095591
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512126519
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512882725
+      }
+    ],
+    "1.2 Pass the new fields in `splatpipe/train/smoke.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512095743
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512896659
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513346008
+      }
+    ],
+    "1.3 Write the Prior_Format in `splatpipe/train/priors.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512095860
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512126790
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512883299
+      }
+    ],
+    "1.4 Write unit tests for the point ids in `tests/test_train_colmap.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512095974
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512897735
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513346247
+      }
+    ],
+    "1.5 Widen the property test for Property 1 in `tests/test_train_colmap.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096148
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513354361
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513670231
+      }
+    ],
+    "1.6 Write unit tests for the Prior_Format in `tests/test_train_priors.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096259
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512898307
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513346919
+      }
+    ],
+    "1.7 Write the property test for Property 4 in `tests/test_train_priors.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096361
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513354793
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513670971
+      }
+    ],
+    "1.8 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096469
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795513678526
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514184991
+      }
+    ],
+    "2.1 Add `[depth]` to `config.toml` and change `MOGE_WEIGHTS`'s comment": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096611
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514198397
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514863291
+      }
+    ],
+    "2.2 Write `splatpipe/depth/settings.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096700
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514199388
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514864298
+      }
+    ],
+    "2.3 Write `MoGeOutput` and `splatpipe/depth/fit.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096796
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514878982
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795515257382
+      }
+    ],
+    "2.4 Add `[depth]`, `set_depth` and the plane scene to the test helpers": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512096894
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795515264287
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795516128421
+      }
+    ],
+    "2.5 Add the depth import check to `tests/test_imports.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097028
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514200236
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514864905
+      }
+    ],
+    "2.6 Write unit tests for the settings in `tests/test_depth_settings.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097127
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795516135963
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795516939364
+      }
+    ],
+    "2.7 Write unit tests for the fit in `tests/test_depth_fit.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097222
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795516136136
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795516940139
+      }
+    ],
+    "2.8 Write the property test for Property 2 in `tests/test_depth_fit.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097312
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795516946611
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795517159577
+      }
+    ],
+    "2.9 Write the property test for Property 3 in `tests/test_depth_fit.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097435
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795517165608
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795517980870
+      }
+    ],
+    "2.10 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097530
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795517987328
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518332247
+      }
+    ],
+    "3.1 Finish `splatpipe/depth/gpu_api.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097624
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518339980
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518830582
+      }
+    ],
+    "3.2 Write `splatpipe/depth/files.py` and `splatpipe/depth/report.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097717
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518340974
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518831256
+      }
+    ],
+    "3.3 Write the step in `splatpipe/depth/__init__.py` and `splatpipe/depth/__main__.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097817
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518837936
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519225362
+      }
+    ],
+    "3.4 Add `FakeDepthGpu` and `fake_depth_gpu` to `tests/conftest.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512097914
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518838547
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519226213
+      }
+    ],
+    "3.5 Write unit tests for the files and the GPU interface": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098029
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519232913
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519821026
+      }
+    ],
+    "3.6 Write unit tests for a done run in `tests/test_depth_step.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098126
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519233650
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519821836
+      }
+    ],
+    "3.7 Write unit tests for failed runs, the release and the CLI in `tests/test_depth_step.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098218
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795519828211
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795520652899
+      }
+    ],
+    "3.8 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098315
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795520659359
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795520917150
+      }
+    ],
+    "4.1 Write `splatpipe/depth/gpu.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098412
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795520924428
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521387976
+      }
+    ],
+    "4.2 Write `gpu.py`'s source checks and the fresh-process import in `tests/test_imports.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098517
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521395427
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521773516
+      }
+    ],
+    "4.3 Change the GPU package check in `tests/test_cloud_imports.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098630
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521396388
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521774155
+      }
+    ],
+    "4.4 Write `## Step: depth` in `docs/pipeline.md`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098729
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795520924911
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521388503
+      }
+    ],
+    "4.5 Write the depth section's doc tests in `tests/test_docs.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098832
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521397041
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521775420
+      }
+    ],
+    "4.6 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512098932
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795521781554
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795522092270
+      }
+    ],
+    "5.1 Add the 15 `[train]` keys to `config.toml`, `splatpipe/train/settings.py` and the test config": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099036
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795522099246
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795522824441
+      }
+    ],
+    "5.2 Write `splatpipe/train/prior_views.py` and the Depth_Schedule": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099144
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795522843042
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523275131
+      }
+    ],
+    "5.3 Read the Prior_Set in the scene and the step": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099242
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523284066
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523687908
+      }
+    ],
+    "5.4 Write unit tests for the new settings in `tests/test_train_settings.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099352
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795522843698
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523275504
+      }
+    ],
+    "5.5 Write unit tests for the prior views and the Depth_Schedule": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099453
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523284831
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523688511
+      }
+    ],
+    "5.6 Write the property test for Property 5 in `tests/test_train_prior_views.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099547
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523697302
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524335345
+      }
+    ],
+    "5.7 Write unit tests for training with and without priors in `tests/test_train_step.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099696
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523698268
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524336229
+      }
+    ],
+    "5.8 Change the train and depth sections of `docs/pipeline.md`, with their doc tests": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099795
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795523698858
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524337171
+      }
+    ],
+    "5.9 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099894
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524345817
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524887211
+      }
+    ],
+    "6.1 Write `splatpipe/train/backproject.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512099992
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524898302
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525332496
+      }
+    ],
+    "6.2 Start the Back_Projected_Splats in `splatpipe/train/__init__.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100096
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525341488
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525849755
+      }
+    ],
+    "6.3 Write unit tests for the back-projection in `tests/test_train_backproject.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100198
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525342610
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525850633
+      }
+    ],
+    "6.4 Write the property test for Property 6 in `tests/test_train_backproject.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100300
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525859515
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526320248
+      }
+    ],
+    "6.5 Write unit tests for the step's Start_Splats in `tests/test_train_step.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100403
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525860351
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526321189
+      }
+    ],
+    "6.6 Change the train section of `docs/pipeline.md`, with its doc test": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100560
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795525861256
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526322054
+      }
+    ],
+    "6.7 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100662
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526332554
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526861018
+      }
+    ],
+    "7.1 Add the term tables and `active_terms` to `splatpipe/train/schedules.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100764
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526871054
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795527271882
+      }
+    ],
+    "7.2 Add the Prior_Terms to the Trainer in `splatpipe/train/gpu.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100865
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795527282044
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528029394
+      }
+    ],
+    "7.3 Write unit tests for the term schedules in `tests/test_train_schedules.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512100963
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795527282756
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528029990
+      }
+    ],
+    "7.4 Write the property test for Property 7 in `tests/test_train_schedules.py`, with Hypothesis": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101062
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528038850
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528378035
+      }
+    ],
+    "7.5 Write the Trainer's source checks and the message test": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101159
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528039601
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528378909
+      }
+    ],
+    "7.6 Change the train section of `docs/pipeline.md`, with its doc test": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101247
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526871868
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795527272750
+      }
+    ],
+    "7.7 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101350
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528387185
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528913112
+      }
+    ],
+    "8.1 Write `splatpipe/depth/smoke.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101446
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528924644
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529501972
+      }
+    ],
+    "8.2 Add `depth_normal_start_step` to the configs": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101549
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528925597
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529502329
+      }
+    ],
+    "8.3 Add the `depth` check to `cloud/smoke_runner.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101659
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529512088
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529944429
+      }
+    ],
+    "8.4 Change the smoke test part of `docs/pipeline.md`, with its doc test": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101759
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528926289
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529502758
+      }
+    ],
+    "8.5 Write unit tests for the depth smoke flow in `tests/test_depth_smoke.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101861
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529511291
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529946058
+      }
+    ],
+    "8.6 Write unit tests for the smoke key and the smoke runner's check": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512101961
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795529953743
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795530334176
+      }
+    ],
+    "8.7 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102065
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795530344031
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795530860415
+      }
+    ],
+    "9.1 Check the pins, then add install step 7 to `cloud/image.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102179
+      },
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795530872002
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795541148321
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795541571523
+      }
+    ],
+    "9.2 Add and change the licence rows in `docs/third-party-licences.md`, and change rules.md's certifi line": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102282
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795541579067
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795541902433
+      }
+    ],
+    "9.3 Write the image tests in `tests/test_cloud_image.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102381
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795541910214
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542442237
+      }
+    ],
+    "9.4 Run the tests and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102485
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542451405
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542816424
+      }
+    ],
+    "10.1 Change the Step_List in `splatpipe/run.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102595
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542827647
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795543485576
+      }
+    ],
+    "10.2 Change the step list and Step_Needs parts of `docs/pipeline.md`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102700
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542828517
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795543486528
+      }
+    ],
+    "10.3 Change the moge-depth skill's sentences": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102810
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542828914
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795543486921
+      }
+    ],
+    "10.4 Update the tests that depend on the Step_List": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512102946
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795543497362
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795544331451
+      }
+    ],
+    "10.5 Write the last doc tests in `tests/test_docs.py` and `tests/test_cloud_docs.py`": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512103050
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795543498263
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795544332015
+      }
+    ],
+    "10.6 Run the whole suite one last time and commit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795512103246
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795544346066
+      },
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795544910958
+      }
+    ],
+    "1. The Model_Reader's point ids and the Prior_Format": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795514185121
+      }
+    ],
+    "2. The `[depth]` settings and the fit": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795518332386
+      }
+    ],
+    "3. The depth step on the CPU, its stand-in and its CLI": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795520917310
+      }
+    ],
+    "4. The Depth_GPU_Module and the depth section of the Pipeline_Doc": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795522092362
+      }
+    ],
+    "5. Training reads the priors: the settings, the plain pixels, the depth weight and the scale-up": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795524887699
+      }
+    ],
+    "6. Back-projected starting splats": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795526861676
+      }
+    ],
+    "7. The prior loss terms": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795528913560
+      }
+    ],
+    "8. The smoke test's depth check": [
+      {
+        "executionId": "8be3e05e-af44-435a-bff0-b6803b872c3c",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795530861009
+      }
+    ],
+    "9. MoGe on the machine image, its licence rows and rules.md's certifi line": [
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795542816583
+      }
+    ],
+    "10. The Step_List entry, the docs wrap-up and the moge-depth skill": [
+      {
+        "executionId": "d4f85ebb-5a3f-4e11-b668-200f60bd3c0b",
+        "chatSessionId": "sess_9bf24b81-582f-49c6-a058-c07dbfad4042",
+        "timestamp": 1795544911443
+      }
+    ]
+  }
+}
