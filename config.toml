@@ -382,6 +382,36 @@ clean_reserve_minutes = 10
 save_margin_minutes = 5
 # Share of the preset's GPU memory the GPU must report, since a "24 GB" card reports a little less.
 gpu_memory_slack = 0.9
+# A pixel whose brightness gradient, in grey from 0 to 1 per pixel, is below this is plain. Untested on real footage.
+plain_gradient = 0.02
+# On textured pixels the depth loss's weight is times exp(-this x the gradient).
+depth_gradient_falloff = 10
+# Weight of the depth loss at the first iteration.
+depth_weight_start = 1.0
+# Weight of the depth loss after the last planned iteration. It falls exponentially in between.
+depth_weight_end = 0.01
+# Lowest weight of the depth loss on a plain pixel.
+depth_weight_floor = 0.1
+# Largest relative inverse depth error one pixel adds to the depth loss.
+depth_error_cap = 1.0
+# Weight of the loss between the splats' rendered normals and the priors' normals. 0 turns it off.
+normal_weight = 0.05
+# Iteration at which that normal loss starts.
+normal_start_step = 3000
+# From normal_start_step, that normal loss runs on every this many iterations.
+normal_every = 4
+# Weight of the splats' mean smallest scale in units of the scene extent, with depth priors only. 0 turns it off.
+flatten_reg = 1.0
+# Weight of the loss between the rendered depth's normals and the priors' normals. 0 turns it off.
+depth_normal_weight = 0.05
+# Weight of the loss between the splats' rendered normals and the rendered depth's normals. 0 turns it off.
+normal_consistency_weight = 0.015
+# Share of the iterations after which the two rendered-depth normal losses are on: the float nearest 7/30.
+depth_normal_start_fraction = 0.23333333333333334
+# Share of the preset's splat budget that may start from the depth priors: the float nearest 1/3.
+backproject_share = 0.3333333333333333
+# Most splats that may start from the depth priors. 0 turns that off.
+backproject_max = 500000
 # Fewest vCPUs the job's cloud machine needs for this step. The step never checks it.
 min_vcpus = 4
 # Least memory the job's cloud machine needs for this step, in GB. The step never checks it.

@@ -13,6 +13,8 @@ count from 0, and `planned` is the Preset's `steps`, the Planned_Iterations.
   splats, so the Train_Smoke_Check can count its refines.
 - image_order (Req 4.11): one Training_Image index per Iteration, each pass a fresh permutation
   from one generator seeded with `seed` (A8).
+- depth_schedule (depth-priors spec, Req 11.4, 11.6, A4): the Depth_Schedule of every Iteration
+  from 0 to planned, going exponentially from depth_weight_start to depth_weight_end.
 
 This module imports only numpy and the standard library.
 """
@@ -45,6 +47,21 @@ def means_lr_schedule(start: float, final: float, planned: int) -> tuple[float, 
     """
     between = (start * final ** (i / planned) for i in range(1, planned))
     return tuple(itertools.accumulate((start, *between, start * final), min))
+
+
+def depth_schedule(start: float, end: float, planned: int) -> tuple[float, ...]:
+    """The Depth_Schedule of each Iteration from 0 to `planned`: planned + 1 values
+    (depth-priors spec, Req 11.4, A4).
+
+    Value i is start × (end / start)^(i / planned). The two ends are set outright, as start and
+    end, so they don't lean on pow giving exactly 1 or exactly end / start. Unlike
+    means_lr_schedule there's no running minimum, because depth_weight_end may be above
+    depth_weight_start. The Trainer passes depth_weight_start, depth_weight_end and the
+    Planned_Iterations, whether or not it stops early (Req 11.6).
+    """
+    ratio = end / start
+    between = (start * ratio ** (i / planned) for i in range(1, planned))
+    return (start, *between, end)
 
 
 def refine_stop(planned: int, refine_stop_step: int, refine_stop_fraction: float) -> int:

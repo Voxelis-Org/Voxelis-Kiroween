@@ -149,8 +149,8 @@ DEPTH = {
     "min_gpu_memory_gb": 16,
 }
 
-# The test config's 35 [train] Shared_Settings: the real values (training spec, Req 9.2). Each
-# value has the TOML type it has in the real config.
+# The test config's 50 [train] Shared_Settings: the real values (training spec, Req 9.2, and
+# depth-priors spec, Req 14.1 and 14.10). Each value has the TOML type it has in the real config.
 TRAIN = {
     "long_edge": 1600,
     "mask_threshold": 128,
@@ -185,6 +185,21 @@ TRAIN = {
     "clean_reserve_minutes": 10,
     "save_margin_minutes": 5,
     "gpu_memory_slack": 0.9,
+    "plain_gradient": 0.02,
+    "depth_gradient_falloff": 10,
+    "depth_weight_start": 1.0,
+    "depth_weight_end": 0.01,
+    "depth_weight_floor": 0.1,
+    "depth_error_cap": 1.0,
+    "normal_weight": 0.05,
+    "normal_start_step": 3000,
+    "normal_every": 4,
+    "flatten_reg": 1.0,
+    "depth_normal_weight": 0.05,
+    "normal_consistency_weight": 0.015,
+    "depth_normal_start_fraction": 0.23333333333333334,
+    "backproject_share": 0.3333333333333333,
+    "backproject_max": 500000,
     "min_vcpus": 4,
     "min_memory_gb": 32,
 }

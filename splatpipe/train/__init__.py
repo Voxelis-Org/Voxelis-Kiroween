@@ -19,8 +19,12 @@ is the CLI, `uv run python -m splatpipe.train --job <id> [--preset <name>]` (Req
 5. The hook GPU gives the GPU_Module, whose probe() gives the facts check_gpu decides on
    (Req 2.1–2.10). Nothing is read and nothing goes onto the GPU before this.
 6. Timed as load: the Sparse_Model, the Training_Size, the Training_Images and the Mask_Files,
-   the scene, the points the Start_Splats start from, with the Req 3.11 warning when they're a
-   subset, the 3-NN search on the GPU and the Start_Splats (Req 1.3–1.19, 3.1–3.15).
+   then the Prior_Set in work/depth/ when depth.json is there, the scene, the points the
+   Start_Splats start from, with the Req 3.11 warning when they're a subset, the 3-NN search on
+   the GPU and the Start_Splats (Req 1.3–1.19, 3.1–3.15). Priors that fail a check give the
+   depth-priors spec's Req 10.3 warning, and the step trains with no Prior_Set. With no
+   depth.json, it trains with no Prior_Set and adds no count or warning about it (that spec's
+   Req 10.1–10.4, 14.3, 14.6, 14.7, A9, A14).
 7. Timed as train: the Trainer (Req 4.17). With no Iteration run, the step fails with the
    Req 7.9 message, and with fewer than steps, it adds the Req 7.8 warning (Req 7.7–7.9).
 8. Timed as write_ply: the Mean_Exposure is baked in (Req 6.4–6.7), the splats with a NaN or an
@@ -67,6 +71,7 @@ from splatpipe.train.files import (CAMERAS, RECORD, SPARSE, TRAINED_SPLAT, check
 from splatpipe.train.gpu_api import (Gpu, GpuOutOfMemory, TrainResult, check_gpu, load_gpu,
                                      out_of_memory_failure)
 from splatpipe.train.ply import check_ply, write_ply
+from splatpipe.train.priors import PRIOR_FOLDER, BrokenPriors, PriorSet, read_prior_set
 from splatpipe.train.scene import Scene, build_scene, training_size
 from splatpipe.train.settings import TrainSettings, read_settings
 from splatpipe.train.splats import (Splats, bake_exposure, choose_points, drop_non_finite,
@@ -84,6 +89,9 @@ _STOPPED_EARLY = ("Training stopped early, after {run:,} of {planned:,} iteratio
                   "for the clean step before the job's time cap.")
 # The Req 8.9 and 10.5 warning (D6): how many splats drop_non_finite left out.
 _DROPPED = "Splats left out of out/train.ply because they held a NaN or an infinity: {count:,}."
+# The depth-priors spec's Req 10.3 warning (A9): a Prior_Index or Prior_File failed a check.
+_BROKEN_PRIORS = ("The depth priors in work/{folder}/ weren't used, because {file} {what}. "
+                  "Training ran without depth priors.")
 
 
 def run(job_id: str, preset: str | None = None, *,
@@ -151,8 +159,30 @@ def _load(step: StepContext, gpu: Gpu, cameras: Path,
     step.add_count("image_height", int(height))
     pixels = read_views(cameras, model, width, height, cfg.mask_threshold)  # Req 1.12–1.17
     step.add_count("masked_images", int(sum(view.keep is not None for view in pixels)))
-    scene = build_scene(model, pixels, width, height, cfg)  # Req 1.19, 1.20, 3.3, 3.5–3.10
+    priors = _read_priors(step, model)  # the depth-priors spec's Req 10.1–10.4
+    # Req 1.19, 1.20, 3.3, 3.5–3.10, and the depth-priors spec's Req 10.8
+    scene = build_scene(model, pixels, width, height, cfg, priors)
     return model.camera, scene, _start_splats(step, gpu, model, cfg)
+
+
+def _read_priors(step: StepContext, model: SparseModel) -> PriorSet | None:
+    """The Prior_Set in work/depth/, checked against the Sparse_Model `model`, or None.
+
+    With no work/depth/depth.json, it gives None and adds no count or warning, so the step
+    trains as the splat-training spec says (depth-priors spec, Req 10.2, A14). Priors that fail
+    a check of Req 10.4 give the Req 10.3 warning, naming the file and what failed, and None,
+    so one bad file drops the whole Prior_Set (A9). A checked Prior_Set adds the count
+    prior_images, its Prior_Views (Req 14.4).
+    """
+    try:
+        priors = read_prior_set(step.job.folder / "work" / PRIOR_FOLDER, model)
+    except BrokenPriors as error:
+        step.add_warning(_BROKEN_PRIORS.format(folder=PRIOR_FOLDER, file=error.path,
+                                               what=error.what))
+        return None
+    if priors is not None:
+        step.add_count("prior_images", int(len(priors.priors)))
+    return priors
 
 
 def _start_splats(step: StepContext, gpu: Gpu, model: SparseModel,

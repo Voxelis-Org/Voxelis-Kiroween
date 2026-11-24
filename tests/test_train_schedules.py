@@ -4,7 +4,8 @@ The Schedules are pure functions of a few numbers, so each unit test passes them
 here, or the real config's [train] values. The real config is read by path, because
 tests/conftest.py points CONFIG_PATH at a test config. Property 3 draws its intervals and
 Iterations with Hypothesis, and Property 4 its starting rates, means_lr_final values and
-Planned_Iterations.
+Planned_Iterations. The Depth_Schedule of the depth-priors spec is checked with the real config's
+depth_weight_start, depth_weight_end and each Preset's steps.
 """
 
 from itertools import islice, pairwise
@@ -15,6 +16,7 @@ from hypothesis import strategies as st
 
 from splatpipe.config import REPO_ROOT, load_config
 from splatpipe.train.schedules import (
+    depth_schedule,
     erank_start,
     image_order,
     means_lr_schedule,
@@ -93,6 +95,19 @@ def test_the_means_lr_starts_at_its_rate_never_rises_and_ends_at_means_lr_final_
     # abs=0, because pytest's default absolute tolerance of 1e-12 would loosen the check for
     # every final × start below 1e-3, down to the 1e-60 these bounds allow.
     assert rates[-1] == pytest.approx(final * start, rel=1e-9, abs=0)
+
+
+@pytest.mark.parametrize("preset", ["fast", "default", "quality"])
+def test_the_depth_schedule_goes_from_1_to_a_tenth_halfway_and_a_hundredth_at_the_last(
+        preset: str) -> None:
+    train = load_config(REAL_CONFIG).step_settings("train", preset)
+    planned = train["steps"]
+    values = depth_schedule(train["depth_weight_start"], train["depth_weight_end"], planned)
+    assert len(values) == planned + 1  # one value for each Iteration from 0 to planned (Req 11.4)
+    assert values[0] == 1.0
+    assert values[planned] == 0.01  # planned from the Preset's steps (Req 11.6)
+    assert planned % 2 == 0  # so halfway is an Iteration
+    assert values[planned // 2] == pytest.approx(0.1, rel=1e-12, abs=0)  # 1.0 × 0.01^(1/2)
 
 
 def test_the_smoke_checks_30_iterations_refine_once_at_iteration_20() -> None:
