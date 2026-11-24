@@ -3,10 +3,14 @@
 `install_script` is the builder's whole User_Data: the install, as bash, with every tool, weight and
 package pinned. It is asserted structurally and never run in the Test_Suite (Req 9.2, 9.3, 9.4). It
 never bakes in the Pipeline's own code; the Start_Command ships that per Job as the Code_Archive
-(Req 9.5). The dependency manifests it installs from come from HEAD through the Job_Bucket, because
-uv.lock alone is over the 16 KB User_Data limit: `build_image` uploads them under
-`jobs/_image/<image name>/` before the launch, and the script fetches them with the AWS CLI. When the
-install is done the script prints a done marker, which the Image_Build_Command waits for on the
+(Req 9.5). Its step 7 adds what the Depth_Step's MoGe-2 path needs: MoGe's code and utils3d-moge at
+their pinned commits, then huggingface-hub and its packages at the versions in MoGe's uv.lock, all
+with `--no-deps` so hf-xet and MoGe's other declared packages stay off, then an offline import of
+MoGe-2's model class that fails the build if anything on its path is missing (depth-priors Req 15).
+The dependency manifests it installs from come from HEAD through the Job_Bucket, because uv.lock
+alone is over the 16 KB User_Data limit: `build_image` uploads them under
+`jobs/_image/<image name>/` before the launch, and the script fetches them with the AWS CLI. When
+the install is done the script prints a done marker, which the Image_Build_Command waits for on the
 console. On success it never powers the machine off, because the launch sets terminate-on-shutdown
 and an OS shutdown would terminate the builder before it could be imaged. On a failure it prints a
 failure marker and powers off, so the builder ends at once and the command stops waiting.
@@ -110,9 +114,13 @@ def install_script(cc: CloudConfig, *, bucket: str, region: str, prefix: str) ->
     in `bucket`; ffmpeg with the zscale filter (zimg); COLMAP 4.2.1 from source with SiftGPU, CGAL,
     LSD and the ONNX learned features left out; torch 2.7.1 for CUDA 12.8, then gsplat 1.5.3 and
     fused-ssim compiled with NVIDIA's CUDA Toolkit 12.8 for the A10G (8.6) and the L4 and L40S
-    (8.9); the MoGe-2 weights, checked against their sha256; Node and splat-transform from
-    `package-lock.json` with `npm ci`. It then removes what a Job machine must not inherit and
-    prints the done marker. It never bakes in the Pipeline's own code (Req 9.5).
+    (8.9); in step 7, MoGe's code and utils3d-moge at the commits MoGe pins and huggingface-hub
+    1.26.0 with the 13 packages it needs at the versions in MoGe's `uv.lock`, all `--no-deps` and
+    with hf-xet left off, then an offline import of `moge.model.v2.MoGeModel` that fails the build
+    unless everything on MoGe-2's path is there (depth-priors Req 15.1, 15.2, 15.3, 15.12); the
+    MoGe-2 weights, checked against their sha256; Node and splat-transform from `package-lock.json`
+    with `npm ci`. It then removes what a Job machine must not inherit and prints the done marker.
+    It never bakes in the Pipeline's own code (Req 9.5).
 
     On success it leaves the builder running for the Image_Build_Command to stop through the EC2
     API. A failing step prints the failure marker and powers off, which terminate-on-shutdown turns
@@ -249,20 +257,35 @@ CUDA_HOME=/usr/local/cuda-12.8 TORCH_CUDA_ARCH_LIST="8.6;8.9" \\
 # The build fails here unless both compiled modules import.
 "$VENV_PY" -c "from gsplat import csrc; import fused_ssim"
 
-# 7. The MoGe-2 ViT-B normal weights, pinned to one revision and checked against their sha256.
+# 7. MoGe's code and utils3d-moge at the commits MoGe pins, both --no-deps, so moderngl, trimesh,
+#    gradio, pipeline and FlexGEMM stay off. Then huggingface-hub, which MoGe-2 imports, and the
+#    packages it needs, each at the version in MoGe's uv.lock, also --no-deps. The hf-xet it
+#    declares stays off: huggingface-hub imports it only inside functions and downloads over
+#    plain HTTP without it, and the depth step downloads nothing.
+uv pip install --python "$VENV_PY" --no-deps \\
+  "moge @ git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a" \\
+  "utils3d-moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37"
+uv pip install --python "$VENV_PY" --no-deps huggingface-hub==1.26.0 click==8.4.2 \\
+  filelock==3.32.2 fsspec==2026.7.0 httpx==0.28.1 httpcore==1.0.9 h11==0.16.0 anyio==4.14.2 \\
+  idna==3.18 certifi==2026.7.22 packaging==25.0 pyyaml==6.0.3 tqdm==4.70.0 typing-extensions==4.16.0
+# The build fails here unless MoGe-2's model class imports, offline, which proves that nothing on
+# its import path is missing.
+HF_HUB_OFFLINE=1 "$VENV_PY" -c "from moge.model.v2 import MoGeModel"
+
+# 8. The MoGe-2 ViT-B normal weights, pinned to one revision and checked against their sha256.
 mkdir -p {moge_dir}
 curl -fsSL --retry 3 -o {MOGE_WEIGHTS} \\
   https://huggingface.co/Ruicheng/moge-2-vitb-normal/resolve/ca5f0e07ff01d3e5a364c1d954ed12ee1814b368/model.pt
 echo "{MOGE_SHA256}  {MOGE_WEIGHTS}" | sha256sum -c -
 
-# 8. Node 22 and splat-transform, installed with npm ci from the committed package-lock.json, so the
+# 9. Node 22 and splat-transform, installed with npm ci from the committed package-lock.json, so the
 #    version is reproducible.
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt_get install -y nodejs
 cd {JOB_ROOT}
 npm ci
 
-# 9. Remove what a Job machine must not inherit, then signal the install finished. cloud-init clean
+# 10. Remove what a Job machine must not inherit, then signal the install finished. cloud-init clean
 #    clears the builder's user data, logs and machine id so the image boots as a fresh first boot;
 #    removing ~/.aws leaves no credentials that could beat the instance role.
 rm -rf /root/.aws

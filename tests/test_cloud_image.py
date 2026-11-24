@@ -8,9 +8,14 @@ Four kinds of check, all on the CPU with no network, no AWS account and no GPU:
   parts; uv 0.13.9 from its checked tarball; HEAD's five manifests from the bucket, then `uv sync`;
   zimg and ffmpeg; COLMAP with the OFF flags that keep SiftGPU, CGAL and LSD out, plus ONNX off;
   CUDA Toolkit 12.8 and torch 2.7.1 for CUDA 12.8; gsplat 1.5.3 and fused-ssim built from source with
-  `TORCH_CUDA_ARCH_LIST="8.6;8.9"`, then an import check; the MoGe-2 weights checked against their
-  sha256; `npm ci`; and a `cloud-init clean` before the done marker (Req 9.2, 9.3, 9.4). It uses
-  `uv pip --python` into the same venv the job machines run, and a failure trap that powers off.
+  `TORCH_CUDA_ARCH_LIST="8.6;8.9"`, then an import check; in step 7, MoGe's code, utils3d-moge and
+  huggingface-hub's 14 pinned packages, all with `--no-deps`, then an offline import of MoGe-2's
+  model class (depth-priors Req 15.1-15.4, 15.10, 15.12); the MoGe-2 weights, fetched with curl and
+  checked against their sha256; `npm ci`; and a `cloud-init clean` before the done marker (Req 9.2,
+  9.3, 9.4). It uses `uv pip --python` into the same venv the job machines run, and a failure trap
+  that powers off. No line outside the script's comments names a package that stays off the image:
+  a line is a comment when its first non-space character is `#`, so a `#` inside a URL or a string
+  doesn't hide the rest of its line.
 
 - Property: for any valid bucket, region and image name, the script is a bash script within the
   16 KB User_Data limit with LF endings, and every value goes in `shlex.quote`d, so splitting its
@@ -27,7 +32,10 @@ Four kinds of check, all on the CPU with no network, no AWS account and no GPU:
   from `test_cloud_launch`.
 
 - Licence_List: one row for each Machine_Image tool, weight and package, the COLMAP row naming its
-  flags and the CUDA Toolkit row NVIDIA's licence (Req 14.5).
+  flags and the CUDA Toolkit row NVIDIA's licence (Req 14.5). One row for each package step 7 adds
+  and none for hf-xet, the MoGe code row and the rows step 7 shares with torch and wheel saying how
+  they come in, and the certifi row and rules.md's certifi and tqdm line naming httpx and httpcore,
+  never requests (depth-priors Req 15.7, 15.8, 15.9).
 
 The `FakeAws` is subclassed only to record each `run_instances` request (so the launch request can
 be read back) and to have the builder's console report the install's end at once, so the console
@@ -40,7 +48,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shlex
+from itertools import takewhile
 from pathlib import Path
 from typing import Any
 
@@ -105,9 +115,49 @@ FUSED_SSIM = ('"fused-ssim @ git+https://github.com/rahul-goel/fused-ssim@'
               '328dc9836f513d00c4b5bc38fe30478b4435cbb5"')
 # The environment both CUDA builds run with: NVIDIA's CUDA 12.8 compiler, for the A10G and the L4/L40S.
 BUILD_ENV = 'CUDA_HOME=/usr/local/cuda-12.8 TORCH_CUDA_ARCH_LIST="8.6;8.9"'
+# The GPU packages' import check, which install step 7 comes after.
+GPU_CHECK = '"$VENV_PY" -c "from gsplat import csrc; import fused_ssim"'
+
+# Install step 7's packages (depth-priors D4, Req 15.1, 15.2), written out here rather than read from
+# cloud/image.py: MoGe's code and utils3d-moge at the commits MoGe pins, then huggingface-hub and the
+# 13 packages it needs, each at the version in MoGe's uv.lock at that commit. hf-xet, which
+# huggingface-hub declares, isn't among them (Req 15.12).
+MOGE_COMMIT = "74fbce054ebed49800de42d0ad0e83495065719a"
+UTILS3D_MOGE_COMMIT = "62f09d58509485564e24d5d9f6aac9ee9ebc0c37"
+MOGE_CODE = f"moge @ git+https://github.com/microsoft/MoGe.git@{MOGE_COMMIT}"
+UTILS3D_MOGE = ("utils3d-moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@"
+                f"{UTILS3D_MOGE_COMMIT}")
+MOGE_PINS = (
+    "huggingface-hub==1.26.0", "click==8.4.2", "filelock==3.32.2", "fsspec==2026.7.0",
+    "httpx==0.28.1", "httpcore==1.0.9", "h11==0.16.0", "anyio==4.14.2", "idna==3.18",
+    "certifi==2026.7.22", "packaging==25.0", "pyyaml==6.0.3", "tqdm==4.70.0",
+    "typing-extensions==4.16.0",
+)
+MOGE_VERSIONS = {name: version for name, version in (pin.split("==") for pin in MOGE_PINS)}
+# The check that fails the build unless MoGe-2's model class imports, offline (Req 15.3).
+MOGE_CHECK = 'HF_HUB_OFFLINE=1 "$VENV_PY" -c "from moge.model.v2 import MoGeModel"'
+# What no line outside the script's comments may name, case ignored (Req 15.10, 15.12): the packages
+# MoGe and utils3d-moge declare that stay off, MoGe's `pipeline` git dependency, and hf-xet.
+STAYS_OFF = ("moderngl", "trimesh", "gradio", "flex-gemm", "hf-xet", "hf_xet", "pipeline")
+# huggingface-hub, huggingface_hub or any other huggingface-<name>, with its pin when it has one.
+HUB_NAME = re.compile(r"huggingface[-_]\w+(?:==[\w.]+)?", re.IGNORECASE)
 
 ROOT = Path(__file__).resolve().parents[1]  # this file is in tests/, at the repo root
 LICENCE_LIST = ROOT / "docs" / "third-party-licences.md"
+RULES_STEERING = ROOT / ".kiro" / "steering" / "rules.md"
+
+# The Licence_List rows step 7 adds, each with what its Licence cell starts with (Req 15.7).
+NEW_LICENCE_ROWS = (
+    ("huggingface-hub", "Apache-2.0"), ("click", "BSD-3-Clause"), ("httpx", "BSD-3-Clause"),
+    ("httpcore", "BSD-3-Clause"), ("h11", "MIT"), ("anyio", "MIT"), ("idna", "BSD-3-Clause"),
+    ("pyyaml", "MIT"), ("utils3d-moge", "MIT"),
+)
+# The rows that were there before step 7 and now also come in through huggingface-hub (Req 15.8).
+SHARED_LICENCE_ROWS = ("filelock", "fsspec", "packaging", "typing-extensions")
+# rules.md's named-exceptions line for certifi and tqdm, exactly as D5 gives it (Req 15.9).
+CERTIFI_LINE = ("- certifi (MPL-2.0) and tqdm (MPL-2.0 and MIT): used unmodified. On the cloud "
+                "machine image, certifi comes in through httpx and httpcore, and tqdm through "
+                "huggingface-hub. Samarth OKs certifi's.")
 
 # A real-shaped base AMI id for the seeded SSM parameter; build_image passes it through as the
 # builder's ImageId. No value in this file holds a 12-digit account id.
@@ -206,6 +256,51 @@ def _command(script: str, starts: str) -> str:
         start += 1
         parts.append(lines[start])
     return " ".join(part.rstrip("\\").strip() for part in parts)
+
+
+def _commands(text: str, starts: str) -> list[str]:
+    """Every whole command in `text` whose first line starts with `starts`, each with its
+    continuation lines joined. A continuation line never starts a command of its own."""
+    lines = _lines(text)
+    commands: list[str] = []
+    i = 0
+    while i < len(lines):
+        parts = [lines[i]]
+        while parts[-1].endswith("\\") and i + 1 < len(lines):
+            i += 1
+            parts.append(lines[i])
+        if parts[0].startswith(starts):
+            commands.append(" ".join(part.rstrip("\\").strip() for part in parts))
+        i += 1
+    return commands
+
+
+def _is_comment(line: str) -> bool:
+    """Whether a script line is a bash comment: its first non-space character is `#`. A `#` later
+    in a line, inside a URL or a string, doesn't make the line a comment."""
+    return line.lstrip().startswith("#")
+
+
+def _step_range(script: str, number: int) -> range:
+    """The line numbers of install step `number`, from its `# <number>. ` comment up to the next
+    step's."""
+    starts = [i for i, line in enumerate(_lines(script))
+              if line.startswith((f"# {number}. ", f"# {number + 1}. "))]
+    assert len(starts) == 2, f"the install script should have one step {number} and one after it"
+    return range(starts[0], starts[1])
+
+
+def _off_names(script: str) -> list[str]:
+    """Each STAYS_OFF name that a line outside the script's comments names, case ignored."""
+    return [name for line in _lines(script) if not _is_comment(line)
+            for name in STAYS_OFF if name in line.lower()]
+
+
+def _hub_names(script: str) -> list[tuple[int, str]]:
+    """Each huggingface-<name> on a line outside the script's comments, with its pin when it has
+    one, and the number of its line."""
+    return [(number, match.group(0)) for number, line in enumerate(_lines(script))
+            if not _is_comment(line) for match in HUB_NAME.finditer(line)]
 
 
 def _last_spend_line(repo_root: Path) -> dict[str, Any]:
@@ -377,15 +472,67 @@ def test_install_script_builds_the_gpu_packages_with_cuda_12_8() -> None:
     assert _index(script, FUSED_SSIM) < _index(script, check) < _index(script, INSTALL_DONE_MARKER)
 
 
+def test_install_step_7_installs_moges_packages_at_their_pins_with_no_deps() -> None:
+    """depth-priors Req 15.1, 15.2, 15.4 and 15.12: MoGe's code and utils3d-moge at their commits,
+    then huggingface-hub and the 13 packages it needs at their exact pins, each command with
+    `--no-deps` and nothing else, so hf-xet and MoGe's other declared packages stay off. The script
+    stays within the 16 KB User_Data limit with the step in."""
+    script = _script()
+    step = "\n".join(_lines(script)[i] for i in _step_range(script, 7))
+    installs = [shlex.split(command) for command in _commands(step, "uv pip install")]
+    no_deps = ["uv", "pip", "install", "--python", "$VENV_PY", "--no-deps"]
+    assert [words[:6] for words in installs] == [no_deps, no_deps]
+    assert installs[0][6:] == [MOGE_CODE, UTILS3D_MOGE]
+    assert sorted(installs[1][6:]) == sorted(MOGE_PINS)
+    assert len(script.encode("utf-8")) <= 16384
+
+
+def test_install_step_7_imports_moge_offline_after_the_gpu_packages_and_before_the_weights() -> None:
+    """depth-priors Req 15.1 and 15.3: step 7 comes after the GPU packages' import check, and its
+    own import check, offline, comes after both of its installs and before the weights."""
+    script = _script()
+    lines = _lines(script)
+    # A line of its own in step 7, so under `set -e` a failed import fails the build.
+    assert MOGE_CHECK in lines
+    assert lines.index(MOGE_CHECK) in _step_range(script, 7)
+    weights = f"curl -fsSL --retry 3 -o {MOGE_WEIGHTS}"
+    assert (_index(script, GPU_CHECK) < _index(script, MOGE_CODE) < _index(script, MOGE_PINS[0])
+            < _index(script, MOGE_CHECK) < _index(script, weights))
+
+
+def test_install_script_names_no_package_that_stays_off_outside_its_comments() -> None:
+    """depth-priors Req 15.10 and 15.12: no line outside the comments names moderngl, trimesh,
+    gradio, flex-gemm, hf-xet, hf_xet or pipeline, case ignored."""
+    script = _script()
+    assert _off_names(script) == []
+    # Why the check skips comments: step 7's comment names what stays off, and the script's opening
+    # comment says "Pipeline".
+    lines = _lines(script)
+    comment = " ".join(lines[i] for i in _step_range(script, 7) if _is_comment(lines[i])).lower()
+    for name in ("moderngl", "trimesh", "gradio", "pipeline", "flexgemm", "hf-xet"):
+        assert name in comment, f"step 7's comment should name {name!r}"
+    assert any("Pipeline" in line for line in takewhile(_is_comment, lines[1:]))
+    # And it catches a name on any other line, whatever its case, with a `#` before it in a URL.
+    for name in STAYS_OFF:
+        line = f'uv pip install --python "$VENV_PY" "x @ git+https://example.com/x.git#{name.upper()}"'
+        assert _off_names(f"{script}{line}\n") == [name]
+
+
 def test_install_script_fetches_the_moge_2_weights_and_checks_their_sha256() -> None:
     script = _script()
     assert MOGE_WEIGHTS == "/opt/models/moge-2-vitb-normal/model.pt"
     assert f"curl -fsSL --retry 3 -o {MOGE_WEIGHTS} \\\n  {MOGE_URL}" in script
     assert f'echo "{MOGE_SHA256}  {MOGE_WEIGHTS}" | sha256sum -c -' in script
-    # The weights match the licence-cleared ones the Licence_List names, fetched without
-    # huggingface-hub.
+    # The weights match the licence-cleared ones the Licence_List names, fetched with curl from the
+    # pinned revision. Outside the comments, huggingface-hub appears only as step 7's pin, so
+    # nothing fetches the weights through it (depth-priors Req 15.10).
     assert "Ruicheng/moge-2-vitb-normal" in script
-    assert "huggingface-hub" not in script and "huggingface_hub" not in script
+    hub = _hub_names(script)
+    assert [name for _, name in hub] == ["huggingface-hub==1.26.0"]
+    assert hub[0][0] in _step_range(script, 7)
+    # Any other one, like huggingface_hub on a line of its own, is caught.
+    extra = f'{script}uv pip install --python "$VENV_PY" huggingface_hub\n'
+    assert [name for _, name in _hub_names(extra)] == ["huggingface-hub==1.26.0", "huggingface_hub"]
 
 
 def test_install_script_builds_ffmpeg_with_zimg_and_colmap_with_its_flags() -> None:
@@ -586,6 +733,18 @@ def _row_with_name(contains: str) -> str:
     return rows[0]
 
 
+def _package_row(package: str) -> dict[str, str]:
+    """The Licence_List's one row for a package, with each cell under its heading: its Name cell is
+    the package's name, alone or followed by a space and its version or commit, the way
+    test_cloud_docs finds the image's package rows."""
+    header, *rows = [[cell.strip() for cell in line.strip()[1:-1].split("|")]
+                     for line in _licence_lines()]
+    matches = [dict(zip(header, row, strict=True)) for row in rows
+               if row[0] == package or row[0].startswith(f"{package} ")]
+    assert len(matches) == 1, f"the Licence_List should have one {package!r} row, not {len(matches)}"
+    return matches[0]
+
+
 def test_licence_list_has_the_machine_image_tool_rows() -> None:
     # One row each for the image's tools, weights and packages (Req 14.5): the Base_AMI, ffmpeg (built
     # with zscale), COLMAP, gsplat, fused-ssim, the MoGe-2 weights, Node, NVIDIA's CUDA Toolkit 12.8,
@@ -609,3 +768,50 @@ def test_cuda_toolkit_licence_row_names_nvidias_eula_and_where_it_lives() -> Non
     assert "End User License Agreement" in row
     assert "Samarth" in row
     assert "never shipped" in row
+
+
+# Licence_List: install step 7's rows, the rows it shares, and certifi's line in rules.md
+
+def test_licence_list_has_one_row_for_each_package_step_7_adds_and_none_for_hf_xet() -> None:
+    """depth-priors Req 15.7 and 15.12: each row once, named with step 7's pin or commit, with its
+    licence, what it comes in through and "Cloud image only"; and no hf-xet row."""
+    for package, licence in NEW_LICENCE_ROWS:
+        row = _package_row(package)
+        version = (f"at `{UTILS3D_MOGE_COMMIT}`" if package == "utils3d-moge"
+                   else MOGE_VERSIONS[package])
+        assert row["Name"] == f"{package} {version}"
+        assert row["Licence"].startswith(licence), f"the {package!r} row should give {licence}"
+        assert "Comes in through" in row["How we use it"], f"the {package!r} row should say how"
+        assert "Cloud image only" in row["How we use it"]
+        assert row["Installed"] == "Not yet"
+    names = [line.split("|")[1].strip().lower() for line in _licence_lines()]
+    assert [name for name in names if "hf-xet" in name or "hf_xet" in name] == []
+
+
+def test_licence_rows_say_how_moges_code_and_the_shared_packages_come_in() -> None:
+    """depth-priors Req 15.8: the MoGe code row says `--no-deps`, its commit and that only
+    utils3d-moge of its git dependencies goes in, and the rows step 7 shares with torch and wheel
+    carry its pins and name huggingface-hub."""
+    how = _package_row("MoGe code")["How we use it"]
+    assert "--no-deps" in how
+    assert MOGE_COMMIT in how
+    assert "only utils3d-moge is installed" in how
+    for package in SHARED_LICENCE_ROWS:
+        row = _package_row(package)
+        assert row["Name"] == f"{package} {MOGE_VERSIONS[package]}"
+        assert "huggingface-hub" in row["How we use it"], f"the {package!r} row should name it"
+
+
+def test_certifi_row_and_rules_line_name_httpx_and_httpcore_and_never_requests() -> None:
+    """depth-priors Req 15.9 and D5: the certifi row says it comes in through httpx and httpcore,
+    used unmodified, with Samarth's OK, and rules.md's one certifi line is D5's exactly. Neither
+    names requests."""
+    row = _package_row("certifi")
+    assert row["Name"] == f"certifi {MOGE_VERSIONS['certifi']}"
+    for part in ("Used unmodified", "httpx", "httpcore", "Samarth"):
+        assert part in row["How we use it"], f"the certifi row should say {part!r}"
+    assert "requests" not in " ".join(row.values()).lower()
+    lines = [line for line in RULES_STEERING.read_text(encoding="utf-8").splitlines()
+             if "certifi" in line]
+    assert not any("requests" in line.lower() for line in lines)
+    assert lines == [CERTIFI_LINE]
