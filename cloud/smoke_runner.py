@@ -4,9 +4,11 @@
 It's separate from the laptop's Smoke_Command, `cloud.smoke`, which only launches the machine.
 `run_smoke_test` runs each check in SMOKE_CHECKS, a few seconds each (Req 11.2): torch sees the GPU,
 gsplat renders a tiny synthetic scene forwards and backwards, fused-ssim runs forwards and
-backwards, ffmpeg has the zscale and tonemap filters, COLMAP, Node and splat-transform run, the
-MoGe-2 weights match their pinned sha256, the Trainer trains the tiny Smoke_Scene on the GPU and the
-PLY it gives passes the PLY_Check, and the Cloud_Runner runs a tiny Fake_Step Job end to end.
+backwards, ffmpeg has the zscale and tonemap filters, COLMAP runs, the Cameras_Smoke_Check finds
+every option the Cameras_Step passes COLMAP in `colmap <command> -h` and solves the Smoke_Picks
+with the real COLMAP, Node and splat-transform run, the MoGe-2 weights match their pinned sha256,
+the Trainer trains the tiny Smoke_Scene on the GPU and the PLY it gives passes the PLY_Check, and
+the Cloud_Runner runs a tiny Fake_Step Job end to end.
 For that last check it makes the Job from a test video, uploads its input, and runs `run_cloud_job`,
 which downloads the input again, runs the Step and uploads the results. A failing check doesn't stop
 the others. The results are printed on the console and put, Account_Redacted, at
@@ -43,6 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from splatpipe.cameras import smoke as cameras_smoke  # a module, so its SmokeSizes stays apart
 from splatpipe.config import load_config
 from splatpipe.errors import PipelineError
 from splatpipe.frames.ffmpeg import has_filters
@@ -276,6 +279,26 @@ def _check_colmap(context: SmokeContext) -> str:
     return line
 
 
+def _check_cameras(context: SmokeContext) -> str:
+    """The Cameras_Smoke_Check: every option the Cameras_Step passes COLMAP is in its -h, and the
+    step solves the Smoke_Picks with the real COLMAP (cameras spec, Req 18.2, 18.8).
+
+    The sizes come from `[cloud.smoke]`'s seven cameras_* numbers and check_timeout_seconds, and
+    `run_cameras_smoke` does the rest in the check's scratch folder, under this smoke run's
+    Job_Id. It's looked up in `cameras_smoke` when the check runs, so a test can put a stand-in in
+    its place.
+    """
+    checks = context.cloud_config.smoke_checks
+    sizes = cameras_smoke.SmokeSizes(
+        frames=checks.cameras_frames, width=checks.cameras_width, height=checks.cameras_height,
+        focal_pixels=checks.cameras_focal_pixels, placed_share=checks.cameras_placed_share,
+        focal_tolerance=checks.cameras_focal_tolerance,
+        timeout_seconds=checks.cameras_timeout_seconds,
+        help_timeout_seconds=checks.check_timeout_seconds)
+    return cameras_smoke.run_cameras_smoke(context.config, sizes, context.scratch,
+                                           context.job_id).line
+
+
 def _check_node(context: SmokeContext) -> str:
     """Node runs and prints its version."""
     output = _run_command(["node", "--version"], _timeout(context))
@@ -373,6 +396,7 @@ SMOKE_CHECKS: tuple[SmokeCheck, ...] = (
     SmokeCheck("fused-ssim", _check_fused_ssim),
     SmokeCheck("ffmpeg-zscale", _check_ffmpeg),
     SmokeCheck("colmap", _check_colmap),
+    SmokeCheck("cameras", _check_cameras),
     SmokeCheck("node", _check_node),
     SmokeCheck("splat-transform", _check_splat_transform),
     SmokeCheck("moge-weights", _check_moge_weights),

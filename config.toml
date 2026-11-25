@@ -225,6 +225,20 @@ train_refine_start_step = 10
 train_refine_every = 10
 # Iterations between each rise of the smoke training's spherical harmonics degree.
 train_sh_degree_interval = 5
+# Made-up picks the smoke machine's cameras check solves with COLMAP.
+cameras_frames = 30
+# Width of the cameras check's made-up picks, in pixels.
+cameras_width = 320
+# Height of the cameras check's made-up picks, in pixels.
+cameras_height = 240
+# True focal length of the cameras check's made-up picks, in pixels.
+cameras_focal_pixels = 260.0
+# Smallest share of the made-up picks the cameras check's solve must place, from 0 to 1.
+cameras_placed_share = 0.8
+# How far the solved focal length may be from cameras_focal_pixels, as a share of it.
+cameras_focal_tolerance = 0.02
+# Longest time each COLMAP command of the cameras check's solve may run, in seconds.
+cameras_timeout_seconds = 600
 [cloud.image]
 # Expected run time in minutes, for the money quote.
 expected_minutes = 75

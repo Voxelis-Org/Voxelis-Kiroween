@@ -5,11 +5,13 @@ Two things, as the task and design describe. First, the real config.toml `[cloud
 non-empty and names only Allowed_Types; the pinned primaries and fallbacks and the Q2 minutes are
 present; `[cloud]` holds no `[cloud.needs.*]` table; and `smoke_instance_type` and
 `image_builder_type` are Allowed_Types (Req 2.3, 2.4, 2.6, 2.7, 2.10). `[cloud.smoke]` also holds
-the training check's seven numbers at their A11 values (training spec, Req 12.4). Second,
-corrupting one key of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the
+the training check's seven numbers at their A11 values (training spec, Req 12.4), and the cameras
+check's seven numbers at their values, three whole and four numbers (cameras spec, Req 18.9).
+Second, corrupting one key of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the
 Config_Loader naming the key (Req 2.1), while a missing or wrong-typed key is a `CloudError` naming
 the key (Req 2.2). A float, a bool or 0 as one of the training check's numbers is a `CloudError`
-naming it as `<key> for [cloud.smoke]` (training spec, Req 12.5).
+naming it as `<key> for [cloud.smoke]` (training spec, Req 12.5). So is a float as one of the
+cameras check's whole numbers, or a bool or 0 as any of its seven (cameras spec, Req 18.9).
 
 Property 2 (any single corruption of a valid `[cloud]` is refused by name) is the Hypothesis test
 at the end of this file (task 1.5): it builds a valid `[cloud]` mapping, corrupts one key, writes it
@@ -58,6 +60,13 @@ IMAGE_MINUTES = (75, 120)
 TRAIN_SMOKE = {"train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
                "train_refine_start_step": 10, "train_refine_every": 10,
                "train_sh_degree_interval": 5}
+
+# The cameras check's seven [cloud.smoke] numbers, at their values (cameras spec, Req 18.9): three
+# whole numbers, read with _whole, and four numbers, read with _number and given back as floats.
+CAMERAS_WHOLE = {"cameras_frames": 30, "cameras_width": 320, "cameras_height": 240}
+CAMERAS_NUMBERS = {"cameras_focal_pixels": 260.0, "cameras_placed_share": 0.8,
+                   "cameras_focal_tolerance": 0.02, "cameras_timeout_seconds": 600.0}
+CAMERAS_SMOKE = {**CAMERAS_WHOLE, **CAMERAS_NUMBERS}
 
 
 @pytest.fixture
@@ -118,6 +127,11 @@ def test_the_smoke_machines_settings_load_and_its_video_is_long_enough_for_a_job
     # The training check's numbers are whole numbers at their A11 values (training spec, Req 12.4).
     assert {key: getattr(checks, key) for key in TRAIN_SMOKE} == TRAIN_SMOKE
     assert all(type(getattr(checks, key)) is int for key in TRAIN_SMOKE)
+    # The cameras check's numbers are at their values, three whole numbers and four floats
+    # (cameras spec, Req 18.9).
+    assert {key: getattr(checks, key) for key in CAMERAS_SMOKE} == CAMERAS_SMOKE
+    assert all(type(getattr(checks, key)) is int for key in CAMERAS_WHOLE)
+    assert all(type(getattr(checks, key)) is float for key in CAMERAS_NUMBERS)
 
 
 def test_the_smoke_and_image_instance_types_are_allowed_types(cc: CloudConfig) -> None:
@@ -173,7 +187,8 @@ def valid_cloud() -> dict[str, Any]:
             "quality": {"fallback": ["g5.8xlarge"], "expected_minutes": 120, "cap_minutes": 360},
         },
         "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
-                  "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE},
+                  "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE,
+                  **CAMERAS_SMOKE},
         "image": {"expected_minutes": 45, "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
@@ -233,6 +248,20 @@ CORRUPTIONS += [
     for what, value in (("a float", float(a11)), ("a bool", True), ("0", 0))
 ]
 
+# Each of the cameras check's three whole numbers given a float, here its value as a float, so
+# even a whole one is refused, a bool, or 0, and each of its four numbers given a bool or 0. The
+# CloudError names it as "<key> for [cloud.smoke]" (cameras spec, Req 18.9).
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key, whole in CAMERAS_WHOLE.items()
+    for what, value in (("a float", float(whole)), ("a bool", True), ("0", 0))
+]
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key in CAMERAS_NUMBERS
+    for what, value in (("a bool", True), ("0", 0))
+]
+
 
 @pytest.mark.parametrize(("corrupt", "key"), CORRUPTIONS)
 def test_a_missing_or_wrong_typed_cloud_key_is_a_cloud_error_naming_the_key(
@@ -271,8 +300,9 @@ cloud_text = st.text(
 def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     """A valid `[cloud]` mapping that from_mapping accepts: 1-3 Allowed_Types, the three Presets
     whose fallbacks and the smoke/image instance types all name those types, and positive times,
-    prices and scalars. The smoke table's whole numbers, the training check's seven among them,
-    are integers."""
+    prices and scalars. The smoke table's whole numbers, the training check's seven and the
+    cameras check's three among them, are integers, and the cameras check's other four are
+    numbers."""
     names = draw(st.lists(st.sampled_from(ALLOWED_TYPES), min_size=1, max_size=3, unique=True))
     types = {
         name: {
@@ -301,7 +331,9 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
                   "scene_gaussians": draw(st.integers(min_value=1, max_value=4096)),
                   "image_pixels": draw(st.integers(min_value=1, max_value=4096)),
                   "video_seconds": draw(cloud_numbers),
-                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in TRAIN_SMOKE}},
+                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in TRAIN_SMOKE},
+                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in CAMERAS_WHOLE},
+                  **{key: draw(cloud_numbers) for key in CAMERAS_NUMBERS}},
         "image": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
         "upload_margin_minutes": draw(cloud_numbers),
         "poll_seconds": draw(cloud_numbers),
@@ -316,8 +348,9 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
 
 def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
     """Every single-key corruption target in `mapping`, as (path, category). "whole" is a TOML
-    integer (vcpus, the smoke scene's Gaussian count and image size, and the training check's
-    seven numbers); "table" is a sub-table (types, presets, smoke, image)."""
+    integer (vcpus, the smoke scene's Gaussian count and image size, the training check's seven
+    numbers and the cameras check's three whole ones); "table" is a sub-table (types, presets,
+    smoke, image)."""
     targets: list[tuple[tuple[str, ...], str]] = [
         (("upload_margin_minutes",), "number"),
         (("poll_seconds",), "number"),
@@ -358,6 +391,8 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
         (("smoke", "video_seconds"), "number"),
     ]
     targets += [(("smoke", key), "whole") for key in TRAIN_SMOKE]
+    targets += [(("smoke", key), "whole") for key in CAMERAS_WHOLE]
+    targets += [(("smoke", key), "number") for key in CAMERAS_NUMBERS]
     return targets
 
 

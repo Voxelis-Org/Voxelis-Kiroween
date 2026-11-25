@@ -65,15 +65,16 @@ those seconds as its Time_Limit and the Cap_Deadline as its capped_at, or the Re
 which names the command and the Cap_Deadline (Req 17.3 to 17.5, 17.8).
 
 The -h test is the one test here that runs COLMAP, and it's skipped, saying COLMAP isn't
-installed, where colmap isn't on the PATH (Req 16.8). For each of the seven commands it runs
-colmap <command> -h, which only prints the command's options, with a timeout of 60 s and with
-TMPDIR at tmp_path, where glog writes its log files. Every option that the builders pass that
-command for the real config, for each Preset, both Camera_Models and both values of mask_used, is
-in the list, so a mistyped option shows up without a whole COLMAP run (Req 16.7, A16, F16).
+installed, where colmap isn't on the PATH (Req 16.8). It calls smoke.check_options, the
+Cameras_Smoke_Check's Option_Check, with the real config and the SmokeSizes of the real
+[cloud.smoke], both read by path, in tmp_path. So each of the seven colmap <command> -h runs
+through run_colmap within check_timeout_seconds, 60 s, and must list every option that the
+builders pass that command for each Preset, both Camera_Models and with and without the Mask,
+with no failure, so a mistyped option shows up without a whole COLMAP run (Req 16.7, 16.13,
+18.3, A16, C20).
 """
 
 import io
-import itertools
 import math
 import os
 import re
@@ -94,7 +95,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from conftest import ColmapOption  # an option of options.md, as the colmap_options oracle sorts it
-from splatpipe.cameras import commands
+from splatpipe.cameras import commands, smoke
 from splatpipe.cameras.colmap import (ColmapRun, capped, colmap_env, exit_text, last_error_line,
                                       run_colmap)
 from splatpipe.cameras.commands import Paths, fisheye_start, format_value
@@ -1071,46 +1072,25 @@ def test_exit_text_gives_the_exit_code_and_the_signal_that_stopped_colmap(
     assert exit_text(code) == text
 
 
-# The colmap <command> -h test (Req 16.7, 16.8, 16.13, A16, F16)
+# The colmap <command> -h test (Req 16.7, 16.8, 16.13, 18.3, A16, C20)
 
-# The seven COLMAP commands of the eight runs, each once, in the runs' order.
-HELP_COMMANDS = tuple(dict.fromkeys(RUN_COMMANDS.values()))
-# The timeout of each colmap <command> -h, which only prints the command's options and takes well
-# under a second (Req 16.13).
-HELP_TIMEOUT = 60
-# An option in the list that colmap <command> -h prints. Boost puts each option two spaces in, as
-# in "  --SiftExtraction.peak_threshold arg (=0.00667)", and --help in "  -h [ --help ]". A
-# description that wraps goes on further in, and each of glog's lines starts with its prefix, so
-# neither can pass for an option.
-HELP_OPTION = re.compile(r"^  (?:-\w \[ )?(--[^\s\]]+)", re.MULTILINE)
-
-
-def listed_options(command: str, tmp: Path) -> set[str]:
-    """The options that `colmap <command> -h` lists, once it has exited with 0 (F16).
-
-    It runs in `tmp` with stdin closed, and with the environment that colmap_env gives the step's
-    COLMAP runs, so TMPDIR is `tmp` and glog writes its log files there. COLMAP prints the list to
-    stderr after two of glog's lines, so stderr goes into stdout and both are read.
-    """
-    result = subprocess.run(["colmap", command, "-h"], stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=tmp,
-                            env=colmap_env(tmp, os.environ), encoding="utf-8", errors="replace",
-                            timeout=HELP_TIMEOUT)
-    assert result.returncode == 0, (command, result.returncode, result.stdout)
-    return set(HELP_OPTION.findall(result.stdout))
+def real_smoke_sizes() -> smoke.SmokeSizes:
+    """The SmokeSizes of the real config's [cloud.smoke], read by path, as cloud/smoke_runner.py
+    builds them: its seven cameras_* numbers and check_timeout_seconds, each decimal as a float,
+    as cloud/config.py reads it."""
+    table = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["cloud"]["smoke"]
+    return smoke.SmokeSizes(
+        frames=table["cameras_frames"], width=table["cameras_width"],
+        height=table["cameras_height"], focal_pixels=float(table["cameras_focal_pixels"]),
+        placed_share=float(table["cameras_placed_share"]),
+        focal_tolerance=float(table["cameras_focal_tolerance"]),
+        timeout_seconds=float(table["cameras_timeout_seconds"]),
+        help_timeout_seconds=float(table["check_timeout_seconds"]))
 
 
 @pytest.mark.skipif(shutil.which("colmap") is None, reason="COLMAP isn't installed")
-@pytest.mark.parametrize("command", HELP_COMMANDS)
-def test_colmap_help_lists_every_option_the_builders_pass_to_its_command(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str) -> None:
-    passed: set[str] = set()
-    for preset, camera_model, mask_used in itertools.product(PRESET_NAMES, CAMERA_MODELS,
-                                                             (False, True)):
-        runs, _ = built_runs(tmp_path, monkeypatch, preset, camera_model, mask_used)
-        for name, run in runs.items():
-            if run.command == command:
-                passed.update(option for option, text in line_options(run, name))
-    if command == "feature_extractor":  # the two options that come and go are checked too
-        assert {CAMERA_PARAMS, CAMERA_MASK} <= passed
-    assert sorted(passed - listed_options(command, tmp_path)) == [], command
+def test_colmap_help_lists_every_option_the_builders_pass_each_command(tmp_path: Path) -> None:
+    # The Option_Check: each of the seven colmap <command> -h runs within check_timeout_seconds,
+    # 60 s, and lists every option the builders pass that command for the real config, for each
+    # Preset, both Camera_Models and with and without the Mask. Any failure raises.
+    smoke.check_options(load_config(REAL_CONFIG), real_smoke_sizes(), tmp_path / smoke.HELP)
