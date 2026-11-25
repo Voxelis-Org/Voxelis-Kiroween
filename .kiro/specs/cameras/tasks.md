@@ -95,7 +95,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add config.toml splatpipe/cameras/__init__.py splatpipe/cameras/level.py splatpipe/cameras/settings.py tests/conftest.py tests/test_cameras_settings.py tests/test_imports.py`, then commit those files with the message "Cameras: settings, the test config and the import check".
     - _Requirements: 16.4, 16.13_
 
-  - [ ] 1.7 Make the two `ba_refine_extra_params` keys true-only in `splatpipe/cameras/settings.py` and `config.toml`
+  - [x] 1.7 Make the two `ba_refine_extra_params` keys true-only in `splatpipe/cameras/settings.py` and `config.toml`
     - Files: `splatpipe/cameras/settings.py` and `config.toml`, changed.
     - Design: "settings.py" (the `why` of `Range` and the true-only Range), "The settings checks" (the row of the two keys), the two keys' comments under "The `[cameras]` section of `config.toml`", C22 and D20.
     - `Range` gains `why: str = ""`, one sentence that the refusal adds after "Change it to ...". It's empty for every Range but a new true-only bool Range, whose `wanted` is "true" and whose test takes only `True`.
@@ -103,7 +103,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - In `config.toml`, the two keys keep `true`, and their comments end "Must be true: the undistortion needs it.", as the design writes them.
     - _Requirements: 12.8, 12.9, 12.16_
 
-  - [ ] 1.8 Write unit tests for the true-only refine keys in `tests/test_cameras_settings.py`
+  - [x] 1.8 Write unit tests for the true-only refine keys in `tests/test_cameras_settings.py`
     - Files: `tests/test_cameras_settings.py`, changed.
     - Design: "The settings checks" and the `tests/test_cameras_settings.py` row of "Tests by file".
     - The ranges written out in the test give the two keys "true only", so the parametrised kind and range tests refuse a value that isn't a bool and refuse false as the value just outside the range.
@@ -111,7 +111,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The real config holds true in both, and both comments say they must stay true.
     - _Requirements: 12.9, 12.16, 16.2, 16.9_
 
-  - [ ] 1.9 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for the true-only refine keys
+  - [x] 1.9 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for the true-only refine keys
     - **Property 1: Command lines hold the Fixed_Constants and every option once**
     - **Validates: Requirements 2.3, 2.4, 2.5, 2.6, 2.13, 3.2, 3.3, 3.5, 3.6, 4.1, 4.2, 4.3, 8.3**
     - Files: `tests/test_cameras_colmap.py`, changed.
@@ -119,7 +119,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The strategy draws `mapper_ba_refine_extra_params` and `global_mapper_ba_refine_extra_params` only as true, so every drawn setting is one that `read_settings` accepts. Every other key is drawn as before, and the property's checks stay as they are.
     - _Requirements: 2.13, 12.16, 16.3_
 
-  - [ ] 1.10 Run the tests and commit
+  - [x] 1.10 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` and the comment check in `tests/test_config.py` included.
     - On `feat/camera-solve`: `git add splatpipe/cameras/settings.py config.toml tests/test_cameras_settings.py tests/test_cameras_colmap.py`, then `git commit -m "Cameras: the two refine keys must stay true" -- splatpipe/cameras/settings.py config.toml tests/test_cameras_settings.py tests/test_cameras_colmap.py`.
     - _Requirements: 16.4, 16.13_
@@ -159,21 +159,21 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add splatpipe/cameras/model.py tests/test_cameras_model.py`, then commit those files with the message "Cameras: the model files".
     - _Requirements: 16.4, 16.13_
 
-  - [ ] 2.5 Add RADIAL and RADIAL_FISHEYE to `CAMERA_MODELS` in `splatpipe/cameras/model.py`
+  - [x] 2.5 Add RADIAL and RADIAL_FISHEYE to `CAMERA_MODELS` in `splatpipe/cameras/model.py`
     - Files: `splatpipe/cameras/model.py`, changed.
     - Design: "model.py", the `cameras.bin` table of "The Model_Files", F2 and D19.
     - `CAMERA_MODELS` gains `3: ("RADIAL", 5)` and `9: ("RADIAL_FISHEYE", 5)`, each with f, cx, cy, k1, k2 in that order, beside PINHOLE, OPENCV and OPENCV_FISHEYE, so `FakeColmap`'s OPENCV cameras still encode until 4.11. 4.10 then drops the two OPENCV models.
     - The comment above `CAMERA_MODELS` gives each model's parameters, and the module docstring names the models.
     - _Requirements: 10.1, 10.2_
 
-  - [ ] 2.6 Update the unit tests for the model files in `tests/test_cameras_model.py`
+  - [x] 2.6 Update the unit tests for the model files in `tests/test_cameras_model.py`
     - Files: `tests/test_cameras_model.py`, changed.
     - Design: the `tests/test_cameras_model.py` row of "Tests by file" and "The Model_Files".
     - The hand-built model has one camera each of PINHOLE, RADIAL and RADIAL_FISHEYE, with the model ids 1, 3 and 9 and records of 56, 64 and 64 bytes. It encodes to exactly the bytes the test assembles with `struct.pack` from the layout tables, and those bytes decode back to the model.
     - The other model tests stay as they are.
     - _Requirements: 10.1, 10.2, 16.2_
 
-  - [ ] 2.7 Update the property test for Property 7 in `tests/test_cameras_model.py`
+  - [x] 2.7 Update the property test for Property 7 in `tests/test_cameras_model.py`
     - **Property 7: The Model_Files round trip**
     - **Validates: Requirements 10.9**
     - Files: `tests/test_cameras_model.py`, changed.
@@ -181,7 +181,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The strategy draws the camera model ids 1, 3 and 9, with 4, 5 and 5 parameters, in place of 1, 4 and 5. Everything else is drawn and checked as before, with every float compared bit for bit.
     - _Requirements: 10.9, 16.3_
 
-  - [ ] 2.8 Run the tests and commit
+  - [x] 2.8 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included.
     - On `feat/camera-solve`: `git add splatpipe/cameras/model.py tests/test_cameras_model.py`, then `git commit -m "Cameras: RADIAL and RADIAL_FISHEYE in the model files" -- splatpipe/cameras/model.py tests/test_cameras_model.py`.
     - _Requirements: 16.4, 16.13_
@@ -303,7 +303,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add splatpipe/cameras/frames_input.py splatpipe/cameras/colmap.py splatpipe/cameras/commands.py tests/conftest.py tests/test_cameras_frames_input.py tests/test_cameras_colmap.py`, then commit those files with the message "Cameras: frames contract, COLMAP runner and command lines".
     - _Requirements: 16.4, 16.13_
 
-  - [ ] 4.10 Switch the step's code to RADIAL and RADIAL_FISHEYE
+  - [x] 4.10 Switch the step's code to RADIAL and RADIAL_FISHEYE
     - Files: `splatpipe/cameras/settings.py`, `config.toml`, `splatpipe/cameras/commands.py`, `splatpipe/cameras/solve.py`, `splatpipe/cameras/database.py`, `splatpipe/cameras/undistort.py` and `splatpipe/cameras/model.py`, all changed.
     - Design: "settings.py", "commands.py", "database.py", "solve.py" and its Req 5.3 warning, "undistort.py", "model.py", "The `[cameras]` section of `config.toml`", "The settings checks", "The Fixed_Constants", F2, F9, F17, F18, O5, C8, D19 and D20.
     - `settings.py`: the Range of `camera_model` takes `"RADIAL"` or `"RADIAL_FISHEYE"`, and the comment on `CamerasSettings.camera_model` says so. `config.toml`: `camera_model = "RADIAL"`, with the design's comments on `camera_model` and `fisheye_fov_degrees`.
@@ -314,7 +314,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every docstring and comment in these files names the new models.
     - _Requirements: 3.2, 3.3, 3.4, 5.1, 5.3, 5.4, 6.1, 6.2, 8.2, 8.3, 10.1, 12.3, 12.9, 12.10_
 
-  - [ ] 4.11 Switch `FakeColmap` in `tests/conftest.py` to RADIAL cameras
+  - [x] 4.11 Switch `FakeColmap` in `tests/conftest.py` to RADIAL cameras
     - Files: `tests/conftest.py`, changed.
     - Design: the `FakeColmap` stand-in under "Stand-ins", F18 and D19.
     - `COLMAP_MODEL_IDS` gives RADIAL 3 and RADIAL_FISHEYE 9. The fake Feature_Extraction writes one RADIAL camera (f, cx, cy, 0, 0) with f = `--ImageReader.default_focal_length_factor` × the long edge and `prior_focal_length` 0, or a RADIAL_FISHEYE camera with `--ImageReader.camera_params` and 1. A Calibration that works changes f, `params[0]`.
@@ -322,7 +322,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The module docstring and the comments say RADIAL and RADIAL_FISHEYE.
     - _Requirements: 16.5_
 
-  - [ ] 4.12 Update the settings, model, command line and solve tests for RADIAL and RADIAL_FISHEYE
+  - [x] 4.12 Update the settings, model, command line and solve tests for RADIAL and RADIAL_FISHEYE
     - Files: `tests/test_cameras_settings.py`, `tests/test_cameras_model.py`, `tests/test_cameras_colmap.py` and `tests/test_cameras_solve.py`, changed.
     - Design: the rows of these four files in "Tests by file", F2, F17 and D19.
     - `tests/test_cameras_settings.py`: the real config holds `camera_model = "RADIAL"`, the Range written out in the test takes `"RADIAL"` and `"RADIAL_FISHEYE"`, and `"OPENCV"` is refused as an unknown name, naming `camera_model`, `[cameras]` and `--ImageReader.camera_model`.
@@ -331,7 +331,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `tests/test_cameras_solve.py`: the run orders for RADIAL and for RADIAL_FISHEYE, the Req 5.3 warning naming RADIAL_FISHEYE, and `calibration_failure` on SQLite files with RADIAL cameras whose f is the same bit for bit, rejected, or changed, worked.
     - _Requirements: 3.2, 3.3, 3.4, 5.1, 5.3, 5.4, 6.1, 6.2, 10.1, 10.4, 12.3, 12.10, 16.2, 16.5, 16.7_
 
-  - [ ] 4.13 Update the step, undistortion and real COLMAP tests for RADIAL and RADIAL_FISHEYE
+  - [x] 4.13 Update the step, undistortion and real COLMAP tests for RADIAL and RADIAL_FISHEYE
     - Files: `tests/test_cameras_step.py`, `tests/test_cameras_undistort.py` and `tests/test_cameras_real.py`, changed.
     - Design: the rows of these three files in "Tests by file", "The real COLMAP tests", F9, F18, C8 and D19.
     - `tests/test_cameras_step.py`: `solve.json` says `"RADIAL"`, the Mask_Warp's camera line is the Final_Model's RADIAL camera, and the Levelled_Model's PINHOLE camera has fx = fy. The test of an undistorter that kept the camera's model (C8) checks that the message says COLMAP keeps a camera's own model when its distortion came out as 0 and to run the step again, and names neither refine key.
@@ -339,7 +339,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `tests/test_cameras_real.py`: the painted corner is taken through the Undistorted_Camera and the Final_Model's RADIAL camera, whose distortion is k1 and k2 on the radius, with one f, so the test no longer asserts OPENCV. The rest of the integration test stays until 8.6.
     - _Requirements: 8.2, 8.3, 8.4, 11.7, 11.9, 16.2, 16.6_
 
-  - [ ] 4.14 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for RADIAL and RADIAL_FISHEYE
+  - [x] 4.14 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for RADIAL and RADIAL_FISHEYE
     - **Property 1: Command lines hold the Fixed_Constants and every option once**
     - **Validates: Requirements 2.3, 2.4, 2.5, 2.6, 2.13, 3.2, 3.3, 3.5, 3.6, 4.1, 4.2, 4.3, 8.3**
     - Files: `tests/test_cameras_colmap.py`, changed.
@@ -347,13 +347,13 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `camera_model` is drawn from `"RADIAL"` and `"RADIAL_FISHEYE"`. `--ImageReader.camera_params` appears only for RADIAL_FISHEYE, with five numbers that read back as the Fisheye_Start that the oracle works out itself, and never for RADIAL. The two refine keys stay drawn only as true, as 1.9 left them.
     - _Requirements: 2.13, 3.2, 3.3, 3.4, 16.3_
 
-  - [ ] 4.15 Write the unit test of `check_undistorted`'s other-camera refusal in `tests/test_cameras_undistort.py`
+  - [x] 4.15 Write the unit test of `check_undistorted`'s other-camera refusal in `tests/test_cameras_undistort.py`
     - Files: `tests/test_cameras_undistort.py`, changed.
     - Design: "undistort.py" and the `tests/test_cameras_undistort.py` row of "Tests by file", which lists this refusal (small fix d).
     - An Undistorted_Model with one PINHOLE camera and an image whose camera id isn't that camera's is refused with an `ExpectedFailure` that names the image, its camera id and the one camera's id, says what the Undistortion got wrong and to run the step again, and holds no "Traceback". The same model with every image on the one camera passes.
     - _Requirements: 8.2, 16.9, 16.15_
 
-  - [ ] 4.16 Run the tests and commit
+  - [x] 4.16 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` included. Where Homebrew's COLMAP is installed, the `-h` test and the integration test run with the RADIAL camera (D18).
     - On `feat/camera-solve`: `git add splatpipe/cameras/settings.py splatpipe/cameras/commands.py splatpipe/cameras/solve.py splatpipe/cameras/database.py splatpipe/cameras/undistort.py splatpipe/cameras/model.py config.toml tests/conftest.py tests/test_cameras_settings.py tests/test_cameras_model.py tests/test_cameras_colmap.py tests/test_cameras_solve.py tests/test_cameras_step.py tests/test_cameras_undistort.py tests/test_cameras_real.py`, then `git commit -m "Cameras: one shared RADIAL camera, and RADIAL_FISHEYE for wide lenses" -- splatpipe/cameras/settings.py splatpipe/cameras/commands.py splatpipe/cameras/solve.py splatpipe/cameras/database.py splatpipe/cameras/undistort.py splatpipe/cameras/model.py config.toml tests/conftest.py tests/test_cameras_settings.py tests/test_cameras_model.py tests/test_cameras_colmap.py tests/test_cameras_solve.py tests/test_cameras_step.py tests/test_cameras_undistort.py tests/test_cameras_real.py`.
     - _Requirements: 16.4, 16.13_
@@ -412,7 +412,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add splatpipe/cameras/database.py splatpipe/cameras/solve.py tests/conftest.py tests/test_cameras_solve.py`, then commit those files with the message "Cameras: the database and the solve flow".
     - _Requirements: 16.4, 16.13_
 
-  - [ ] 5.7 Add `Deadline`, `NO_DEADLINE`, `capped()` and `capped_at` to `splatpipe/cameras/colmap.py`
+  - [x] 5.7 Add `Deadline`, `NO_DEADLINE`, `capped()` and `capped_at` to `splatpipe/cameras/colmap.py`
     - Files: `splatpipe/cameras/colmap.py`, changed.
     - Design: "colmap.py" (`ColmapRun.capped_at`, `Deadline`, `NO_DEADLINE` and `capped`), C13, C14 and D17.
     - `ColmapRun` gains `capped_at: datetime | None = None`, the Cap_Deadline when it set `timeout_seconds`. `Deadline` holds the Cap_Deadline `at`, or None, and the clock `now`. `NO_DEADLINE` has no Cap_Deadline.
@@ -420,14 +420,14 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The module still imports only the standard library and `splatpipe.errors`.
     - _Requirements: 17.3, 17.4, 17.5_
 
-  - [ ] 5.8 Cap every COLMAP run in `run_timed` in `splatpipe/cameras/solve.py`
+  - [x] 5.8 Cap every COLMAP run in `run_timed` in `splatpipe/cameras/solve.py`
     - Files: `splatpipe/cameras/solve.py`, changed.
     - Design: "solve.py" (`run_timed`, `run_or_fail` and `solve` with their `deadline`), the note under "The solve flow"'s diagram, C13 to C15, and the Cap_Deadline rows of "Error Handling".
     - `run_timed`, `run_or_fail` and `solve` take `deadline: Deadline = NO_DEADLINE`, and `solve` passes its own to every run it makes, through its `_Flow`. `run_timed` first calls `capped(colmap_run, deadline.at, deadline.now())`, so with no time left it raises before the runner is called, and the command gets no timing and no Command_Log.
     - Then it runs the command and adds its timing, and fails a Timeout with the Req 2.8 message when `capped_at` is None, and otherwise with the Req 17.6 message: the command, the Cap_Deadline, the seconds that were left, rounded to a whole second, and the larger `cap_minutes` advice, with no `[cameras]` key. Neither failure starts the Fallback.
     - _Requirements: 2.8, 17.3, 17.4, 17.5, 17.6_
 
-  - [ ] 5.9 Read the Cap_Deadline in `work` in `splatpipe/cameras/__init__.py`
+  - [x] 5.9 Read the Cap_Deadline in `work` in `splatpipe/cameras/__init__.py`
     - Files: `splatpipe/cameras/__init__.py`, changed.
     - Design: "The step's flow (`__init__.py`)" (`Tools.now`, `TOOLS` and steps 2, 6 and 7), the `__init__.py` row of "Module layout", C12, C16 and D17.
     - `Tools` gains `now: Callable[[], datetime] = utc_now`, with `utc_now` from `splatpipe.train.deadline`, and `TOOLS` passes `now=utc_now`.
@@ -435,20 +435,20 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The module docstring says the step reads the Cap_Deadline and caps each command's Time_Limit at the time left before it. `splatpipe.train.deadline` is the package's only new import.
     - _Requirements: 14.10, 17.1, 17.2, 17.3, 17.4_
 
-  - [ ] 5.10 Give `FakeColmap` a clock in `tests/conftest.py`
+  - [x] 5.10 Give `FakeColmap` a clock in `tests/conftest.py`
     - Files: `tests/conftest.py`, changed.
     - Design: the `FakeColmap` stand-in under "Stand-ins", and C16.
     - `FakeColmap` takes an optional `now`, a stand-in clock, and records in `runs` each run's `timeout_seconds` and `capped_at` as the run got them. `fake_colmap` installs it as `Tools.now`, or `utc_now` when the test gives none, beside `find_colmap` and `run`.
     - The module docstring says so, and that the autouse `no_cap_deadline` keeps every other test uncapped.
     - _Requirements: 16.5_
 
-  - [ ] 5.11 Write unit tests for `capped` in `tests/test_cameras_colmap.py`
+  - [x] 5.11 Write unit tests for `capped` in `tests/test_cameras_colmap.py`
     - Files: `tests/test_cameras_colmap.py`, changed.
     - Design: the `capped` items of the `tests/test_cameras_colmap.py` row of "Tests by file", and C13 to C15.
     - For a run whose key gives 600 s: no Cap_Deadline gives the run as it is; exactly 600 s left gives it as it is; 599 s left gives 599 s with `capped_at` set; a microsecond left gives a microsecond; exactly 0 s left and a minute past each raise the Req 17.5 failure, which names the command and the Cap_Deadline, says to raise `cap_minutes` under `[cloud.presets]` and holds no "Traceback". Every other field of the run stays as it was.
     - _Requirements: 16.2, 16.9, 17.3, 17.4, 17.5_
 
-  - [ ] 5.12 Write the property test for Property 8 in `tests/test_cameras_colmap.py`, with Hypothesis
+  - [x] 5.12 Write the property test for Property 8 in `tests/test_cameras_colmap.py`, with Hypothesis
     - **Property 8: The Cap_Deadline caps each Time_Limit, and no time left starts nothing**
     - **Validates: Requirements 17.3, 17.4, 17.5, 17.8**
     - Files: `tests/test_cameras_colmap.py`, changed.
@@ -457,7 +457,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The oracle works out the seconds left with its own `timedelta` arithmetic and checks the three cases: the run unchanged; the run with the seconds left as its `timeout_seconds`, `capped_at` set and every other field unchanged; or the `ExpectedFailure` that names the command and the Cap_Deadline.
     - _Requirements: 16.3, 17.3, 17.4, 17.5, 17.8_
 
-  - [ ] 5.13 Write unit tests for the capped solve in `tests/test_cameras_solve.py`
+  - [x] 5.13 Write unit tests for the capped solve in `tests/test_cameras_solve.py`
     - Files: `tests/test_cameras_solve.py`, changed.
     - Design: the Cap_Deadline items of the `tests/test_cameras_solve.py` row of "Tests by file", "The solve flow", and C13 to C15.
     - With a `Deadline` and a stand-in clock that moves on with each run: every run's `timeout_seconds` is the smaller of its key's value and the seconds left, with `capped_at` set only when the Cap_Deadline gave the limit. A Timeout under a capped limit fails with the Req 17.6 message, which names the command, the Cap_Deadline, the seconds left and `cap_minutes` and no `[cameras]` key, with no Fallback, while a Timeout under a key's limit still gives the Req 2.8 message.
@@ -465,14 +465,14 @@ Some files grow over several tasks, so each piece comes with the first task that
     - With no `Deadline`, every run gets its key's value, as before.
     - _Requirements: 2.8, 13.3, 16.5, 16.9, 17.3, 17.4, 17.5, 17.6_
 
-  - [ ] 5.14 Write unit tests for the step's read of the Cap_Deadline in `tests/test_cameras_step.py`
+  - [x] 5.14 Write unit tests for the step's read of the Cap_Deadline in `tests/test_cameras_step.py`
     - Files: `tests/test_cameras_step.py`, changed.
     - Design: the Cap_Deadline items of the `tests/test_cameras_step.py` row of "Tests by file", C12 and C16.
     - Through `splatpipe.cameras.run` with `FakeColmap`: each `SPLATPIPE_CAP_DEADLINE` that `read_cap_deadline` refuses, set with `monkeypatch.setenv` (an empty value, `"soon"`, and a time with no UTC offset), fails the step with that function's own message and `expected: true`, before `frames.json` is read and before any run, also when `work/frames/` is broken. A bad setting still fails first.
     - With a good one and `fake_colmap(now=...)`, the runs get capped limits and the report is done. With none, every run gets its key's value.
     - _Requirements: 14.10, 16.5, 16.9, 17.1, 17.2, 17.3, 17.4_
 
-  - [ ] 5.15 Run the tests and commit
+  - [x] 5.15 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` and the cameras import check in `tests/test_imports.py` included. The settings test of 1.4 still finds the seven Time_Limit keys at O1's values.
     - On `feat/camera-solve`: `git add splatpipe/cameras/colmap.py splatpipe/cameras/solve.py splatpipe/cameras/__init__.py tests/conftest.py tests/test_cameras_colmap.py tests/test_cameras_solve.py tests/test_cameras_step.py`, then `git commit -m "Cameras: cap each COLMAP time limit at the cap deadline" -- splatpipe/cameras/colmap.py splatpipe/cameras/solve.py splatpipe/cameras/__init__.py tests/conftest.py tests/test_cameras_colmap.py tests/test_cameras_solve.py tests/test_cameras_step.py`.
     - _Requirements: 16.4, 16.13, 17.7_
@@ -599,7 +599,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add tests/test_cameras_real.py`, then commit that file with the message "Cameras: integration test with the real COLMAP".
     - _Requirements: 16.4, 16.13_
 
-  - [ ] 8.4 Write `splatpipe/cameras/smoke.py`
+  - [x] 8.4 Write `splatpipe/cameras/smoke.py`
     - Files: `splatpipe/cameras/smoke.py`, new.
     - Design: "smoke.py (the Cameras_Smoke_Check)", the Smoke_Picks' row of "The Fixed_Constants", "The real COLMAP tests", C17 to C21 and D15.
     - `SmokeSizes`, `SmokeSolve`, `CamerasSmoke`, `JOB`, `HELP`, `render_pick()`, `write_smoke_picks()`, `passed_options()`, `listed_options()`, `check_options()`, `smoke_settings()`, `run_smoke_solve()`, `check_smoke_solve()` and `run_cameras_smoke()`, as the design gives them.
@@ -609,7 +609,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - It imports only the standard library, numpy, cv2 and `splatpipe`, and no pytest, so it runs on the machine image. cv2 draws, blurs and encodes the Smoke_Picks' images, and never reads or writes video.
     - _Requirements: 12.13, 12.14, 16.13, 18.1, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8_
 
-  - [ ] 8.5 Write unit tests for the smoke check in `tests/test_cameras_smoke.py`
+  - [x] 8.5 Write unit tests for the smoke check in `tests/test_cameras_smoke.py`
     - Files: `tests/test_cameras_smoke.py`, new.
     - Design: the `tests/test_cameras_smoke.py` row of "Tests by file".
     - With no COLMAP: the scene's self-check, moved from `tests/test_cameras_real.py`, on `render_pick`; `write_smoke_picks` writes a `work/frames/` that `read_frames` accepts, with the painted corner and `mask.png`; `passed_options` holds every option the builders pass, `--ImageReader.camera_params` and `--ImageReader.camera_mask_path` included for `feature_extractor`; `listed_options` on a short `-h` text with a wrapped description and glog lines; and `smoke_settings` gives `[jobs].default_preset` and every Time_Limit key at `cameras_timeout_seconds`, which `read_settings` accepts.
@@ -618,7 +618,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `run_smoke_solve` with `fake_colmap(global_models=(30,))` and the test config gives the `SmokeSolve`'s numbers from the files it read, f from the Final_Model's RADIAL camera and fx = fy from `sparse/`, writes nothing outside its scratch folder, and passes a Cameras_Step failure up with the step's own message.
     - _Requirements: 16.13, 16.14, 18.3, 18.4, 18.5, 18.6, 18.7, 18.8_
 
-  - [ ] 8.6 Run the integration test on the smoke code in `tests/test_cameras_real.py`
+  - [x] 8.6 Run the integration test on the smoke code in `tests/test_cameras_real.py`
     - Files: `tests/test_cameras_real.py`, changed.
     - Design: "The real COLMAP tests", item 1, F5, F18, O6, C17 to C19, D15, D18 and D19.
     - The scene and its self-check leave the file. The test calls `smoke.run_cameras_smoke` with the real config and the real `[cloud.smoke]` numbers, both read by path, in `tmp_path`, with the step's real `TOOLS`. It's skipped with the reason "COLMAP isn't installed" where `colmap` isn't on the PATH.
@@ -626,13 +626,13 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The deeper checks stay, on `<tmp_path>/job/`: the Work_Folder of Req 11.1; `sparse/`'s three files read as one PINHOLE camera that every image uses; `colmap model_analyzer` and the byte-for-byte `colmap model_converter`, each with `timeout=60`; the masks, with the painted corner at 0 through the Final_Model's RADIAL camera; the levelling; `out/cameras.json` against `sparse/`; and `work/frames/` byte for byte against a second `write_smoke_picks`.
     - _Requirements: 1.7, 10.2, 10.5, 10.6, 11.1, 16.6, 16.8, 16.13, 18.4, 18.5_
 
-  - [ ] 8.7 Run the `-h` test on the smoke code in `tests/test_cameras_colmap.py`
+  - [x] 8.7 Run the `-h` test on the smoke code in `tests/test_cameras_colmap.py`
     - Files: `tests/test_cameras_colmap.py`, changed.
     - Design: "The real COLMAP tests", item 2, C20 and A16.
     - The test calls `smoke.check_options` with the real config and `SmokeSizes` from the real `[cloud.smoke]`, both read by path, in `tmp_path`. So each `-h` runs within `check_timeout_seconds`, 60 s, for each Preset, with and without the Mask and for both Camera_Models, and the test expects no failure. The file's own `-h` reader goes, because `listed_options` takes its place. The test is skipped without COLMAP, with its reason.
     - _Requirements: 16.7, 16.8, 16.13, 18.3_
 
-  - [ ] 8.8 Add the seven `cameras_*` numbers to `[cloud.smoke]`, `cloud/config.py` and `tests/fake_aws.py`
+  - [x] 8.8 Add the seven `cameras_*` numbers to `[cloud.smoke]`, `cloud/config.py` and `tests/fake_aws.py`
     - Files: `config.toml`, `cloud/config.py` and `tests/fake_aws.py`, changed.
     - Design: "The Cameras_Smoke_Check's keys in `[cloud.smoke]`" and C21.
     - Append the seven keys and their comments to `[cloud.smoke]` in `config.toml`, after `train_sh_degree_interval`, exactly as the design writes them.
@@ -640,21 +640,21 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `cloud_config()` in `tests/fake_aws.py` gives the same seven values in its `"smoke"` table.
     - _Requirements: 18.9_
 
-  - [ ] 8.9 Add the `cameras` check to `cloud/smoke_runner.py`
+  - [x] 8.9 Add the `cameras` check to `cloud/smoke_runner.py`
     - Files: `cloud/smoke_runner.py`, changed.
     - Design: the paragraph on `_check_cameras` at the end of "smoke.py (the Cameras_Smoke_Check)", and the `cloud/smoke_runner.py` row of "Changes outside `splatpipe/cameras/`".
     - The module imports `splatpipe.cameras.smoke` as a module, `cameras_smoke`, so its `SmokeSizes` doesn't clash with the training check's. `_check_cameras(context)` builds the `SmokeSizes` from the seven `cameras_*` numbers and `check_timeout_seconds`, and returns `cameras_smoke.run_cameras_smoke(context.config, sizes, context.scratch, context.job_id).line`, looked up when the check runs, so a test can put a stand-in in its place.
     - `SMOKE_CHECKS` holds `SmokeCheck("cameras", _check_cameras)` right after `SmokeCheck("colmap", _check_colmap)`, and the module docstring's list of checks names the cameras check.
     - _Requirements: 18.2, 18.8_
 
-  - [ ] 8.10 Write unit tests for the cloud side of the cameras smoke check
+  - [x] 8.10 Write unit tests for the cloud side of the cameras smoke check
     - Files: `tests/test_cloud_config.py` and `tests/test_cloud_smoke_runner.py`, changed.
     - Design: the `tests/test_cloud_config.py` and `tests/test_cloud_smoke_runner.py` rows of "Changes outside `splatpipe/cameras/`" and of "Tests by file".
     - `tests/test_cloud_config.py`: the example smoke table and the Hypothesis strategy's both gain the seven values, the wrong-type targets list the seven, three as whole numbers and four as numbers, and the real `[cloud.smoke]` holds the seven with their types. A float for a whole one, a bool, and 0 are each refused, naming the key and `[cloud.smoke]`.
     - `tests/test_cloud_smoke_runner.py`: `test_the_smoke_checks_cover_the_image_in_order` lists `torch-gpu`, `gsplat`, `fused-ssim`, `ffmpeg-zscale`, `colmap`, `cameras`, `node`, `splat-transform`, `moge-weights`, `training` and `cloud-runner`, and its comment says why `cameras` follows `colmap`. A new test runs `CHECKS["cameras"]` with a stand-in for `run_cameras_smoke`, and checks that the stand-in gets the config, the seven numbers and `check_timeout_seconds`, the check's own scratch folder and the smoke run's Job_Id, and that the check gives back the stand-in's line.
     - _Requirements: 16.14, 18.2, 18.8, 18.9_
 
-  - [ ] 8.11 Run the tests and commit
+  - [x] 8.11 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py` and `tests/test_cloud_imports.py` included. Where Homebrew's COLMAP is installed, the `-h` test and the integration test run the smoke code.
     - On `feat/camera-solve`: `git add splatpipe/cameras/smoke.py tests/test_cameras_smoke.py tests/test_cameras_real.py tests/test_cameras_colmap.py config.toml cloud/config.py tests/fake_aws.py cloud/smoke_runner.py tests/test_cloud_config.py tests/test_cloud_smoke_runner.py`, then `git commit -m "Cameras: the cameras smoke check" -- splatpipe/cameras/smoke.py tests/test_cameras_smoke.py tests/test_cameras_real.py tests/test_cameras_colmap.py config.toml cloud/config.py tests/fake_aws.py cloud/smoke_runner.py tests/test_cloud_config.py tests/test_cloud_smoke_runner.py`.
     - _Requirements: 16.4, 16.13_
@@ -696,7 +696,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - On `feat/camera-solve`: `git add docs/pipeline.md docs/third-party-licences.md tests/test_docs.py`, then commit those files with the message "Cameras: pipeline doc section and the COLMAP licence row".
     - _Requirements: 16.4, 16.13_
 
-  - [ ] 9.5 Update `## Step: cameras`, "The cap deadline" and "The smoke test" in `docs/pipeline.md`
+  - [x] 9.5 Update `## Step: cameras`, "The cap deadline" and "The smoke test" in `docs/pipeline.md`
     - Files: `docs/pipeline.md`, changed.
     - Design: the list "The update for D15 to D20 changes the doc in these places" in "Changes outside `splatpipe/cameras/`", "`out/cameras.json` (the Viewer_Cameras)" and "The Model_Files".
     - `## Step: cameras`: RADIAL and RADIAL_FISHEYE wherever it says OPENCV or OPENCV_FISHEYE, with the Fisheye_Start's five numbers, the Model_Files' ids and parameters for PINHOLE (1), RADIAL (3) and RADIAL_FISHEYE (9), and that the one PINHOLE camera has fx = fy. The two `ba_refine_extra_params` rows and the bullet on them say that the settings check refuses false, and why.
@@ -706,27 +706,27 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The words "the step's machine needs" stay, as in the frames and train sections.
     - _Requirements: 15.6, 15.9, 15.10, 15.11_
 
-  - [ ] 9.6 Change the Homebrew sentence of the COLMAP row in `docs/third-party-licences.md`
+  - [x] 9.6 Change the Homebrew sentence of the COLMAP row in `docs/third-party-licences.md`
     - Files: `docs/third-party-licences.md`, changed.
     - Design: "The COLMAP row", D18 and A15.
     - The sentence on laptops, which ends "is used only for `-h` and small CPU tests, always with `use_gpu 0`.", becomes the design's: Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD, runs `-h` and the laptop tests, the integration test's whole solve included, always with `use_gpu 0`, as Samarth OKed, with his reasons. The rest of the row stays word for word, and it stays the only row with COLMAP in its name.
     - _Requirements: 15.8_
 
-  - [ ] 9.7 Name RADIAL and RADIAL_FISHEYE in the colmap-cli skill
+  - [x] 9.7 Name RADIAL and RADIAL_FISHEYE in the colmap-cli skill
     - Files: `.kiro/skills/colmap-cli/SKILL.md` and `.kiro/skills/colmap-cli/references/options.md`, changed.
     - Design: "The colmap-cli skill" in "Changes outside `splatpipe/cameras/`", F2 and D19 (small fix a).
     - In `SKILL.md`'s `feature_extractor` table, the `--ImageReader.camera_model` and `--ImageReader.camera_params` rows gain the design's sentences on what the cameras step passes. In `references/options.md`, the "Left out" bullet under the `feature_extractor` block no longer names `--ImageReader.camera_params`, and the design's new bullet says that `--ImageReader.camera_model` takes `camera_model`, RADIAL or RADIAL_FISHEYE, and that `--ImageReader.camera_params` goes in only for RADIAL_FISHEYE, with the Fisheye_Start f, cx, cy, k1, k2.
     - Every code block of `references/options.md` stays as it is, `--ImageReader.camera_model SIMPLE_RADIAL` included, because the settings test and Property 1 parse those blocks.
     - _Requirements: 15.12_
 
-  - [ ] 9.8 Say Step_Needs in the frames spec and in `splatpipe/frames/settings.py`
+  - [x] 9.8 Say Step_Needs in the frames spec and in `splatpipe/frames/settings.py`
     - Files: `.kiro/specs/frames/requirements.md`, `.kiro/specs/frames/design.md`, `.kiro/specs/frames/tasks.md` and `splatpipe/frames/settings.py`, changed.
     - Design: "Step_Needs in the frames spec" in "Changes outside `splatpipe/cameras/`" (small fix b).
     - Each "Machine_Needs" becomes "Step_Needs": in `requirements.md`, the out-of-scope line, the glossary entry, which also says it's the cloud-jobs spec's name, and the three criteria; in `design.md`, the two `tests/test_docs.py` rows; in `tasks.md`, the one sub-task bullet, with no task or sub-task title line or checkbox changed; and in `splatpipe/frames/settings.py`, the comment above `min_vcpus`, with no code changed.
     - `docs/pipeline.md` has no "Machine_Needs", so it stays as it is for this fix.
     - _Requirements: 15.13_
 
-  - [ ] 9.9 Add the missing cameras lines to `docs/devlog.md`
+  - [x] 9.9 Add the missing cameras lines to `docs/devlog.md`
     - Files: `docs/devlog.md`, changed.
     - Design: "The devlog lines" and C23 (small fix e).
     - Add one line for each of the sub-tasks 1.1 to 1.6, 2.1 to 2.4, 3.1 to 3.6, 4.1 to 4.9, 5.1 and 5.3, in the hook's format, `- <YYYY-MM-DD HH:MM>+05:30 | feat/camera-solve | cameras <id> <title> | <files>`, with the sub-task's title as this file gives it and the time and files that the design's table takes from the git history, the files as `git show --name-only --format= <commit>` lists them, comma-separated.
@@ -734,7 +734,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - This sub-task has a wave of its own. The devlog hook appends its own line and commits `docs/devlog.md` right after it, with these lines in it, so 9.11 leaves that file out, like every other commit.
     - _Requirements: 15.14_
 
-  - [ ] 9.10 Write the doc tests for the update in `tests/test_docs.py`
+  - [x] 9.10 Write the doc tests for the update in `tests/test_docs.py`
     - Files: `tests/test_docs.py`, changed.
     - Design: the `tests/test_docs.py` row of the update's table in "Changes outside `splatpipe/cameras/`", and the doc tests row of "Tests by file".
     - `## Step: cameras` names `"RADIAL"`, `"RADIAL_FISHEYE"`, fx = fy, `SPLATPIPE_CAP_DEADLINE` and the refusal of a false `mapper_ba_refine_extra_params` or `global_mapper_ba_refine_extra_params`, and holds neither "OPENCV" nor "The step doesn't read `SPLATPIPE_CAP_DEADLINE`".
@@ -744,7 +744,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The COLMAP row also says "the integration test's whole solve included" and "as Samarth OKed", and no longer says "is used only for `-h` and small CPU tests". The Solve_Record example that the tests take the record's fields from uses `"RADIAL"`.
     - _Requirements: 15.6, 15.8, 15.9, 15.10, 15.11, 15.12, 16.12_
 
-  - [ ] 9.11 Run the tests and commit
+  - [x] 9.11 Run the tests and commit
     - Run `uv run pytest`. Every test passes, `tests/test_guard.py`, `tests/test_cloud_docs.py` and the COLMAP row checks in `tests/test_cloud_image.py` included.
     - On `feat/camera-solve`: `git add docs/pipeline.md docs/third-party-licences.md .kiro/skills/colmap-cli/SKILL.md .kiro/skills/colmap-cli/references/options.md .kiro/specs/frames/requirements.md .kiro/specs/frames/design.md .kiro/specs/frames/tasks.md splatpipe/frames/settings.py tests/test_docs.py`, then `git commit -m "Cameras: docs, skill and licence row for RADIAL, the cap deadline and the smoke check; Step_Needs in the frames spec" -- docs/pipeline.md docs/third-party-licences.md .kiro/skills/colmap-cli/SKILL.md .kiro/skills/colmap-cli/references/options.md .kiro/specs/frames/requirements.md .kiro/specs/frames/design.md .kiro/specs/frames/tasks.md splatpipe/frames/settings.py tests/test_docs.py`. `docs/devlog.md` stays out, because the hook committed it after 9.9.
     - _Requirements: 16.4, 16.13_
