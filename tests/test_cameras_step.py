@@ -10,12 +10,13 @@ is the real config's with min_placed_frames at 1, so 8 Picks need max(1, 0.5 × 
 Placed_Frames.
 
 By default the Calibration works and each mapper writes one Model that places all 8 Picks, with
-an OPENCV camera at the Pick_Size and the fake's 4 points. The fake image_undistorter turns that
-camera into a PINHOLE camera of 14 × 10, and the fake Mask_Warp gives a three-channel PNG of that
-size with a grey edge around the Mask's black corner. The mappers' cameras walk sideways, level,
-each looking at one point, and COLMAP's frame holds them tilted. So they agree on which way is up
-and the Levelling moves the scene, and their views spread over less than 35°, so the eigenvalue
-test fails and the Scene_Centre is the Point_Median. Three changes to that:
+a RADIAL camera at the Pick_Size, with a little distortion, and the fake's 4 points. The fake
+image_undistorter turns that camera into a PINHOLE camera of 14 × 10 with fx = fy = its f (F18),
+and the fake Mask_Warp gives a three-channel PNG of that size with a grey edge around the Mask's
+black corner. The mappers' cameras walk sideways, level, each looking at one point, and COLMAP's
+frame holds them tilted. So they agree on which way is up and the Levelling moves the scene, and
+their views spread over less than 35°, so the eigenvalue test fails and the Scene_Centre is the
+Point_Median. Three changes to that:
 
 - TWO_MODELS: the global mapper's Model 0 places Picks 0 and 1, and Model 1, the Kept_Model,
   Picks 2 to 7. So the Final_Model is Model 1, and its 6 Placed_Frames, PLACED, aren't all the
@@ -64,21 +65,21 @@ The tests check:
   holds the Undistortion's image for each name in sparse/images.bin (Req 11.2), and masks/ one
   8-bit grey PNG per Placed_Frame at the Undistorted_Camera's size, which is 255 exactly where the
   Mask_Warp's output is 255 in every channel and 0 elsewhere (Req 8.4, 11.3).
-- sparse/: exactly the three Model_Files, with one PINHOLE camera that every image uses, each
-  Placed_Frame with the Undistorted_Model's image id, camera id, name and 2D points, and every
-  point with its id, colour, error and track. Every Pose and point is the Undistorted_Model's
-  moved by the one Level_Move that solve.json gives (Req 9.13, 10.5 to 10.8).
+- sparse/: exactly the three Model_Files, with one PINHOLE camera with fx = fy that every image
+  uses (F18, D19), each Placed_Frame with the Undistorted_Model's image id, camera id, name and
+  2D points, and every point with its id, colour, error and track. Every Pose and point is the
+  Undistorted_Model's moved by the one Level_Move that solve.json gives (Req 9.13, 10.5 to 10.8).
 - Cameras that don't agree on up: every Pose and point of sparse/ is the Undistorted_Model's, bit
   for bit, with the Req 9.3 warning in the report and in solve.json, levelled at 0, and the
   identity as the Level_Move (Req 9.14, 13.5, C10).
-- The Mask_Warp's camera line is the Final_Model's camera as the Final_Model holds it before the
-  Undistortion, written here with this file's own code, and its command line has the
+- The Mask_Warp's camera line is the Final_Model's RADIAL camera as the Final_Model holds it
+  before the Undistortion, written here with this file's own code, and its command line has the
   Undistortion's value of each undistortion setting (Req 8.3).
 - solve.json and out/cameras.json hold only JSON_Values and every field of the design's tables,
-  in order and of the kinds the design gives. mean_reprojection_error is the mean of the errors
-  that aren't -1, or null when no point has one (F15). out/cameras.json lists the Placed_Frames
-  in Pick_Number order with their Poses from sparse/images.bin, and holds no points (Req 11.7,
-  11.9).
+  in order and of the kinds the design gives, with "RADIAL" as the camera_model.
+  mean_reprojection_error is the mean of the errors that aren't -1, or null when no point has
+  one (F15). out/cameras.json lists the Placed_Frames in Pick_Number order with their Poses from
+  sparse/images.bin, and holds no points (Req 11.7, 11.9).
 - The report holds every count of Req 13.1 as an int, a timing for each COLMAP_Command that ran
   and for each stage, the warnings that apply, and every key of [cameras] with the Preset's
   near_overlap in its settings, for the global mapper, the Fallback with the Mask, and the fisheye
@@ -97,7 +98,9 @@ The tests check:
   earlier run's out/cameras.json was (Req 7.2, 8.2, 11.6, 11.10, 16.11). A full disk while
   out/cameras.json is written removes solve.json, which was there, and the partly written
   out/cameras.json (C6). Each full disk's Readable_Error names the file and the reason
-  (Req 11.12).
+  (Req 11.12). An Undistortion that kept the RADIAL camera says that COLMAP keeps a camera's own
+  model when its distortion came out as 0 and to run the step again, and names neither
+  ba_refine_extra_params key (C8).
 - A non-zero exit of the Undistortion or of the Mask_Warp fails with the design's Req 2.9 message,
   and the report holds the timing of each command that ran, the failing one's included, and of the
   stages that finished, with the counts worked out before it (Req 2.9, 13.3).
@@ -116,7 +119,6 @@ The tests check:
 import errno
 import hashlib
 import json
-import re
 import shutil
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -152,8 +154,8 @@ from splatpipe.run import run_job
 EXTRACT, NEAR, FAR = "feature_extractor", "sequential_matcher_near", "sequential_matcher_far"
 CALIBRATE, GLOBAL, INCREMENTAL = "view_graph_calibrator", "global_mapper", "mapper"
 UNDISTORT, WARP = "image_undistorter", "image_undistorter_standalone"
-# The runs for OPENCV when the Global_Run passes, in order, without the Mask_Warp.
-OPENCV_RUNS = (EXTRACT, NEAR, FAR, CALIBRATE, GLOBAL, UNDISTORT)
+# The runs for RADIAL when the Global_Run passes, in order, without the Mask_Warp.
+RADIAL_RUNS = (EXTRACT, NEAR, FAR, CALIBRATE, GLOBAL, UNDISTORT)
 # The stage timings of a done run (Req 13.2).
 STAGES = ("matching", "mapping", "undistortion", "levelling", "writing")
 # The COLMAP commands that write Models.
@@ -189,7 +191,7 @@ SHARED_KEYS = tuple(key for key in REAL_CAMERAS if key not in PRESETS)
 # The Req 5.3 warning for the fisheye camera, which starts from the config's fisheye_fov_degrees,
 # the Req 6.7 warning for a Global_Run that wrote no Model, and the reason of a rejected
 # Calibration, as the design words them.
-FISHEYE_WARNING = ("The camera model is OPENCV_FISHEYE, so the focal length calibration was "
+FISHEYE_WARNING = ("The camera model is RADIAL_FISHEYE, so the focal length calibration was "
                    "skipped, because COLMAP's view_graph_calibrator only fits pinhole cameras. "
                    "The fisheye camera starts from fisheye_fov_degrees = "
                    f"{REAL_CAMERAS['fisheye_fov_degrees']} in [cameras].")
@@ -306,7 +308,7 @@ def work_layout(*, mask: bool) -> list[str]:
 
 
 def colmap_layout(*, mask: bool, fallback: bool = False) -> list[str]:
-    """What names_in gives for the COLMAP_Folder of a done run for OPENCV, as the design's "The
+    """What names_in gives for the COLMAP_Folder of a done run for RADIAL, as the design's "The
     Work_Folder" lays it out: incremental/ only when the Fallback ran, and the Mask_Warp's camera
     line and output only with the Mask (O8)."""
     return sorted(["database.db", "database_calibrated.db", "global", "logs", "tmp", "undistorted",
@@ -407,7 +409,7 @@ def test_the_work_folder_holds_the_designs_layout_and_an_undistorted_image_per_p
         assert (done.work / "images" / name).read_bytes() == undistorted.read_bytes()
     # The runs, in order, with the Mask_Warp only with the Mask, and in colmap/logs/ a
     # Command_Log for each, named after it.
-    runs = [*OPENCV_RUNS, *([WARP] if mask_used else [])]
+    runs = [*RADIAL_RUNS, *([WARP] if mask_used else [])]
     assert [run.name for run in fake.runs] == runs
     logs = done.colmap / "logs"
     assert names_in(logs) == sorted(f"{name}.log" for name in runs)
@@ -452,10 +454,13 @@ def test_sparse_holds_the_undistorted_model_moved_by_the_level_move_in_the_three
     # Exactly the three Model_Files, with no rigs.bin or frames.bin (Req 10.5).
     assert names_in(done.work / "sparse") == sorted(FILES)
     levelled, undistorted = done.levelled(), done.undistorted()
-    # One PINHOLE camera, the Undistorted_Camera, which every image uses (Req 10.6).
+    # One PINHOLE camera, the Undistorted_Camera, which every image uses (Req 10.6). From the
+    # Final_Model's RADIAL camera, with its one f, the Undistortion gives fx = fy (F18, D19).
     assert levelled.cameras == undistorted.cameras
     (camera,) = levelled.cameras
     assert CAMERA_MODELS[camera.model_id][0] == "PINHOLE"
+    fx, fy, _, _ = camera.params
+    assert fx == fy
     assert {image.camera_id for image in levelled.images} == {camera.camera_id}
     # Each Placed_Frame with the Undistorted_Model's image id, camera id, name and 2D points, and
     # every point with its id, colour, error and track (Req 10.7, 10.8).
@@ -519,12 +524,14 @@ def test_the_mask_warp_takes_the_final_models_own_camera_and_the_undistortions_s
     fake = fake_colmap()
     done = run_done(job_id)
     # The Final_Model is the Global_Run's Model 0. Its camera, as it holds it before the
-    # Undistortion, is the mappers' OPENCV camera at the Pick_Size, not the Undistorted_Camera.
+    # Undistortion, is the mappers' RADIAL camera at the Pick_Size, with its five parameters f,
+    # cx, cy, k1 and k2, not the Undistorted_Camera.
     (camera,) = read_model(done.colmap / "global" / "0").cameras
-    assert (CAMERA_MODELS[camera.model_id][0], camera.width, camera.height) == ("OPENCV", 16, 12)
+    assert (CAMERA_MODELS[camera.model_id][0], camera.width, camera.height) == ("RADIAL", 16, 12)
+    assert len(camera.params) == 5
     # The camera line, written here: mask.png, the model, the size, then each parameter as repr
     # writes it, which reads back as the same double (F8).
-    line = " ".join(["mask.png", "OPENCV", str(camera.width), str(camera.height),
+    line = " ".join(["mask.png", "RADIAL", str(camera.width), str(camera.height),
                      *(repr(param) for param in camera.params)]) + "\n"
     camera_file = done.colmap / "mask_camera.txt"
     assert camera_file.read_text(encoding="utf-8") == line
@@ -546,13 +553,13 @@ def test_the_mask_warp_takes_the_final_models_own_camera_and_the_undistortions_s
 SOLVE_RUNS = [
     pytest.param(
         TWO_MODELS, (0.25, NO_ERROR, 0.75, NO_ERROR),
-        {"camera_model": "OPENCV", "calibration_ran": True, "calibration_failure": None,
+        {"camera_model": "RADIAL", "calibration_ran": True, "calibration_failure": None,
          "mapper": "global", "fallback_reason": None, "models": TWO_MODEL_COUNTS,
          "final_model": 1, "mean_reprojection_error": 0.5},
         id="the global mapper with two errors of -1"),
     pytest.param(
         {"calibration": "rejected", "incremental_models": (2, 6)}, (NO_ERROR,) * 4,
-        {"camera_model": "OPENCV", "calibration_ran": True, "calibration_failure": REJECTED,
+        {"camera_model": "RADIAL", "calibration_ran": True, "calibration_failure": REJECTED,
          "mapper": "incremental", "fallback_reason": REJECTED, "models": TWO_MODEL_COUNTS,
          "final_model": 1, "mean_reprojection_error": None},
         id="the fallback with every error -1"),
@@ -609,11 +616,11 @@ def test_solve_json_and_cameras_json_hold_every_field_of_the_designs_tables(
 # Each run's settings for set_cameras, whether the Job uses the Mask, its FakeColmap script, the
 # runs it makes in order, its fallback_ran, and the warnings that apply.
 REPORT_RUNS = [
-    pytest.param({}, False, {}, OPENCV_RUNS, 0, [], id="the global mapper"),
+    pytest.param({}, False, {}, RADIAL_RUNS, 0, [], id="the global mapper"),
     pytest.param({}, True, {"global_models": None},
                  (EXTRACT, NEAR, FAR, CALIBRATE, GLOBAL, INCREMENTAL, UNDISTORT, WARP), 1,
                  [NO_MODEL_WARNING], id="the fallback with the mask"),
-    pytest.param({"camera_model": "OPENCV_FISHEYE"}, False, {},
+    pytest.param({"camera_model": "RADIAL_FISHEYE"}, False, {},
                  (EXTRACT, NEAR, FAR, GLOBAL, UNDISTORT), 0, [FISHEYE_WARNING],
                  id="the fisheye camera"),
 ]
@@ -794,7 +801,7 @@ def test_an_earlier_cameras_json_is_gone_before_the_first_colmap_command_runs(
     done = run_done(job_id)
     # The step removed it as it started, so it was gone when each COLMAP_Command ran, and the done
     # run wrote its own Viewer_Cameras, last of all (Req 11.8, 11.10).
-    assert there == [False] * len(OPENCV_RUNS)
+    assert there == [False] * len(RADIAL_RUNS)
     assert list(done.viewer()) == ["camera", "levelled", "frames"]
 
 
@@ -876,37 +883,37 @@ def test_a_placed_failure_runs_no_undistorter_and_leaves_no_solve_json_or_camera
     assert failed.records_left() == []  # Req 11.6, 11.10, 16.11
 
 
-# Each flag of the fake image_undistorter, what the Readable_Error says the Undistortion got wrong,
-# and the keys it names (Req 8.2). A camera that isn't PINHOLE also gets the advice to set both
-# ba_refine_extra_params keys to true (C8).
-REFINE_KEYS = ("mapper_ba_refine_extra_params", "global_mapper_ba_refine_extra_params")
+# Each flag of the fake image_undistorter, and what the Readable_Error says the Undistortion got
+# wrong (Req 8.2). A camera that isn't PINHOLE, the RADIAL camera kept as it was, also gets C8's
+# words: COLMAP keeps a camera's own model when its distortion came out as 0.
+KEPT_MODEL = "COLMAP keeps a camera's own model when the camera's distortion came out as 0."
 UNDISTORTION_FAULTS = [
-    pytest.param("keep_camera_model", "left the camera as OPENCV", REFINE_KEYS,
+    pytest.param("keep_camera_model", ("left the camera as RADIAL", KEPT_MODEL),
                  id="the camera's own model"),
-    pytest.param("second_camera", "wrote 2 cameras", (), id="a second camera"),
+    pytest.param("second_camera", ("wrote 2 cameras",), id="a second camera"),
     # The Final_Model's last image is Pick 7's.
-    pytest.param("leave_out_image", "left the placed pick 000007.jpg out", (),
+    pytest.param("leave_out_image", ("left the placed pick 000007.jpg out",),
                  id="an image left out"),
 ]
 
 
-@pytest.mark.parametrize(("flag", "wrong", "keys"), UNDISTORTION_FAULTS)
+@pytest.mark.parametrize(("flag", "wrong"), UNDISTORTION_FAULTS)
 def test_each_fault_of_the_undistortion_fails_saying_what_it_got_wrong_and_leaves_no_records(
-        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap], flag: str, wrong: str,
-        keys: tuple[str, ...]) -> None:
+        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap], flag: str,
+        wrong: tuple[str, ...]) -> None:
     job_id = cameras_job()
     plant_earlier_cameras(job_id)
     fake_colmap(**{flag: True})
     failed = run_failed(job_id)
     readable = failed.readable
     # It says that COLMAP's image_undistorter got something wrong, what, and to run the step again
-    # (Req 8.2). The keys are whole words, because mapper_ba_refine_extra_params also ends the
-    # global one.
+    # (Req 8.2).
     assert "COLMAP's image_undistorter" in readable
-    assert wrong in readable
+    assert all(part in readable for part in wrong)
     assert "run the step again" in readable.lower()
-    words = re.findall(r"\w+", readable)
-    assert all(key in words for key in keys)
+    # It names neither mapper_ba_refine_extra_params nor global_mapper_ba_refine_extra_params,
+    # which the settings check keeps true (C8, D20).
+    assert "ba_refine_extra_params" not in readable
     assert failed.records_left() == []  # Req 11.6, 11.10, 16.11
 
 
@@ -986,7 +993,7 @@ def test_a_non_zero_exit_of_either_undistorter_fails_with_its_code_last_line_and
         f"COLMAP's {name} stopped with exit code 1 ({line}). Check that COLMAP 4.2.1 is installed "
         f"as .kiro/steering/tech.md says, then run the step again. Its output is in {log}.")
     # Nothing ran after it, so after the Undistortion's exit not even the Mask_Warp.
-    runs = [*OPENCV_RUNS, *([WARP] if name == WARP else [])]
+    runs = [*RADIAL_RUNS, *([WARP] if name == WARP else [])]
     assert [run.name for run in fake.runs] == runs
     # The report holds the timing of each command that ran, the failing one's included, and of the
     # stages that finished, so not undistortion's, with the counts worked out before (Req 13.3).

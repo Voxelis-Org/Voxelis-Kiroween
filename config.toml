@@ -290,9 +290,9 @@ base_picks = 200
 
 [cameras]
 # The step's own settings.
-# --ImageReader.camera_model: the camera every pick shares, "OPENCV", or "OPENCV_FISHEYE" for very wide lenses.
-camera_model = "OPENCV"
-# Field of view across the long edge, in degrees, that an OPENCV_FISHEYE camera starts from.
+# --ImageReader.camera_model: the camera every pick shares, "RADIAL" (one focal length, for square pixels), or "RADIAL_FISHEYE" for very wide lenses.
+camera_model = "RADIAL"
+# Field of view across the long edge, in degrees, that a RADIAL_FISHEYE camera starts from.
 fisheye_fov_degrees = 120.0
 # --SequentialMatching.overlap of the far match run: pick i meets pick i + 2^k for k from 0 to this - 1.
 far_overlap = 10

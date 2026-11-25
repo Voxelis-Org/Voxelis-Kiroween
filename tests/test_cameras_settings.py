@@ -262,7 +262,8 @@ OPTION_ROWS: tuple[tuple[Kind, tuple[str, ...]], ...] = (
     )),
     (ZERO_BELOW_1, ("undistortion_roi_min_x", "undistortion_roi_min_y")),
     (ABOVE_0_AT_MOST_1, ("undistortion_roi_max_x", "undistortion_roi_max_y")),
-    (names("OPENCV", "OPENCV_FISHEYE", unknown="SIMPLE_RADIAL"), ("camera_model",)),
+    # OPENCV, the first draft's Camera_Model, is now an unknown name (D19).
+    (names("RADIAL", "RADIAL_FISHEYE", unknown="OPENCV"), ("camera_model",)),
     (names("l1_root", "l2", unknown="l1"), ("feature_extractor_descriptor_normalization",)),
     (names("UNIFORM", "INLIER_MATCH_COUNT", unknown="INLIER_COUNT"),
      ("global_mapper_ra_reweighting",)),
@@ -410,7 +411,7 @@ def test_each_real_option_key_holds_its_value_in_options_md_with_its_kinds_type(
 def test_the_real_cameras_section_holds_the_designs_values_for_the_other_settings() -> None:
     shared = real_shared()
     assert typed({key: shared[key] for key in REAL_OWN}) == typed(REAL_OWN)  # O1 to O4, Req 12.3
-    assert typed({"camera_model": shared["camera_model"]}) == typed({"camera_model": "OPENCV"})
+    assert typed({"camera_model": shared["camera_model"]}) == typed({"camera_model": "RADIAL"})
     assert shared["far_overlap"] >= 9  # so the Far_Match_Run reaches 256 picks ahead (Req 4.4)
     assert shared["global_mapper_multiple_models"] is True  # Req 12.5
     assert shared["mapper_multiple_models"] is True
@@ -568,7 +569,7 @@ def test_read_settings_on_the_test_config_gives_the_presets_near_overlap_and_eve
                                           axis_point_min_front_share=0.5)
     assert (cameras.camera_model, cameras.fisheye_fov_degrees, cameras.far_overlap,
             cameras.min_placed_frames, cameras.min_placed_share, cameras.min_vcpus,
-            cameras.min_memory_gb) == ("OPENCV", 120.0, 10, 1, 0.5, 16, 16)
+            cameras.min_memory_gb) == ("RADIAL", 120.0, 10, 1, 0.5, 16, 16)
 
 
 # What set_cameras can change: a Shared_Setting, which every Preset reads, or near_overlap for

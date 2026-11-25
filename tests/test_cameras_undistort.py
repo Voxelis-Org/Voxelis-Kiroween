@@ -3,16 +3,20 @@ Mask_Warp's camera line and the Undistorted_Mask.
 
 - check_undistorted on small Undistorted_Models built here, with the Undistortion's images/
   folder in tmp_path holding an empty file per image, since only being a file counts. It refuses
-  two cameras, an OPENCV camera that COLMAP kept because its distortion came out as 0, whose
-  message names mapper_ba_refine_extra_params and global_mapper_ba_refine_extra_params and says
-  to set them to true (C8, F9), an image that isn't a Placed_Frame, a Placed_Frame left out of the
-  model, and a missing image file. Each refusal says that COLMAP's image_undistorter got it wrong
-  and to run the step again, and holds no traceback (Req 8.2, 16.9). A good model, whose images
-  come in another order than the Placed_Frames, gives its PINHOLE camera.
-- mask_camera_line for an OPENCV and an OPENCV_FISHEYE camera, with parameters whose shortest
-  text needs up to 17 significant digits or an exponent, gives one line that, split on single
-  spaces, reads back to mask.png, the model's name, the width, the height and every parameter
-  through float() (Req 8.3, F8).
+  two cameras, a RADIAL camera that COLMAP kept because its distortion came out as 0, whose
+  message says that COLMAP keeps a camera's own model when its distortion came out as 0 and
+  names neither mapper_ba_refine_extra_params nor global_mapper_ba_refine_extra_params, which the
+  settings check keeps true (C8, F9, D20), an image that uses another camera than the model's one
+  camera, naming the image, its camera id and the one camera's id (16.15), an image that isn't a
+  Placed_Frame, a Placed_Frame left out of the model, and a missing image file. Each refusal says
+  that COLMAP's
+  image_undistorter got it wrong and to run the step again, and holds no traceback (Req 8.2,
+  16.9). A good model, whose images come in another order than the Placed_Frames, gives its
+  PINHOLE camera.
+- mask_camera_line for a RADIAL and a RADIAL_FISHEYE camera, each with its five parameters f,
+  cx, cy, k1 and k2, whose shortest text needs up to 17 significant digits or an exponent, gives
+  one line that, split on single spaces, reads back to mask.png, the model's name, the width, the
+  height and every parameter through float() (Req 8.3, F2, F8, D19).
 - read_warped_mask on files written here, the PNGs with cv2.imencode: a missing file, bytes that
   aren't an image, a 16-bit PNG, and a PNG one pixel too wide or too tall each fail, naming the
   file and what's wrong and saying to run the step again, with no traceback (Req 8.5, 16.9). A
@@ -53,12 +57,14 @@ WIDTH, HEIGHT = 16, 12  # the Undistorted_Camera's size in these tests
 # check_undistorted (Req 8.2, C8, F9)
 
 PLACED = ("000000.jpg", "000001.jpg", "000002.jpg")  # the Final_Model's Placed_Frames
-# The Undistorted_Camera, and an OPENCV camera that COLMAP's undistorter kept as it was, because
-# its distortion came out as 0 (F9).
+# The Undistorted_Camera, with fx = fy (F18), and a RADIAL camera, f, cx, cy, k1, k2, that
+# COLMAP's undistorter kept as it was, because its distortion came out as 0 (F9).
 PINHOLE = Camera(camera_id=1, model_id=1, width=WIDTH, height=HEIGHT,
                  params=(14.0, 14.0, 8.0, 6.0))
-KEPT_OPENCV = Camera(camera_id=1, model_id=4, width=WIDTH, height=HEIGHT,
-                     params=(14.0, 14.0, 8.0, 6.0, 0.0, 0.0, 0.0, 0.0))
+KEPT_RADIAL = Camera(camera_id=1, model_id=3, width=WIDTH, height=HEIGHT,
+                     params=(14.0, 8.0, 6.0, 0.0, 0.0))
+# C8's words in the refusal of a kept camera.
+KEPT_MODEL = "COLMAP keeps a camera's own model when the camera's distortion came out as 0."
 
 
 def undistorted_model(cameras: Sequence[Camera], names: Sequence[str]) -> Model:
@@ -107,16 +113,33 @@ def test_check_undistorted_refuses_two_cameras(tmp_path: Path) -> None:
     assert "2 cameras" in undistortion_refusal(model, images)
 
 
-def test_check_undistorted_refuses_an_opencv_camera_naming_both_refine_extra_params_keys(
+def test_check_undistorted_refuses_a_kept_radial_camera_saying_why_and_naming_no_refine_key(
         tmp_path: Path) -> None:
     images = undistorted_images(tmp_path, PLACED)
-    message = undistortion_refusal(undistorted_model((KEPT_OPENCV,), PLACED), images)
-    # Word by word, because mapper_ba_refine_extra_params is also the end of the global key.
+    message = undistortion_refusal(undistorted_model((KEPT_RADIAL,), PLACED), images)
+    # Word by word, so RADIAL isn't found inside RADIAL_FISHEYE.
     words = re.findall(r"\w+", message)
-    assert "OPENCV" in words and "PINHOLE" in words
-    assert "mapper_ba_refine_extra_params" in words
-    assert "global_mapper_ba_refine_extra_params" in words
-    assert "true" in words
+    assert "RADIAL" in words and "PINHOLE" in words
+    # C8's words: COLMAP keeps a camera's own model when its distortion came out as 0. And no word
+    # of mapper_ba_refine_extra_params or global_mapper_ba_refine_extra_params, which the settings
+    # check keeps true (D20).
+    assert KEPT_MODEL in message
+    assert "ba_refine_extra_params" not in message
+
+
+def test_check_undistorted_refuses_an_image_on_another_camera_naming_both_ids(
+        tmp_path: Path) -> None:
+    images = undistorted_images(tmp_path, PLACED)
+    model = undistorted_model((PINHOLE,), PLACED)
+    # With every image on the one camera, camera 1, the model passes.
+    assert check_undistorted(model, PLACED, images) == PINHOLE
+    # The same model with 000001.jpg on camera 2, which the model doesn't hold (16.15).
+    moved = tuple(replace(image, camera_id=2) if image.name == "000001.jpg" else image
+                  for image in model.images)
+    message = undistortion_refusal(replace(model, images=moved), images)
+    assert "000001.jpg" in message
+    assert "camera id 2" in message
+    assert "the id 1" in message
 
 
 def test_check_undistorted_refuses_an_image_that_isnt_a_placed_frame(tmp_path: Path) -> None:
@@ -139,21 +162,20 @@ def test_check_undistorted_refuses_a_missing_image_file_naming_it(tmp_path: Path
 
 # mask_camera_line (Req 8.3, F8)
 
-# The Final_Model's camera before the Undistortion, as bundle adjustment might leave it. The
-# shortest text that reads back as some of its parameters needs 17 significant digits, like
-# 0.1 + 0.2, or an exponent, so a line written with fewer digits would read back to other
-# doubles. The fisheye camera's focal length is the Fisheye_Start's for 120° across 1920 pixels.
-OPENCV_CAMERA = Camera(camera_id=1, model_id=4, width=1920, height=1080,
-                       params=(1000 / 0.7, 1001 / 0.7, 959.5, 539.5, -(0.1 + 0.2), 0.1 / 3,
-                               1e-5 / 7, -2.5e-7))
-FISHEYE_CAMERA = Camera(camera_id=1, model_id=5, width=1920, height=1080,
-                        params=(960 / (math.pi / 3), 960 / (math.pi / 3) + 1e-9, 959.5, 539.5,
-                                0.1 + 0.2, -0.01 / 3, 1e-4 / 7, -2e-6 / 3))
+# The Final_Model's camera before the Undistortion, as bundle adjustment might leave it, with its
+# five parameters f, cx, cy, k1 and k2 (F2). The shortest text that reads back as some of them
+# needs 17 significant digits, like 0.1 + 0.2, or an exponent, so a line written with fewer
+# digits would read back to other doubles. The fisheye camera's focal length is the
+# Fisheye_Start's for 120° across 1920 pixels.
+RADIAL_CAMERA = Camera(camera_id=1, model_id=3, width=1920, height=1080,
+                       params=(1000 / 0.7, 959.5, 539.5, -(0.1 + 0.2), 1e-5 / 7))
+FISHEYE_CAMERA = Camera(camera_id=1, model_id=9, width=1920, height=1080,
+                        params=(960 / (math.pi / 3), 959.5, 539.5, 0.1 + 0.2, -2e-6 / 3))
 
 
 @pytest.mark.parametrize(("camera", "model"), [
-    pytest.param(OPENCV_CAMERA, "OPENCV", id="OPENCV"),
-    pytest.param(FISHEYE_CAMERA, "OPENCV_FISHEYE", id="OPENCV_FISHEYE"),
+    pytest.param(RADIAL_CAMERA, "RADIAL", id="RADIAL"),
+    pytest.param(FISHEYE_CAMERA, "RADIAL_FISHEYE", id="RADIAL_FISHEYE"),
 ])
 def test_mask_camera_line_reads_back_to_the_name_model_size_and_parameters(
         camera: Camera, model: str) -> None:

@@ -11,13 +11,13 @@ script, and its runs list every ColmapRun that solve ran, in order. By default t
 works and each mapper writes one Model that places all 8 Picks. The test config's
 min_placed_frames is 1 and its min_placed_share the real 0.5, so 8 Picks need 4 Placed_Frames.
 
-- For OPENCV, the runs are the Feature_Extraction, the Near_Match_Run, the Far_Match_Run, the
+- For RADIAL, the runs are the Feature_Extraction, the Near_Match_Run, the Far_Match_Run, the
   Calibration and the Global_Run, one at a time and in that order, and the Calibration_Copy
   appears only after the Far_Match_Run has returned (Req 2.11, 2.12, 5.1). The Calibration reads
   the copy, the Database's camera row stays as the Match_Runs left it, and a Calibration that
-  worked sends the Global_Run to the copy (Req 5.2, 6.1). For OPENCV_FISHEYE, no Calibration
-  runs, the Req 5.3 warning names fisheye_fov_degrees, and the Global_Run reads the Database
-  (Req 5.3, 6.2, O9).
+  worked sends the Global_Run to the copy (Req 5.2, 6.1). For RADIAL_FISHEYE, no Calibration
+  runs, the Req 5.3 warning names RADIAL_FISHEYE and fisheye_fov_degrees, and the Global_Run
+  reads the Database (Req 5.3, 6.2, O9, F17).
 - Each kind of Failed_Calibration and each way the Global_Run gives up runs the mapper once, on
   the Database, with the Req 5.5 or 6.7 warning giving the reason (Req 5.4, 5.5, 6.3 to 6.7). The
   Final_Model comes from the run that made it, with fallback_ran, kept_from_global and
@@ -40,7 +40,8 @@ min_placed_frames is 1 and its min_placed_share the real 0.5, so 8 Picks need 4 
   with at least as many Placed_Frames as every other Model and a lower number than every other
   Model with as many (Req 6.8, 6.12).
 - copy_database, read_camera and calibration_failure on small SQLite files the tests write, with
-  the cameras table of COLMAP 4.2.1 (F12, O5, C1).
+  the cameras table of COLMAP 4.2.1 and RADIAL cameras, whose one focal parameter f, params[0],
+  is what calibration_failure compares bit for bit (F12, F17, O5, C1).
 
 Signal 6 is SIGABRT on Linux and macOS, where COLMAP runs, but not on Windows, so the crash cases,
 exit code -6, are skipped there.
@@ -81,8 +82,8 @@ from splatpipe.step import StepContext
 EXTRACT, NEAR, FAR = "feature_extractor", "sequential_matcher_near", "sequential_matcher_far"
 CALIBRATE, GLOBAL, INCREMENTAL = "view_graph_calibrator", "global_mapper", "mapper"
 MATCHED = (EXTRACT, NEAR, FAR)  # the runs before the mapping stage, in order
-OPENCV_RUNS = (*MATCHED, CALIBRATE, GLOBAL)  # every run for OPENCV when the Global_Run passes
-ALL_RUNS = (*OPENCV_RUNS, INCREMENTAL)  # every run for OPENCV when the Global_Run gives up
+RADIAL_RUNS = (*MATCHED, CALIBRATE, GLOBAL)  # every run for RADIAL when the Global_Run passes
+ALL_RUNS = (*RADIAL_RUNS, INCREMENTAL)  # every run for RADIAL when the Global_Run gives up
 
 # A cameras_job Job's Picks, and the Placed_Frames they need with the test config:
 # max(1, 0.5 × 8).
@@ -105,8 +106,8 @@ POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32",
 # The design's wording of the warnings and the Readable_Errors, with the values filled in
 
 def fisheye_warning(degrees: str) -> str:
-    """The Req 5.3 warning for a fisheye camera that starts from `degrees`."""
-    return ("The camera model is OPENCV_FISHEYE, so the focal length calibration was skipped, "
+    """The Req 5.3 warning for a RADIAL_FISHEYE camera that starts from `degrees`."""
+    return ("The camera model is RADIAL_FISHEYE, so the focal length calibration was skipped, "
             "because COLMAP's view_graph_calibrator only fits pinhole cameras. The fisheye "
             f"camera starts from fisheye_fov_degrees = {degrees} in [cameras].")
 
@@ -236,11 +237,11 @@ def assert_fallback_model(job: SolveJob, solved: Solved) -> None:
 
 # The COLMAP databases the tests write
 
-# The Database's camera as COLMAP's feature_extractor makes it for a 16 × 12 Pick: OPENCV, model
-# id 4, with fx = fy = 1.2 × 16, the principal point at the centre, no distortion, and no focal
-# prior (Req 3.3, F2). As (model, width, height, params, prior_focal_length).
-START_PARAMS = (19.2, 19.2, 8.0, 6.0, 0.0, 0.0, 0.0, 0.0)
-START = (4, 16, 12, START_PARAMS, 0)
+# The Database's camera as COLMAP's feature_extractor makes it for a 16 × 12 Pick: RADIAL, model
+# id 3, with f = 1.2 × 16, the principal point at the centre, k1 and k2 at 0, and no focal prior
+# (Req 3.3, F2). As (model, width, height, params, prior_focal_length).
+START_PARAMS = (19.2, 8.0, 6.0, 0.0, 0.0)  # f, cx, cy, k1, k2
+START = (3, 16, 12, START_PARAMS, 0)
 
 
 def blob(params: Sequence[float]) -> bytes:
@@ -282,7 +283,7 @@ def dump(path: Path) -> list[str]:
 
 # The order of the runs (Req 2.11, 2.12, 5.1, 5.2, 5.3, 6.1, 6.2)
 
-def test_for_opencv_the_runs_go_one_at_a_time_and_the_copy_appears_after_the_far_match(
+def test_for_radial_the_runs_go_one_at_a_time_and_the_copy_appears_after_the_far_match(
         solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap]) -> None:
     job = solve_job()
     fake = fake_colmap()
@@ -295,7 +296,7 @@ def test_for_opencv_the_runs_go_one_at_a_time_and_the_copy_appears_after_the_far
         return result
 
     solved = job.solve(watched)
-    assert run_names(fake) == list(OPENCV_RUNS)
+    assert run_names(fake) == list(RADIAL_RUNS)
     # Each run starts after the one before has returned, and the Calibration_Copy is made between
     # the Far_Match_Run's return and the Calibration's start (Req 2.11, 5.1).
     assert events == [("starts", EXTRACT, False), ("returns", EXTRACT, False),
@@ -305,7 +306,7 @@ def test_for_opencv_the_runs_go_one_at_a_time_and_the_copy_appears_after_the_far
                       ("starts", GLOBAL, True), ("returns", GLOBAL, True)]
     assert (solved.calibration_ran, solved.calibration_failure) == (True, None)
     assert (solved.mapper, solved.fallback_reason) == ("global", None)
-    assert set(job.step.timings) == {*OPENCV_RUNS, "matching", "mapping"}
+    assert set(job.step.timings) == {*RADIAL_RUNS, "matching", "mapping"}
     assert job.step.warnings == []
 
 
@@ -321,7 +322,7 @@ def test_the_calibration_reads_the_copy_and_leaves_the_databases_camera_row_unch
         return fake.run(colmap_run)
 
     job.solve(watched)
-    assert run_names(fake) == list(OPENCV_RUNS)
+    assert run_names(fake) == list(RADIAL_RUNS)
     assert ran(fake, CALIBRATE).value("--database_path") == str(job.paths.calibrated)
     ((database, copy),) = started
     assert copy == database
@@ -331,10 +332,10 @@ def test_the_calibration_reads_the_copy_and_leaves_the_databases_camera_row_unch
     assert ran(fake, GLOBAL).value("--database_path") == str(job.paths.calibrated)
 
 
-def test_for_opencv_fisheye_no_calibration_runs_and_the_global_mapper_reads_the_database(
+def test_for_radial_fisheye_no_calibration_runs_and_the_global_mapper_reads_the_database(
         solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap],
         set_cameras: Callable[..., None]) -> None:
-    set_cameras(camera_model="OPENCV_FISHEYE", fisheye_fov_degrees=150.0)
+    set_cameras(camera_model="RADIAL_FISHEYE", fisheye_fov_degrees=150.0)
     job = solve_job()
     fake = fake_colmap()
     solved = job.solve(fake.run)
@@ -352,7 +353,7 @@ def test_a_global_run_that_passes_gives_the_final_model_from_its_kept_model(
     job = solve_job()
     fake = fake_colmap(global_models=(2, 6))
     solved = job.solve(fake.run)
-    assert run_names(fake) == list(OPENCV_RUNS)
+    assert run_names(fake) == list(RADIAL_RUNS)
     assert_final_model(job, solved, from_global=True, models=(ModelCount(0, 2), ModelCount(1, 6)),
                        final=ModelCount(1, 6), names=pick_names(range(2, 8)))
 
@@ -541,7 +542,7 @@ def test_a_global_kept_model_with_exactly_the_placed_frames_needed_passes_the_pl
     job = solve_job(picks=picks)
     fake = fake_colmap(global_models=(needed,))
     solved = job.solve(fake.run)
-    assert run_names(fake) == list(OPENCV_RUNS)  # no Fallback
+    assert run_names(fake) == list(RADIAL_RUNS)  # no Fallback
     assert (solved.mapper, solved.final) == ("global", ModelCount(0, needed))
     assert job.step.warnings == []
 
@@ -650,9 +651,9 @@ def test_copy_database_copies_every_table_and_leaves_the_database_as_it_was(
 def test_read_camera_reads_the_one_camera_row_with_its_params_as_little_endian_doubles(
         tmp_path: Path) -> None:
     path = tmp_path / "database.db"
-    params = (19.2, 19.2, 8.0, 6.0, 0.02, -0.01, 0.001, -0.0005)
-    write_database(path, (4, 16, 12, params, 1))
-    assert read_camera(path) == DatabaseCamera(camera_id=1, model_id=4, width=16, height=12,
+    params = (19.2, 8.0, 6.0, 0.02, -0.01)  # a RADIAL camera's f, cx, cy, k1, k2
+    write_database(path, (3, 16, 12, params, 1))
+    assert read_camera(path) == DatabaseCamera(camera_id=1, model_id=3, width=16, height=12,
                                                params=params, prior_focal_length=True)
 
 
@@ -669,8 +670,9 @@ def test_read_camera_refuses_a_cameras_table_with_two_rows(tmp_path: Path) -> No
     assert "Traceback" not in message
 
 
-# What a Calibration can leave in the Calibration_Copy's camera: its fx and fy, and its
-# prior_focal_length, with the reason calibration_failure gives, or None when it worked (O5, F11).
+# What a Calibration can leave in the Calibration_Copy's RADIAL camera: its f, params[0], and
+# its prior_focal_length, with the reason calibration_failure gives, or None when it worked (O5,
+# F11, F17).
 CALIBRATED = [
     pytest.param(0.9 * 19.2, 1, None, id="worked"),
     pytest.param(math.nextafter(19.2, math.inf), 1, None, id="worked, by the smallest step"),
@@ -688,5 +690,5 @@ def test_calibration_failure_compares_the_copys_camera_with_the_databases(
     copy_database(database, copy)
     with closing(sqlite3.connect(copy)) as connection, connection:
         connection.execute("UPDATE cameras SET params = ?, prior_focal_length = ?",
-                           (blob((focal, focal, *START_PARAMS[2:])), prior))
+                           (blob((focal, *START_PARAMS[1:])), prior))
     assert calibration_failure(read_camera(database), read_camera(copy)) == reason

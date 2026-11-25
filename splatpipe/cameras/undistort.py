@@ -6,19 +6,21 @@ picks in images/ (Req 8.1). check_undistorted checks that output before anything
 (Req 8.2): exactly one camera, a PINHOLE one, that every image uses, image names that are exactly
 the Final_Model's Placed_Frames, and each image's file in images/. The first check that fails is
 an ExpectedFailure that says what the Undistortion got wrong and to run the step again. COLMAP
-keeps a camera's own model when every distortion parameter came out within 1e-8 of 0, which is
-what bundle adjustment leaves when mapper_ba_refine_extra_params or
-global_mapper_ba_refine_extra_params is false (F9). So the refusal of a camera that isn't PINHOLE
-also says to set both to true (C8).
+keeps a camera's own model when every distortion parameter came out within 1e-8 of 0 (F9). The
+settings check keeps mapper_ba_refine_extra_params and global_mapper_ba_refine_extra_params true
+(Req 12.16, D20), so the refusal of a camera that isn't PINHOLE says only that COLMAP keeps a
+camera's own model when its distortion came out as 0, and to run the step again (C8). From the
+Final_Model's RADIAL camera, f, cx, cy, k1, k2, the Undistorted_Camera has fx = fy = f (F18).
 
 With mask_used, COLMAP's image_undistorter_standalone warps the Mask the same way, the Mask_Warp
 (Req 8.3). It reads one line per image from its input file: a name, a model name, a width, a
-height and the parameters (F8). mask_camera_line gives that line for the Final_Model's camera, as
-the Final_Model holds it before the Undistortion. The line's name is MASK, the Mask's file, which
-the Mask_Warp reads from work/frames/ and writes under the same name into
-colmap/mask_undistorted/. Each parameter is written with repr(float), the shortest text that
-reads back as the same double. With the same camera and the same undistortion settings, the
-Mask_Warp gives the Undistorted_Camera's size (F7).
+height and the parameters (F8). mask_camera_line gives that line for the Final_Model's RADIAL or
+RADIAL_FISHEYE camera, as the Final_Model holds it before the Undistortion, with its five
+parameters f, cx, cy, k1, k2. The line's name is MASK, the Mask's file, which the Mask_Warp reads
+from work/frames/ and writes under the same name into colmap/mask_undistorted/. Each parameter is
+written with repr(float), the shortest text that reads back as the same double. With the same
+camera and the same undistortion settings, the Mask_Warp gives the Undistorted_Camera's size
+(F7).
 
 The Mask_Warp samples the Mask bilinearly into a three-channel PNG, so the edges of its black
 regions come out grey (D10, F8). read_warped_mask reads that file with Path.read_bytes and
@@ -56,11 +58,10 @@ _IGNORE = np.uint8(0)
 _USE = np.uint8(255)
 
 _UNDISTORTER = "COLMAP's image_undistorter"  # the command whose output the Req 8.2 checks read
-# The C8 advice, which ends the refusal of an Undistorted_Camera that isn't PINHOLE (F9).
-_REFINE_DISTORTION = (
-    "COLMAP keeps a camera's own model when the camera's distortion came out as 0, which "
-    "happens when mapper_ba_refine_extra_params or global_mapper_ba_refine_extra_params is "
-    "false. Set both to true in [cameras] in config.toml, then run the step again.")
+# The C8 sentences, which end the refusal of an Undistorted_Camera that isn't PINHOLE (F9). They
+# name no setting, because the settings check keeps both ba_refine_extra_params keys true (D20).
+_KEPT_MODEL = ("COLMAP keeps a camera's own model when the camera's distortion came out as 0. "
+               "Run the step again.")
 
 
 def check_undistorted(model: Model, placed: Collection[str], images: Path) -> Camera:
@@ -70,8 +71,9 @@ def check_undistorted(model: Model, placed: Collection[str], images: Path) -> Ca
     `placed` holds the names of the Final_Model's Placed_Frames, and `images` is the
     Undistortion's images/ folder. In this order: the model holds exactly one camera, the camera
     is PINHOLE, every image uses it, the image names are exactly `placed`, and images/<name> is a
-    file for each image. The first check that fails is the Req 8.2 failure, and a camera that
-    isn't PINHOLE also gets the C8 advice.
+    file for each image. The first check that fails is the Req 8.2 failure, and the refusal of a
+    camera that isn't PINHOLE says that COLMAP keeps a camera's own model when its distortion
+    came out as 0 (C8). From a RADIAL Final_Model, the camera it gives has fx = fy (F18).
     """
     if len(model.cameras) != 1:
         raise _wrong(f"wrote {len(model.cameras)} cameras into the undistorted model, but it "
@@ -80,8 +82,7 @@ def check_undistorted(model: Model, placed: Collection[str], images: Path) -> Ca
     name, _ = CAMERA_MODELS[camera.model_id]
     if name != _PINHOLE:
         raise ExpectedFailure(f"{_UNDISTORTER} left the camera as {name}, but it should turn it "
-                              f"into a {_PINHOLE} camera with no distortion. "
-                              f"{_REFINE_DISTORTION}")
+                              f"into a {_PINHOLE} camera with no distortion. {_KEPT_MODEL}")
     for image in model.images:
         if image.camera_id != camera.camera_id:
             raise _wrong(f"gave the image {image.name} the camera id {image.camera_id}, but the "
@@ -95,13 +96,14 @@ def check_undistorted(model: Model, placed: Collection[str], images: Path) -> Ca
 
 
 def mask_camera_line(camera: Camera) -> str:
-    """The Mask_Warp's input line for `camera`, the Final_Model's camera as the Final_Model holds
-    it before the Undistortion (Req 8.3, F8): "mask.png <MODEL> <width> <height> <p1> … <pN>",
-    then a newline.
+    """The Mask_Warp's input line for `camera`, the Final_Model's RADIAL or RADIAL_FISHEYE camera
+    as the Final_Model holds it before the Undistortion (Req 8.3, F8):
+    "mask.png <MODEL> <width> <height> <p1> … <pN>", then a newline, like
+    "mask.png RADIAL 320 240 259.7 160.0 120.0 0.01 -0.002" with full precision.
 
     The name is MASK, the Mask's file in work/frames/, the model is the camera's model name, and
-    each parameter is written with repr(float), the shortest text that reads back as the same
-    double.
+    each parameter, f, cx, cy, k1, k2 in that order, is written with repr(float), the shortest
+    text that reads back as the same double.
     """
     name, _ = CAMERA_MODELS[camera.model_id]
     params = (repr(float(param)) for param in camera.params)

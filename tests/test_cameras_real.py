@@ -69,8 +69,8 @@ in tmp_path, and each gets a timeout of 60 s (Req 16.13). The test checks that:
 - masks/ holds one PNG per Placed_Frame at the camera's size, with only 0 and 255, and 0 over the
   painted corner where the Undistortion moved it, since it crops the Picks by a few pixels: at
   each pixel whose centre, taken through the Undistorted_Camera and then the Final_Model's
-  OPENCV camera from the COLMAP_Folder, lies inside the painted corner of a Pick (Req 8.4,
-  11.3);
+  RADIAL camera from the COLMAP_Folder, with its one f and k1 and k2 on the radius, lies inside
+  the painted corner of a Pick (Req 8.4, 11.3, D19);
 - the levelled cameras' mean up, each camera's Rᵀ(0, −1, 0), points along (0, −1, 0) within
   1e-9. The true path is level and the cameras have no pitch or roll, so their mean up is the
   true vertical, and their centres' heights spread by less than 2 % of the path's length, from
@@ -411,28 +411,26 @@ def read_png(path: Path) -> np.ndarray:
 def painted_corner(undistorted: Camera, distorted: Camera) -> np.ndarray:
     """Which pixels of a Training_Mask show the corner painted into the Picks: a bool array of
     the height × width of `undistorted`, the Undistorted_Camera, true at each pixel whose centre
-    lies inside the corner in a Pick of `distorted`, the Final_Model's OPENCV camera.
+    lies inside the corner in a Pick of `distorted`, the Final_Model's RADIAL camera.
 
     The pixel centred at (u, v), with the top left pixel's centre at (0.5, 0.5), looks along
-    x = (u − cx) / fx and y = (v − cy) / fy through the PINHOLE camera. OPENCV's distortion takes
-    that to x (1 + k1 r² + k2 r⁴) + 2 p1 x y + p2 (r² + 2 x²) and
-    y (1 + k1 r² + k2 r⁴) + 2 p2 x y + p1 (r² + 2 y²), with r² = x² + y², and its own focal
-    lengths and principal point then give the place in the Pick. The corner is the Pick's top
-    PAINTED_HEIGHT rows of its left PAINTED_WIDTH columns. The Mask_Warp samples mask.png
-    bilinearly at that place, so a pixel inside the corner takes at least a quarter of its value
-    from the corner's 0s, and the threshold makes it 0. A pixel just outside may go either way.
+    x = (u − cx) / fx and y = (v − cy) / fy through the PINHOLE camera. RADIAL's distortion, k1
+    and k2 on the radius, takes that to x (1 + k1 r² + k2 r⁴) and y (1 + k1 r² + k2 r⁴), with
+    r² = x² + y², and its one focal length f and its principal point then give the place in the
+    Pick (F2, D19). The corner is the Pick's top PAINTED_HEIGHT rows of its left PAINTED_WIDTH
+    columns. The Mask_Warp samples mask.png bilinearly at that place, so a pixel inside the
+    corner takes at least a quarter of its value from the corner's 0s, and the threshold makes
+    it 0. A pixel just outside may go either way.
     """
-    assert CAMERA_MODELS[distorted.model_id][0] == "OPENCV"
+    assert CAMERA_MODELS[distorted.model_id][0] == "RADIAL"
     fx, fy, cx, cy = undistorted.params
     u, v = np.meshgrid(np.arange(undistorted.width) + 0.5, np.arange(undistorted.height) + 0.5)
     x, y = (u - cx) / fx, (v - cy) / fy
-    pick_fx, pick_fy, pick_cx, pick_cy, k1, k2, p1, p2 = distorted.params
+    focal, pick_cx, pick_cy, k1, k2 = distorted.params
     r2 = x * x + y * y
     radial = 1 + k1 * r2 + k2 * r2 * r2
-    distorted_x = x * radial + 2 * p1 * x * y + p2 * (r2 + 2 * x * x)
-    distorted_y = y * radial + 2 * p2 * x * y + p1 * (r2 + 2 * y * y)
-    return ((pick_fx * distorted_x + pick_cx < PAINTED_WIDTH)
-            & (pick_fy * distorted_y + pick_cy < PAINTED_HEIGHT))
+    return ((focal * x * radial + pick_cx < PAINTED_WIDTH)
+            & (focal * y * radial + pick_cy < PAINTED_HEIGHT))
 
 
 def rotation_of(image: Image) -> np.ndarray:

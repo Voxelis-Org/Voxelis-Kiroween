@@ -471,9 +471,10 @@ def test_a_file_that_ends_too_soon_fails_naming_it_and_where_it_ends(
     assert_refused(message, tmp_path / name, f"ends too soon, {part}")
 
 
-# 0 is SIMPLE_PINHOLE and 2 SIMPLE_RADIAL, which COLMAP has but the step never reads, and -1 is
-# no camera model at all.
-@pytest.mark.parametrize("model_id", [0, 2, -1])
+# 0 is SIMPLE_PINHOLE and 2 SIMPLE_RADIAL, which COLMAP has but the step never reads, 4 is
+# OPENCV and 5 OPENCV_FISHEYE, the first draft's Camera_Models, which D19 dropped, and -1 is no
+# camera model at all.
+@pytest.mark.parametrize("model_id", [0, 2, 4, 5, -1])
 def test_an_unknown_camera_model_id_fails_naming_it(tmp_path: Path, model_id: int) -> None:
     data = uint64(1) + camera_bytes(7, model_id, 320, 240, (260.0, 261.5, 160.0, 120.0))
     message = read_model_refusal(tmp_path, "cameras.bin", data)
@@ -531,9 +532,9 @@ def test_bytes_after_the_last_record_fail(tmp_path: Path, name: str, records: st
                  "holds a 0 byte", id="a name with a 0 byte in it"),
     pytest.param(encode_cameras, (Camera(7, 2, 320, 240, (260.0, 160.0, 120.0, 0.0)),),
                  "camera model id 2", id="a model id it doesn't know"),
-    # An OPENCV camera with a PINHOLE camera's 4 params.
-    pytest.param(encode_cameras, (Camera(7, 4, 320, 240, (260.0, 261.5, 160.0, 120.0)),),
-                 "OPENCV, takes 8", id="a parameter count that doesn't match the model"),
+    # A RADIAL camera with a PINHOLE camera's 4 params.
+    pytest.param(encode_cameras, (Camera(7, 3, 320, 240, (260.0, 261.5, 160.0, 120.0)),),
+                 "RADIAL, takes 5", id="a parameter count that doesn't match the model"),
 ])
 def test_the_encoders_raise_value_error_for_each_bug(encode: Callable[[Any], bytes], given: Any,
                                                      words: str) -> None:

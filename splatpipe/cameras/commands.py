@@ -21,7 +21,7 @@ mappers' solvers on the CPU (D4, O7). The two Match_Runs differ only in their pa
 Near_Match_Run pairs each Pick with the next near_overlap Picks, and the Far_Match_Run, with
 quadratic_overlap on, with the Picks 2^k ahead for k below far_overlap (Req 4.1 to 4.3, A1). Only
 the Feature_Extraction has options that come and go: --ImageReader.camera_params with the
-Fisheye_Start for OPENCV_FISHEYE (Req 3.3, 3.4), placed where COLMAP's -h lists it, and
+Fisheye_Start for RADIAL_FISHEYE (Req 3.3, 3.4), placed where COLMAP's -h lists it, and
 --ImageReader.camera_mask_path with the Mask when the Frames_Record has mask_used (Req 3.5, 3.6).
 No builder passes --help, --project_path, --log_path, a GPU index, an image list, a vocabulary
 tree, a --SequentialMatching.loop_detection_* setting, or an ALIKED, LoMa or LightGlue option.
@@ -48,8 +48,8 @@ from splatpipe.cameras.frames_input import FramesInput
 from splatpipe.cameras.settings import OPTION_KEYS, TIMEOUT_KEYS, CamerasSettings, OptionValue
 from splatpipe.frames.files import GREY, IMAGES, MASK
 
-# The Camera_Model whose camera starts from the Fisheye_Start (D5).
-OPENCV_FISHEYE = "OPENCV_FISHEYE"
+# The Camera_Model whose camera starts from the Fisheye_Start (D5, D19).
+RADIAL_FISHEYE = "RADIAL_FISHEYE"
 
 # The Fixed_Constants of the command lines (D4), each as the words it adds. Every command takes
 # the four log options: all of COLMAP's output on stderr, every INFO line, and no colour codes, so
@@ -138,16 +138,16 @@ def format_value(value: OptionValue) -> str:
 
 def fisheye_start(width: int, height: int, fov_degrees: float) -> tuple[float, ...]:
     """The Fisheye_Start of Picks `width` by `height` pixels whose field of view across the long
-    edge is `fov_degrees`, in OPENCV_FISHEYE's order fx, fy, cx, cy, k1, k2, k3, k4 (Req 3.4, F2).
+    edge is `fov_degrees`, in RADIAL_FISHEYE's order f, cx, cy, k1, k2 (Req 3.4, F2, D19).
 
-    fx = fy = (L / 2) / (θ / 2), with L the long edge and θ the field of view in radians. It's
-    worked out as 180·L / (π·fov_degrees), the same formula with the halves cancelled and the
-    turn into radians folded into the one division. So every field of view the settings accept
-    gives a float: one so small that its radians round to 0, like 5e-324°, gives an infinite f
-    rather than a ZeroDivisionError. The principal point is the Pick's centre, and k1 to k4 are 0.
+    f = (L / 2) / (θ / 2), with L the long edge and θ the field of view in radians. It's worked
+    out as 180·L / (π·fov_degrees), the same formula with the halves cancelled and the turn into
+    radians folded into the one division. So every field of view the settings accept gives a
+    float: one so small that its radians round to 0, like 5e-324°, gives an infinite f rather
+    than a ZeroDivisionError. The principal point is the Pick's centre, and k1 and k2 are 0.
     """
     f = 180 * max(width, height) / (math.pi * fov_degrees)
-    return (f, f, width / 2, height / 2, 0.0, 0.0, 0.0, 0.0)
+    return (f, width / 2, height / 2, 0.0, 0.0)
 
 
 def feature_extractor(cfg: CamerasSettings, frames: FramesInput, paths: Paths,
@@ -155,14 +155,14 @@ def feature_extractor(cfg: CamerasSettings, frames: FramesInput, paths: Paths,
     """The Feature_Extraction: SIFT on the Grey_Copies, work/frames/grey/, into a new Database,
     with one camera of the Camera_Model for every Pick (Req 1.5, 3.1, 3.2).
 
-    For OPENCV_FISHEYE, --ImageReader.camera_params gives the camera the Fisheye_Start of the
-    Pick_Size, joined with commas. For OPENCV it's left out, so the focal length starts from
+    For RADIAL_FISHEYE, --ImageReader.camera_params gives the camera the Fisheye_Start of the
+    Pick_Size, joined with commas. For RADIAL it's left out, so the focal length f starts from
     --ImageReader.default_focal_length_factor (Req 3.3, 3.4). With mask_used,
     --ImageReader.camera_mask_path gives the Mask, work/frames/mask.png, and without it, it's left
     out (Req 3.5, 3.6).
     """
     camera_params: tuple[str, ...] = ()
-    if cfg.camera_model == OPENCV_FISHEYE:
+    if cfg.camera_model == RADIAL_FISHEYE:
         start = fisheye_start(frames.pick_width, frames.pick_height, cfg.fisheye_fov_degrees)
         camera_params = ("--ImageReader.camera_params", ",".join(map(format_value, start)))
     mask: tuple[str, ...] = ()
@@ -212,7 +212,7 @@ def view_graph_calibrator(cfg: CamerasSettings, paths: Paths,
 def global_mapper(cfg: CamerasSettings, paths: Paths, env: Mapping[str, str],
                   database: Path) -> ColmapRun:
     """The Global_Run on `database`, which the solve flow chooses: the Calibration_Copy for
-    OPENCV, or the Database for OPENCV_FISHEYE (Req 6.1, 6.2, O9).
+    RADIAL, or the Database for RADIAL_FISHEYE (Req 6.1, 6.2, O9).
 
     It reads the Colour_Picks, work/frames/images/, for the points' colours, and writes its
     Models into colmap/global/ (Req 1.5).

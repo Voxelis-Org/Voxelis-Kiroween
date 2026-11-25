@@ -8,13 +8,14 @@ run one at a time, each after the one before has returned, and none runs twice o
 (Req 2.11, 2.12):
 
 1. The Feature_Extraction, then the Near_Match_Run and the Far_Match_Run on the same Database.
-2. For OPENCV, the Calibration_Copy, then the Calibration on it, so the Database stays as the
+2. For RADIAL, the Calibration_Copy, then the Calibration on it, so the Database stays as the
    Match_Runs left it (Req 5.1, 5.2). A non-zero exit, a crash included, a rejected camera and no
    image pairs are each a Failed_Calibration (Req 5.4, A3). After an exit of 0, the copy's camera
    row next to the Database's tells the last two from a Calibration that worked (O5). For
-   OPENCV_FISHEYE there's no Calibration, only the Req 5.3 warning.
-3. Unless the Calibration failed, the Global_Run: on the Calibration_Copy for OPENCV, and on the
-   Database for OPENCV_FISHEYE (Req 6.1, 6.2, O9). It gives up on a non-zero exit, a crash
+   RADIAL_FISHEYE there's no Calibration, because view_graph_calibrator skips fisheye cameras
+   (F17), only the Req 5.3 warning.
+3. Unless the Calibration failed, the Global_Run: on the Calibration_Copy for RADIAL, and on the
+   Database for RADIAL_FISHEYE (Req 6.1, 6.2, O9). It gives up on a non-zero exit, a crash
    included, on an exit of 0 with no Model, and on a Kept_Model that fails the Placed_Check
    (Req 6.3 to 6.5).
 4. After a Failed_Calibration, with the Req 5.5 warning, or when the Global_Run gives up, with the
@@ -55,7 +56,7 @@ from typing import Literal, Protocol
 
 from splatpipe.cameras import commands
 from splatpipe.cameras.colmap import ColmapRun, RunResult, exit_text
-from splatpipe.cameras.commands import OPENCV_FISHEYE, Paths
+from splatpipe.cameras.commands import RADIAL_FISHEYE, Paths
 from splatpipe.cameras.database import calibration_failure, copy_database, read_camera
 from splatpipe.cameras.frames_input import FramesInput
 from splatpipe.cameras.model import Model, read_images, read_model
@@ -72,7 +73,7 @@ _FILMING_ADVICE = ("Film the place again: move slower, hold the phone steadier, 
                    "between views, and film surfaces with more texture. Then make a new job "
                    "from the new video.")
 # The warnings of the mapping stage (Req 5.3, 5.5, 6.7).
-_FISHEYE = ("The camera model is OPENCV_FISHEYE, so the focal length calibration was skipped, "
+_FISHEYE = ("The camera model is RADIAL_FISHEYE, so the focal length calibration was skipped, "
             "because COLMAP's view_graph_calibrator only fits pinhole cameras. The fisheye "
             "camera starts from fisheye_fov_degrees = {degrees} in [cameras].")
 _CALIBRATION_FAILED = ("The focal length calibration {reason}, so the global mapper didn't run "
@@ -102,7 +103,7 @@ class ModelCount:
 class Solved:
     """What the solve flow found: how the Calibration and the mappers went, and the Final_Model."""
 
-    calibration_ran: bool  # false for OPENCV_FISHEYE, which has no Calibration
+    calibration_ran: bool  # false for RADIAL_FISHEYE, which has no Calibration
     calibration_failure: str | None  # why, for a Failed_Calibration
     mapper: Literal["global", "incremental"]  # the mapper whose run made the Final_Model
     fallback_reason: str | None  # why the Fallback ran, as its warning says, or None
@@ -226,9 +227,9 @@ def solve(report: Report, run: Callable[[ColmapRun], RunResult], cfg: CamerasSet
 
 
 def _mapping(flow: _Flow) -> Solved:
-    """The mapping stage, steps 2 to 5 of the module's list: the Calibration for OPENCV, or the
-    Req 5.3 warning for OPENCV_FISHEYE, then the mappers, then the Final_Model."""
-    calibration_ran = flow.cfg.camera_model != OPENCV_FISHEYE
+    """The mapping stage, steps 2 to 5 of the module's list: the Calibration for RADIAL, or the
+    Req 5.3 warning for RADIAL_FISHEYE, then the mappers, then the Final_Model."""
+    calibration_ran = flow.cfg.camera_model != RADIAL_FISHEYE
     if calibration_ran:
         failure, database = _calibrate(flow), flow.paths.calibrated
     else:

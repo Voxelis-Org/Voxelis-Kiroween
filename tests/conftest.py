@@ -50,11 +50,11 @@ colmap.run_colmap. The script says which runs time out, which exit with a given 
 what the Calibration does to the Calibration_Copy, how many Picks each Model of each mapper
 places, whether the mappers turn every other camera upside down, and what the image_undistorter
 gets wrong. FakeColmap records each run and writes its Command_Log. Every other run exits with 0
-after writing what the real command would: the Database with its one camera, the
-Calibration_Copy's changed camera, each mapper's Models, written with the step's own
-Model_Writer, with Poses along a walk seen through a fixed rigid move, the Undistortion's PINHOLE
-model and a JPEG per image, and the Mask_Warp's three-channel PNG with a grey edge around every
-black region.
+after writing what the real command would: the Database with its one RADIAL or RADIAL_FISHEYE
+camera, the Calibration_Copy's changed camera, each mapper's Models, written with the step's own
+Model_Writer, with a RADIAL camera and Poses along a walk seen through a fixed rigid move, the
+Undistortion's PINHOLE model and a JPEG per image, and the Mask_Warp's three-channel PNG with a
+grey edge around every black region.
 
 FakeGpu, the GPU_Stand_In, gives the Train_Step the GPU check's facts, finds each point's nearest
 points by brute force and fakes the training, giving back the Start_Splats it was given, and
@@ -925,8 +925,9 @@ def fake_tools(monkeypatch: pytest.MonkeyPatch) -> type[FakeTools]:
     return Installed
 
 
-# COLMAP's camera model ids of the two Camera_Models (cameras design, F2).
-COLMAP_MODEL_IDS = {"OPENCV": 4, "OPENCV_FISHEYE": 5}
+# COLMAP's camera model ids of the two Camera_Models, RADIAL and RADIAL_FISHEYE (cameras design,
+# F2, D19).
+COLMAP_MODEL_IDS = {"RADIAL": 3, "RADIAL_FISHEYE": 9}
 
 # The cameras table of a COLMAP 4.2.1 database, as its scene/database_sqlite.cc makes it (F12).
 # params holds the camera's parameters as little-endian doubles.
@@ -958,12 +959,13 @@ WALK_ERRORS = (0.4, 0.6, 0.5, 0.7)
 TILT_AXIS = (1.0, 0.3, 0.6)
 TILT_DEGREES = 35.0
 TILT_SHIFT = (1.5, -0.5, 2.0)
-# The fake mappers' OPENCV camera: fx = fy = MAPPED_FOCAL times the long edge, the principal point
-# at the centre, and a little distortion, k1, k2, p1 and p2.
+# The fake mappers' RADIAL camera: f = MAPPED_FOCAL times the long edge, the principal point at
+# the centre, and a little distortion, k1 and k2, neither 0 (D19).
 MAPPED_FOCAL = 1.1
-MAPPED_DISTORTION = (0.02, -0.01, 0.001, -0.0005)
-# The fake image_undistorter's camera: PINHOLE, COLMAP's model id 1 (F2), and UNDISTORTED_SHRINK
-# pixels smaller each way than the camera it undistorts.
+MAPPED_DISTORTION = (0.02, -0.01)
+# The fake image_undistorter's camera: PINHOLE, COLMAP's model id 1 (F2), with fx = fy = the
+# RADIAL camera's f (F18), and UNDISTORTED_SHRINK pixels smaller each way than the camera it
+# undistorts.
 PINHOLE_ID = 1
 UNDISTORTED_SHRINK = 2
 # The grey of the edge that the fake image_undistorter_standalone puts around every black region
@@ -999,14 +1001,14 @@ class FakeColmap:
     What each run that exits with 0 writes, at the paths on its command line:
     - feature_extractor: a SQLite database at --database_path whose cameras table, laid out as
       COLMAP 4.2.1's, holds one camera of --ImageReader.camera_model at the Pick_Size, the size
-      of the first Pick in --image_path. For OPENCV, fx and fy are
+      of the first Pick in --image_path. For RADIAL, (f, cx, cy, k1, k2), f is
       --ImageReader.default_focal_length_factor, 1.2 in the config, times the long edge, the
-      principal point is the centre, the distortion is 0 and prior_focal_length is 0. For
-      OPENCV_FISHEYE, the parameters are --ImageReader.camera_params, the Fisheye_Start, and
+      principal point is the centre, k1 and k2 are 0 and prior_focal_length is 0. For
+      RADIAL_FISHEYE, the parameters are --ImageReader.camera_params, the Fisheye_Start, and
       prior_focal_length is 1.
     - sequential_matcher_near and sequential_matcher_far: nothing.
     - view_graph_calibrator, on the database at --database_path, which must exist: with
-      `calibration` "worked", fx and fy become CALIBRATED_SHARE times the old fx and
+      `calibration` "worked", f, params[0], becomes CALIBRATED_SHARE times the old f and
       prior_focal_length 1; with "rejected", only prior_focal_length becomes 1; with "no_pairs",
       nothing changes.
     - global_mapper and mapper: one Model folder, 0/, 1/ and so on, in --output_path for each
@@ -1014,7 +1016,7 @@ class FakeColmap:
       None, or no counts, writes no Model. --output_path must be a folder already, as COLMAP's
       mappers need. Model k places the next that many Picks of --image_path by name: Model 0
       the first ones, Model 1 the ones after them, and so on. Each image's id is its Pick's
-      place from 1, as the Database gives it. Each Model has one OPENCV camera with a little
+      place from 1, as the Database gives it. Each Model has one RADIAL camera with a little
       distortion, from MAPPED_FOCAL and MAPPED_DISTORTION, and the few WALK_POINTS. Its Poses lie
       along the walk of WALK_STEP and WALK_TARGET, seen through the fixed rigid move of
       TILT_AXIS, TILT_DEGREES and TILT_SHIFT, so the Levelling has a tilt to remove. With
@@ -1025,16 +1027,16 @@ class FakeColmap:
       points are where the points project through the camera, leaving out its distortion, and
       each point's track holds every image of its Model.
     - image_undistorter: the Model at --input_path, read with the step's read_model, written to
-      --output_path/sparse/ with the step's write_model, with each camera turned PINHOLE and
-      UNDISTORTED_SHRINK pixels smaller each way. fx and fy stay, and the principal point scales
-      with the size, as COLMAP's UndistortCamera does (F7). The images, with their Poses and 2D
-      points, and the points stay as they are. Each image gets a tiny JPEG under its name in
-      --output_path/images/: its Colour_Pick from --image_path, resized to its camera's size.
-      Three flags make it go wrong in the ways the step's checks refuse (Req 8.2):
-      keep_camera_model keeps each camera as it is, its model included, as COLMAP does for a
-      camera with no distortion (F9); second_camera adds a copy of the first camera with the
-      next id, which no image uses; and leave_out_image leaves the Model's last image out, so it
-      gets no JPEG either.
+      --output_path/sparse/ with the step's write_model, with each RADIAL camera turned PINHOLE
+      and UNDISTORTED_SHRINK pixels smaller each way. fx and fy are both the RADIAL camera's f
+      (F18), and the principal point scales with the size, as COLMAP's UndistortCamera does (F7).
+      The images, with their Poses and 2D points, and the points stay as they are. Each image
+      gets a tiny JPEG under its name in --output_path/images/: its Colour_Pick from
+      --image_path, resized to its camera's size. Three flags make it go wrong in the ways the
+      step's checks refuse (Req 8.2): keep_camera_model keeps each camera as it is, RADIAL, as
+      COLMAP does for a camera with no distortion (F9); second_camera adds a copy of the first
+      camera with the next id, which no image uses; and leave_out_image leaves the Model's last
+      image out, so it gets no JPEG either.
     - image_undistorter_standalone: the picture that the camera line in --input_file names, read
       from --image_path, resized to the size the fake image_undistorter gives the line's camera,
       with WARPED_EDGE on each pixel next to a black one that isn't black itself, like bilinear
@@ -1161,9 +1163,9 @@ def _extract(run: ColmapRun) -> None:
     if "--ImageReader.camera_params" in run.args:  # the Fisheye_Start, a focal prior (Req 3.4)
         params = tuple(map(float, run.value("--ImageReader.camera_params").split(",")))
         prior = 1
-    else:  # the focal length starts at the factor times the long edge, with no prior (Req 3.3)
+    else:  # RADIAL's f starts at the factor times the long edge, with no prior (Req 3.3)
         focal = float(run.value("--ImageReader.default_focal_length_factor")) * max(width, height)
-        params = (focal, focal, width / 2, height / 2, 0.0, 0.0, 0.0, 0.0)
+        params = (focal, width / 2, height / 2, 0.0, 0.0)  # f, cx, cy, k1, k2 (F2)
         prior = 0
     model_id = COLMAP_MODEL_IDS[run.value("--ImageReader.camera_model")]
     with closing(sqlite3.connect(run.value("--database_path"))) as database, database:
@@ -1186,11 +1188,11 @@ def _calibrate(run: ColmapRun, calibration: str) -> None:
     if calibration == "no_pairs":  # it found no image pairs to calibrate, so it changes nothing
         return
     with closing(sqlite3.connect(path)) as database, database:
-        if calibration == "worked":  # a new focal length, in fx and fy
+        if calibration == "worked":  # a new focal length, RADIAL's one f, params[0] (F17)
             rows = database.execute("SELECT camera_id, params FROM cameras").fetchall()
             for camera_id, blob in rows:
                 params = list(struct.unpack(f"<{len(blob) // 8}d", blob))
-                params[0] = params[1] = CALIBRATED_SHARE * params[0]
+                params[0] = CALIBRATED_SHARE * params[0]
                 database.execute("UPDATE cameras SET params = ? WHERE camera_id = ?",
                                  (_blob(params), camera_id))
         database.execute("UPDATE cameras SET prior_focal_length = 1")  # worked or rejected
@@ -1229,8 +1231,8 @@ def _walk_model(names: Sequence[str], places: range, width: int, height: int,
     from splatpipe.cameras.model import POINT2D, TRACK_ELEMENT, Camera, Image, Model, Points
 
     focal = MAPPED_FOCAL * max(width, height)
-    camera = Camera(camera_id=1, model_id=COLMAP_MODEL_IDS["OPENCV"], width=width, height=height,
-                    params=(focal, focal, width / 2, height / 2, *MAPPED_DISTORTION))
+    camera = Camera(camera_id=1, model_id=COLMAP_MODEL_IDS["RADIAL"], width=width, height=height,
+                    params=(focal, width / 2, height / 2, *MAPPED_DISTORTION))
     tilt = math.radians(TILT_DEGREES)
     move = _matrix(_turn(TILT_AXIS, tilt))  # the level world into COLMAP's frame
     xyz = WALK_POINTS @ move.T + TILT_SHIFT
@@ -1309,18 +1311,18 @@ def _warp_mask(run: ColmapRun, *, keep_camera_model: bool) -> None:
 
 
 def _undistorted_camera(camera: Camera, keep_camera_model: bool) -> Camera:
-    """The camera that the fake image_undistorter gives `camera`: PINHOLE and UNDISTORTED_SHRINK
-    pixels smaller each way, with fx and fy kept and the principal point scaled with the size, as
-    COLMAP's UndistortCamera does (F7). With `keep_camera_model`, `camera` as it is, its model
-    included, as COLMAP leaves a camera with no distortion (F9)."""
+    """The camera that the fake image_undistorter gives the RADIAL `camera`: PINHOLE and
+    UNDISTORTED_SHRINK pixels smaller each way, with fx = fy = its f and the principal point
+    scaled with the size, as COLMAP's UndistortCamera does (F7, F18). With `keep_camera_model`,
+    `camera` as it is, still RADIAL, as COLMAP leaves a camera with no distortion (F9)."""
     from splatpipe.cameras.model import Camera
 
     if keep_camera_model:
         return camera
     width, height = camera.width - UNDISTORTED_SHRINK, camera.height - UNDISTORTED_SHRINK
-    fx, fy, cx, cy = camera.params[:4]  # every camera model starts with these four (F2)
+    f, cx, cy = camera.params[:3]  # RADIAL and RADIAL_FISHEYE both start with these three (F2)
     return Camera(camera_id=camera.camera_id, model_id=PINHOLE_ID, width=width, height=height,
-                  params=(fx, fy, cx * width / camera.width, cy * height / camera.height))
+                  params=(f, f, cx * width / camera.width, cy * height / camera.height))
 
 
 def _read_picture(path: Path, flags: int) -> np.ndarray:

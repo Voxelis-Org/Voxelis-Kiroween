@@ -16,7 +16,7 @@ changes the design gives:
   (A1), and --SequentialMatching.overlap is the Preset's near_overlap in the first and
   far_overlap in the second (Req 4.1 to 4.3).
 - --ImageReader.camera_params, which the block leaves out, holds the Fisheye_Start only for
-  OPENCV_FISHEYE, and --ImageReader.camera_mask_path is there only with mask_used (Req 3.3 to
+  RADIAL_FISHEYE, and --ImageReader.camera_mask_path is there only with mask_used (Req 3.3 to
   3.6).
 - Each path is absolute and lies where the design's table of builders puts it: inside
   work/frames/ when the block's path starts from $FRAMES, and inside the COLMAP_Folder when it
@@ -33,13 +33,17 @@ always true (D20). Whole numbers often take their range's
 ends, 2147483647 among them. Decimals are TOML floats or TOML integers, and often take -0.0,
 5e-324, 1e-300, 1e300 and the largest float wherever their range holds them. The two settings of
 each cross check are put in order. It also draws mask_used and a Pick_Size from 1 × 1 to
-4000 × 4000, and camera_model takes either Camera_Model. Its oracle is colmap_options with this
-file's own code. Each of the eight command lines holds every option of its block exactly once
-and no other option, with --ImageReader.camera_mask_path only when mask_used is true and
---ImageReader.camera_params only for OPENCV_FISHEYE. Each Fixed_Constant has its fixed value,
-each Option_Key's text reads back as its drawn value, and --SequentialMatching.overlap's as
-near_overlap or far_overlap. The two undistorters give each undistortion setting the same text,
-and no line holds an option that Req 2.6 keeps off.
+4000 × 4000, and camera_model takes either Camera_Model, RADIAL or RADIAL_FISHEYE (D19). Its
+oracle is colmap_options with this file's own code. Each of the eight command lines holds every
+option of its block exactly once and no other option, with --ImageReader.camera_mask_path only
+when mask_used is true and --ImageReader.camera_params only for RADIAL_FISHEYE, never for RADIAL.
+Its five numbers read back as the Fisheye_Start, which the test works out itself in exact
+fractions, without fisheye_start, as f = (L / 2) / (θ / 2), width / 2, height / 2, 0 and 0: cx,
+cy, k1 and k2 bit for bit, and f within 1e-12 of it, or as infinity when f lies beyond the
+largest float, because the code and the design's formula round differently. Each Fixed_Constant
+has its fixed value, each Option_Key's text reads back as its drawn value, and
+--SequentialMatching.overlap's as near_overlap or far_overlap. The two undistorters give each
+undistortion setting the same text, and no line holds an option that Req 2.6 keeps off.
 
 The runner's tests start no COLMAP. Most replace subprocess.run, as splatpipe.cameras.colmap sees
 it, with a stand-in that records its call and writes two of glog's lines to the Command_Log it's
@@ -67,6 +71,7 @@ import sys
 import tomllib
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +95,7 @@ REAL_CONFIG = REPO_ROOT / "config.toml"
 REAL = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["cameras"]
 # The three Presets and the two Camera_Models, written out here rather than taken from the code.
 PRESET_NAMES = ("fast", "default", "quality")
-CAMERA_MODELS = ("OPENCV", "OPENCV_FISHEYE")
+CAMERA_MODELS = ("RADIAL", "RADIAL_FISHEYE")  # D5, D19
 # The Pick_Size the command lines are built for: a landscape Pick at the Frames_Step's long edge
 # of 1600 pixels, the size of the design's Fisheye_Start example.
 PICK_WIDTH, PICK_HEIGHT = 1600, 900
@@ -110,7 +115,7 @@ RUN_COMMANDS = {
 NEAR, FAR = "sequential_matcher_near", "sequential_matcher_far"
 
 # The two options that come and go: --ImageReader.camera_params, which options.md's block leaves
-# out, only for OPENCV_FISHEYE, and --ImageReader.camera_mask_path, which the block has, only
+# out, only for RADIAL_FISHEYE, and --ImageReader.camera_mask_path, which the block has, only
 # with mask_used (Req 3.3 to 3.6).
 CAMERA_PARAMS = "--ImageReader.camera_params"
 CAMERA_MASK = "--ImageReader.camera_mask_path"
@@ -177,10 +182,10 @@ def eight_runs(cfg: CamerasSettings, frames: FramesInput, paths: Paths,
     """The eight runs the builders give for `cfg`, `frames`, `paths` and `env`, by the runs'
     names.
 
-    The Global_Run is given the Calibration_Copy for OPENCV and the Database for OPENCV_FISHEYE,
+    The Global_Run is given the Calibration_Copy for RADIAL and the Database for RADIAL_FISHEYE,
     as the solve flow gives it (Req 6.1, 6.2, O9), and the Undistortion the Global_Run's Model 0.
     """
-    database = paths.database if cfg.camera_model == "OPENCV_FISHEYE" else paths.calibrated
+    database = paths.database if cfg.camera_model == "RADIAL_FISHEYE" else paths.calibrated
     runs = (commands.feature_extractor(cfg, frames, paths, env),
             commands.sequential_matcher(cfg, paths, env, far=False),
             commands.sequential_matcher(cfg, paths, env, far=True),
@@ -200,11 +205,11 @@ def designed_paths(camera_model: str) -> dict[str, dict[str, str]]:
     The places are those of the design's table of builders and "The Work_Folder". The
     Feature_Extraction reads the Grey_Copies, and both mappers and the Undistortion read the
     Colour_Picks (Req 1.5). The Calibration and the Global_Run read the Calibration_Copy, but the
-    Global_Run reads the Database for OPENCV_FISHEYE (Req 6.1, 6.2, O9), and the mapper reads the
+    Global_Run reads the Database for RADIAL_FISHEYE (Req 6.1, 6.2, O9), and the mapper reads the
     Database (Req 6.6). The Undistortion reads the Model that built_runs gives it, and writes
     inside the COLMAP_Folder (Req 8.1). "." is the folder itself.
     """
-    global_database = ("database.db" if camera_model == "OPENCV_FISHEYE"
+    global_database = ("database.db" if camera_model == "RADIAL_FISHEYE"
                        else "database_calibrated.db")
     return {
         "feature_extractor": {"--database_path": "database.db", "--image_path": "grey",
@@ -295,9 +300,10 @@ def test_each_command_line_holds_its_blocks_options_in_order_with_only_the_desig
         line = [(option, value) for option, value in line if option != CAMERA_PARAMS]
         assert line == designed_line(block, name, folders, camera_model=camera_model,
                                      preset=preset, mask_used=mask_used), name
-        # The Fisheye_Start, whose numbers read back as the same floats (Req 2.4, 3.4).
+        # Only RADIAL_FISHEYE's Feature_Extraction has the Fisheye_Start, whose five numbers read
+        # back as the same floats (Req 2.4, 3.3, 3.4).
         starts = [tuple(float(number) for number in str(text).split(",")) for text in params]
-        fisheye = name == "feature_extractor" and camera_model == "OPENCV_FISHEYE"
+        fisheye = name == "feature_extractor" and camera_model == "RADIAL_FISHEYE"
         assert starts == ([fisheye_start(PICK_WIDTH, PICK_HEIGHT, REAL["fisheye_fov_degrees"])]
                           if fisheye else []), name
 
@@ -570,12 +576,38 @@ def wanted_options(block: Sequence[ColmapOption], name: str, camera_model: str,
                    mask_used: bool) -> set[str]:
     """The options that the run `name`'s command line must hold: those of `block`, its command's
     block in options.md, but --ImageReader.camera_mask_path only with mask_used (Req 3.5, 3.6),
-    and --ImageReader.camera_params too in OPENCV_FISHEYE's Feature_Extraction, though the block
-    leaves it out (Req 3.3)."""
+    and --ImageReader.camera_params too in RADIAL_FISHEYE's Feature_Extraction, though the block
+    leaves it out, and never for RADIAL (Req 3.3, 3.4)."""
     wanted = {option.option for option in block if mask_used or option.option != CAMERA_MASK}
-    if name == "feature_extractor" and camera_model == "OPENCV_FISHEYE":
+    if name == "feature_extractor" and camera_model == "RADIAL_FISHEYE":
         wanted.add(CAMERA_PARAMS)
     return wanted
+
+
+# π to 36 digits, so the oracle's f is exact to far below a float's last bit.
+PI = Fraction("3.14159265358979323846264338327950288")
+LARGEST = Fraction(BIGGEST)
+F_TOLERANCE = Fraction(1, 10**12)  # how far f may lie from the oracle's, relatively
+
+
+def wanted_fisheye_start(width: int, height: int,
+                         fov_degrees: int | float) -> tuple[Fraction, ...]:
+    """The Fisheye_Start of Picks `width` by `height` pixels whose field of view across the long
+    edge is `fov_degrees`, worked out here in exact fractions, as the design gives it: f, cx,
+    cy, k1, k2 with f = (L / 2) / (θ / 2), L the long edge and θ the field of view in radians,
+    cx = width / 2, cy = height / 2 and k1 = k2 = 0 (Req 3.4, F2, D19)."""
+    half_theta = Fraction(fov_degrees) * PI / 180 / 2
+    f = Fraction(max(width, height), 2) / half_theta
+    return (f, Fraction(width, 2), Fraction(height, 2), Fraction(0), Fraction(0))
+
+
+def near_f(back: float, wanted: Fraction) -> bool:
+    """Whether `back`, an f read back from a command line, is within F_TOLERANCE of `wanted`,
+    relatively, where infinity stands for any number above the largest float."""
+    tolerance = wanted * F_TOLERANCE
+    if not math.isfinite(back):
+        return back == math.inf and wanted + tolerance > LARGEST
+    return abs(Fraction(back) - wanted) <= tolerance
 
 
 def wanted_value(option: ColmapOption, name: str, values: Mapping[str, Any]) -> object:
@@ -645,6 +677,16 @@ def test_command_lines_hold_the_fixed_constants_and_every_option_once(
     assert {name: run.command for name, run in runs.items()} == RUN_COMMANDS
     lines = {name: checked_line(run, name, colmap_options[run.command], values, mask_used)
              for name, run in runs.items()}
+    # checked_line kept --ImageReader.camera_params to RADIAL_FISHEYE's Feature_Extraction. There
+    # its five numbers read back as the oracle's Fisheye_Start: cx, cy, k1 and k2 bit for bit, and
+    # f within F_TOLERANCE (Req 2.4, 3.3, 3.4).
+    if values["camera_model"] == "RADIAL_FISHEYE":
+        text = lines["feature_extractor"][CAMERA_PARAMS]
+        numbers = [read_back(number, float) for number in text.split(",")]
+        f, *rest = wanted_fisheye_start(width, height, values["fisheye_fov_degrees"])
+        assert len(numbers) == 5, text
+        assert near_f(numbers[0], f), (text, f)
+        assert all(same(back, float(value)) for back, value in zip(numbers[1:], rest)), text
     # Both undistorters give each of the eleven undistortion settings the same value (Req 2.5,
     # 8.3).
     undistortion = [option.option for option in colmap_options["image_undistorter"]
@@ -672,11 +714,17 @@ def test_format_value_writes_each_value_so_it_reads_back_as_the_same_value(
 def test_fisheye_start_gives_f_from_half_the_long_edge_and_half_the_field_of_view() -> None:
     start = fisheye_start(1600, 900, 120.0)
     f = 800 / (math.pi / 3)  # half the long edge, over half of 120° in radians
-    assert start[0] == start[1] == pytest.approx(f, rel=1e-12)
+    # RADIAL_FISHEYE's five parameters, f, cx, cy, k1, k2 (F2, D19).
+    assert len(start) == 5
+    assert start[0] == pytest.approx(f, rel=1e-12)
     assert round(start[0], 3) == 763.944
-    assert start[2:] == (800, 450, 0, 0, 0, 0)  # cx and cy at the centre, then k1 to k4
+    assert start[1:] == (800, 450, 0, 0)  # cx and cy at the centre, then k1 and k2
+    # The text --ImageReader.camera_params gets reads back as the same five floats (Req 2.4).
+    text = ",".join(map(format_value, start))
+    assert [float(number).hex() for number in text.split(",")] == [
+        float(value).hex() for value in start]
     # Upright Picks: the long edge is the height, so f stays and the centre turns with the size.
-    assert fisheye_start(900, 1600, 120.0) == (start[0], start[0], 450, 800, 0, 0, 0, 0)
+    assert fisheye_start(900, 1600, 120.0) == (start[0], 450, 800, 0, 0)
 
 
 # colmap_env and ColmapRun.value (Req 2.2)

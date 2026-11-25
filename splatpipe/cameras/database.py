@@ -47,10 +47,10 @@ class DatabaseCamera:
     """A row of the cameras table of a COLMAP database (F12)."""
 
     camera_id: int
-    model_id: int  # COLMAP's camera model id, like 4 for OPENCV (F2)
+    model_id: int  # COLMAP's camera model id, like 3 for RADIAL (F2)
     width: int  # in pixels
     height: int  # in pixels
-    params: tuple[float, ...]  # the params blob, read as little-endian doubles
+    params: tuple[float, ...]  # the params blob, read as little-endian doubles, f first for RADIAL
     prior_focal_length: bool  # true when COLMAP trusts the focal length
 
 
@@ -99,8 +99,9 @@ def calibration_failure(before: DatabaseCamera, after: DatabaseCamera) -> str | 
     `before` is the Database's camera and `after` the Calibration_Copy's, both read after the
     Calibration exited with 0. With no image pairs, view_graph_calibrator changes no camera, so
     the copy's prior_focal_length is still false. Otherwise it marks the focal length as trusted,
-    also when it rejects its estimate and keeps the starting focal length, so a copy whose fx and
-    fy are bit for bit the Database's rejected it (F11). The reason completes the Req 5.5 warning,
+    also when it rejects its estimate and keeps the starting focal length, so a copy whose f is
+    bit for bit the Database's rejected it (F11). RADIAL has one focal parameter, f, which the
+    Calibration reads and writes (F17). The reason completes the Req 5.5 warning,
     "The focal length calibration <reason>, ...".
     """
     if not after.prior_focal_length:
@@ -111,8 +112,9 @@ def calibration_failure(before: DatabaseCamera, after: DatabaseCamera) -> str | 
 
 
 def _focal_bytes(camera: DatabaseCamera) -> bytes:
-    """The bytes of the camera's fx and fy, its first two params (F2), to compare bit for bit."""
-    return np.array(camera.params[:2], dtype=_DOUBLES).tobytes()
+    """The bytes of the camera's f, its first param, params[0] (F2, F17), to compare bit for
+    bit."""
+    return np.array(camera.params[:1], dtype=_DOUBLES).tobytes()
 
 
 def _open_existing(path: Path) -> sqlite3.Connection:

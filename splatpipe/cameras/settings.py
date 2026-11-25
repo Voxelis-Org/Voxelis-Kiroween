@@ -83,7 +83,7 @@ class OptionKey:
 class CamerasSettings:
     """The checked settings of [cameras] and its Preset table, each value as Config gave it."""
 
-    camera_model: str  # the Camera_Model, "OPENCV" or "OPENCV_FISHEYE", also in options (D5)
+    camera_model: str  # the Camera_Model, "RADIAL" or "RADIAL_FISHEYE", also in options (D19)
     fisheye_fov_degrees: float  # the field of view the Fisheye_Start works from (O2)
     near_overlap: int  # the Preset_Setting, from [cameras.<preset>], for the Near_Match_Run
     far_overlap: int  # --SequentialMatching.overlap of the Far_Match_Run (O4)
@@ -158,7 +158,7 @@ _FEATURE_EXTRACTOR = (
      _names("l1_root", "l2")),
     # The one Option_Key whose key breaks the naming rule, and whose value isn't options.md's
     # (Req 12.2, 12.3).
-    ("camera_model", "--ImageReader.camera_model", _names("OPENCV", "OPENCV_FISHEYE")),
+    ("camera_model", "--ImageReader.camera_model", _names("RADIAL", "RADIAL_FISHEYE")),
     ("image_reader_existing_camera_id", "--ImageReader.existing_camera_id",
      _WHOLE_MINUS_ONE_OR_ABOVE_ZERO),
     ("image_reader_default_focal_length_factor", "--ImageReader.default_focal_length_factor",
