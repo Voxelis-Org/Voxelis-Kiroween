@@ -76,9 +76,13 @@ colmap feature_extractor \
   `octave_resolution`, so change the two together.
 - `--ImageReader.existing_camera_id -1` makes a new camera instead of reusing one from the
   database. A database left over from an earlier run would have one.
-- Left out: `--image_list_path`, `--ImageReader.mask_path` and `--ImageReader.camera_params`,
-  inputs the step doesn't have. Left empty, COLMAP reads every image below `--image_path`, uses no
-  per-image masks and starts the focal from `default_focal_length_factor`.
+- `--ImageReader.camera_model` takes `camera_model`, RADIAL or RADIAL_FISHEYE, in place of the
+  block's `SIMPLE_RADIAL`, COLMAP's default. `--ImageReader.camera_params` goes in only for
+  RADIAL_FISHEYE, with the Fisheye_Start f, cx, cy, k1, k2, just after
+  `--ImageReader.camera_model`. For RADIAL it's left out, so the focal starts from
+  `default_focal_length_factor`.
+- Left out: `--image_list_path` and `--ImageReader.mask_path`, inputs the step doesn't have. Left
+  empty, COLMAP reads every image below `--image_path` and uses no per-image masks.
   `--FeatureExtraction.gpu_index`, and all the `--AlikedExtraction.*` and `--LomaExtraction.*`
   options, which a build without ONNX can't use.
 

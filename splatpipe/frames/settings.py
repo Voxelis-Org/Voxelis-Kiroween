@@ -47,7 +47,7 @@ class FramesSettings:
     seconds_per_pick: float
     max_picks: int
     min_picks: int
-    # The Machine_Needs, kept for the cloud spec. The step never uses them (Req 9.10).
+    # The Step_Needs, kept for the cloud spec. The step never uses them (Req 9.10).
     min_vcpus: int
     min_memory_gb: int
     ffmpeg_timeout_seconds: float

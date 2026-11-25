@@ -136,10 +136,10 @@ defaults, the values the step changes, and what it leaves out. It leaves out onl
 
 - `--help`, and `--project_path`, which would replace every other flag.
 - `--log_path`, which `--log_target stderr` doesn't use.
-- Paths and lists it has nothing to put in: known camera parameters, per-image masks, image
-  lists, a snapshot folder, constant camera or rig lists, a model to continue from, and
-  vocabulary trees. Left empty, they change nothing. Options that take a number to mean "none",
-  like `--Mapper.init_image_id1 -1`, it passes.
+- Paths and lists it has nothing to put in: per-image masks, image lists, a snapshot folder,
+  constant camera or rig lists, a model to continue from, and vocabulary trees. Left empty, they
+  change nothing. It passes the camera parameters only for RADIAL_FISHEYE. Options that take a
+  number to mean "none", like `--Mapper.init_image_id1 -1`, it passes.
 - GPU indices.
 - The options of features it keeps off for good: loop detection's settings, and everything for
   ALIKED, LoMa and LightGlue.
@@ -227,8 +227,8 @@ database, along with the cameras.
 | `--image_path` | required | Read recursively. Every readable image below it counts. |
 | `--camera_mode` | -1 | 1 gives every image the same camera, so one set of intrinsics. 0 is auto, 2 per folder, 3 per image. Any of them overrides the three `ImageReader.single_camera*` flags, and -1 leaves those in charge. The step passes 1. |
 | `--ImageReader.single_camera`, `--ImageReader.single_camera_per_folder`, `--ImageReader.single_camera_per_image` | 0, 0, 0 | The same choice as three flags. The FAQ uses `--ImageReader.single_camera 1`. |
-| `--ImageReader.camera_model` | `SIMPLE_RADIAL` | Starting camera model. See the cameras page. |
-| `--ImageReader.camera_params` | empty | Known intrinsics, comma-separated in the model's order. Marks the focal length as trusted. |
+| `--ImageReader.camera_model` | `SIMPLE_RADIAL` | Starting camera model. See the cameras page. The cameras step passes `camera_model` from `[cameras]`: RADIAL, one focal length f for square pixels, or RADIAL_FISHEYE for very wide lenses. |
+| `--ImageReader.camera_params` | empty | Known intrinsics, comma-separated in the model's order. Marks the focal length as trusted. The cameras step passes it only for RADIAL_FISHEYE, with the Fisheye_Start f, cx, cy, k1, k2, which also gives the camera a focal prior. |
 | `--ImageReader.default_focal_length_factor` | 1.2 | Without EXIF or `camera_params`, the focal starts at this times the longer side, and isn't trusted. |
 | `--ImageReader.camera_mask_path` | empty | One mask for all images. Keypoints on 0 pixels are dropped. |
 | `--ImageReader.mask_path` | empty | Folder of per-image masks named `<image name>.png`. |

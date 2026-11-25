@@ -329,7 +329,7 @@ On the machine, the Cloud_Runner rebuilds the job folder from the bucket (the `i
 
 ### The cap deadline
 
-The Cloud_Runner sets one environment variable for the steps, `SPLATPIPE_CAP_DEADLINE`: the absolute UTC instant, in ISO 8601, by which a step should have saved and stopped. It's the machine's start time plus the preset's time cap, minus `upload_margin_minutes` from `[cloud]`, leaving room to upload the results before the machine's hard time-cap shutdown. The train step reads it and stops training early, so that `out/train.ply` is written and checked `clean_reserve_minutes` before the cap deadline.
+The Cloud_Runner sets one environment variable for the steps, `SPLATPIPE_CAP_DEADLINE`: the absolute UTC instant, in ISO 8601, by which a step should have saved and stopped. It's the machine's start time plus the preset's time cap, minus `upload_margin_minutes` from `[cloud]`, leaving room to upload the results before the machine's hard time-cap shutdown. The train step reads it and stops training early, so that `out/train.ply` is written and checked `clean_reserve_minutes` before the cap deadline. The cameras step reads it too, and caps each COLMAP command's time limit at the time left before it.
 
 ### What each step asks the machine for
 
@@ -354,6 +354,7 @@ Each step spec adds its own keys when it's built. There is no `[cloud.needs.*]` 
 - fused-ssim runs forwards and backwards.
 - ffmpeg has the `zscale` and `tonemap` filters the frames step's tone map needs.
 - COLMAP, Node and splat-transform run.
+- In the cameras check, every option the cameras step passes is in each COLMAP command's `-h`, and COLMAP solves 30 made-up picks with the step's own code, placing at least 80 % of them with the focal length within 2 % of the truth. The cameras check's numbers are in `[cloud.smoke]`, like `cameras_frames`, the number of made-up picks.
 - The MoGe-2 weights match their pinned sha256.
 - In the training check, the real trainer trains a tiny made-up scene on the GPU for a few iterations, with one MCMC refine, then the PLY writer and the PLY check run on its splat. The training check's numbers are in `[cloud.smoke]`, like `train_steps`, the number of iterations.
 - The Cloud_Runner runs a tiny fake-step job end to end. The job is made from a test video under the smoke run's own job id, its `input/` goes up to the bucket, and `run_cloud_job` downloads it again, runs the fake step and uploads the results.
@@ -579,19 +580,20 @@ It works in this order:
 
 1. It removes an earlier `out/cameras.json`, before anything else.
 2. It checks every setting, before it reads `frames.json` or runs any COLMAP command.
-3. It reads the frames record, `work/frames/frames.json`, and checks that every pick's colour pick and grey copy is there, and the mask when the record says the frames step used one. Then it checks that the program `colmap` is on the PATH. All of this comes before any COLMAP command runs.
-4. Feature extraction: `colmap feature_extractor` finds SIFT features in the grey copies and saves them in a new database, with one camera of `camera_model` for every pick. With the mask, COLMAP drops the features on the mask's black pixels.
-5. Matching: `colmap sequential_matcher` runs twice on the same database. The near match run pairs each pick with the next `near_overlap` picks. Then the far match run pairs each pick i with pick i + 2^k, for k from 0 to `far_overlap` − 1, and COLMAP matches only the pairs the database doesn't hold yet.
-6. Calibration, for `"OPENCV"` only: the step copies the database to the calibration copy, then runs `colmap view_graph_calibrator` on the copy, which works out the focal length from the matches, because the picks carry no EXIF. The calibration has failed when it exits with an error, rejects its focal length estimate or finds no image pairs to calibrate. `view_graph_calibrator` only fits pinhole cameras, so for `"OPENCV_FISHEYE"` the step skips it, and the camera starts from `fisheye_fov_degrees` instead.
-7. Mapping: unless the calibration failed, `colmap global_mapper` runs, on the calibration copy, or on the database for `"OPENCV_FISHEYE"`. It gives up when it exits with an error, writes no model, or its kept model fails the placed check. After a failed calibration, or when the global mapper gives up, the step runs the fallback once: `colmap mapper`, the incremental mapper, on the database.
-8. The placed check: the final model must place at least `min_placed_frames` picks, and at least `min_placed_share` of them. Otherwise the step fails here, before the undistortion, with a readable error that says how to film the place again.
-9. Undistortion: `colmap image_undistorter` warps the final model's colour picks to one PINHOLE camera with no distortion. With the mask, `colmap image_undistorter_standalone` then warps `mask.png` with the same camera and the same settings, and the step makes the undistorted mask from its output.
-10. Levelling: one rigid move, with scale 1, makes the scene level, turns it so the heading camera looks along +Z, and moves the scene centre to the origin. When it can't, the step keeps COLMAP's frame, adds a warning and goes on.
-11. It writes the training images, the training masks when the frames step used the mask, the levelled model and `solve.json`, then `out/cameras.json`, last of all.
+3. It reads the cap deadline from `SPLATPIPE_CAP_DEADLINE`, when that's set, also before it reads `frames.json` or runs any COLMAP command.
+4. It reads the frames record, `work/frames/frames.json`, and checks that every pick's colour pick and grey copy is there, and the mask when the record says the frames step used one. Then it checks that the program `colmap` is on the PATH. All of this comes before any COLMAP command runs.
+5. Feature extraction: `colmap feature_extractor` finds SIFT features in the grey copies and saves them in a new database, with one camera of `camera_model` for every pick. With the mask, COLMAP drops the features on the mask's black pixels.
+6. Matching: `colmap sequential_matcher` runs twice on the same database. The near match run pairs each pick with the next `near_overlap` picks. Then the far match run pairs each pick i with pick i + 2^k, for k from 0 to `far_overlap` − 1, and COLMAP matches only the pairs the database doesn't hold yet.
+7. Calibration, for `"RADIAL"` only: the step copies the database to the calibration copy, then runs `colmap view_graph_calibrator` on the copy, which works out the focal length f from the matches, because the picks carry no EXIF. The calibration has failed when it exits with an error, rejects its focal length estimate or finds no image pairs to calibrate. `view_graph_calibrator` only fits pinhole cameras, so for `"RADIAL_FISHEYE"` the step skips it, and the camera starts from the fisheye start, worked out from `fisheye_fov_degrees`, instead.
+8. Mapping: unless the calibration failed, `colmap global_mapper` runs, on the calibration copy, or on the database for `"RADIAL_FISHEYE"`. It gives up when it exits with an error, writes no model, or its kept model fails the placed check. After a failed calibration, or when the global mapper gives up, the step runs the fallback once: `colmap mapper`, the incremental mapper, on the database.
+9. The placed check: the final model must place at least `min_placed_frames` picks, and at least `min_placed_share` of them. Otherwise the step fails here, before the undistortion, with a readable error that says how to film the place again.
+10. Undistortion: `colmap image_undistorter` warps the final model's colour picks to one PINHOLE camera with no distortion. With the mask, `colmap image_undistorter_standalone` then warps `mask.png` with the same camera and the same settings, and the step makes the undistorted mask from its output.
+11. Levelling: one rigid move, with scale 1, makes the scene level, turns it so the heading camera looks along +Z, and moves the scene centre to the origin. When it can't, the step keeps COLMAP's frame, adds a warning and goes on.
+12. It writes the training images, the training masks when the frames step used the mask, the levelled model and `solve.json`, then `out/cameras.json`, last of all.
 
 A mapper can write several models, `0/`, `1/` and so on, when it can't join every pick into one. A placed frame is a pick that a model gives a camera pose. A mapper's kept model is its model with the most placed frames, and the one with the lowest number among those with as many. The final model is the incremental mapper's kept model when the fallback ran, and the global mapper's otherwise.
 
-COLMAP runs as a separate program, never linked or imported. The step runs its commands one at a time, each at most once, and retries nothing. Each command has its own time limit in `[cameras]`, and a command that runs past it fails the step, with no fallback. Every option of each command is on its command line, from `[cameras]` or fixed in code, so no COLMAP default decides anything.
+COLMAP runs as a separate program, never linked or imported. The step runs its commands one at a time, each at most once, and retries nothing. Each command has its own time limit in `[cameras]`. When `SPLATPIPE_CAP_DEADLINE` is set, the step caps each limit at the time left before the cap deadline as the command starts, so a command gets the smaller of the two. A command that runs past its time limit fails the step, with no fallback, and so does a cap deadline that has passed before a command can start. Every option of each command is on its command line, from `[cameras]` or fixed in code, so no COLMAP default decides anything.
 
 ### What it reads
 
@@ -601,7 +603,7 @@ The step reads the frames step's work folder, `work/frames/`:
 - `images/`, the colour picks, and `grey/`, the grey copies: each pick's `images/<file>` and `grey/<file>`.
 - `mask.png`, the mask, when the frames record has `mask_used`.
 
-It also reads its settings, from `[cameras]` and from the job's preset table, like `[cameras.fast]`, and it runs COLMAP 4.2.1, the command line program `colmap`.
+It also reads `SPLATPIPE_CAP_DEADLINE`, the cap deadline, when the cloud runner sets it, as "The cap deadline" says. It reads it with the train step's own reader, `read_cap_deadline` in `splatpipe/train/deadline.py`, so a value that one step refuses, the other refuses with the same readable error. It reads its settings, from `[cameras]` and from the job's preset table, like `[cameras.fast]`, and it runs COLMAP 4.2.1, the command line program `colmap`.
 
 The step checks the frames record and its files before any COLMAP command runs. A missing `frames.json` means the frames step hasn't finished for the job. A record that can't be read as JSON, a field that's missing or holds the wrong kind of value, an empty `picks`, a pick whose `file` isn't the frames step's name for its `number`, like `000000.jpg` for 0, a `number` given twice, and a missing colour pick, grey copy or mask each fail the step. The readable error names the field or the file, and says to run the frames step with `uv run python -m splatpipe.frames --job <id>`. The number of picks is the number of entries in `picks`, and each image that COLMAP names belongs to the pick whose `file` is that name.
 
@@ -612,7 +614,7 @@ The step checks the frames record and its files before any COLMAP command runs. 
 | `feature_extractor` | The grey copies in `work/frames/grey/`, and with `mask_used`, `work/frames/mask.png` as `--ImageReader.camera_mask_path`. | A new database, `colmap/database.db`. |
 | `sequential_matcher`, for both match runs | The database. | The matches, into the database. |
 | `view_graph_calibrator` | The calibration copy, `colmap/database_calibrated.db`, which the step makes from the database first. | The focal length, into the calibration copy. |
-| `global_mapper` | The calibration copy, or the database for `"OPENCV_FISHEYE"`, and the colour picks in `work/frames/images/`, for the points' colours. | Its models, into `colmap/global/`. |
+| `global_mapper` | The calibration copy, or the database for `"RADIAL_FISHEYE"`, and the colour picks in `work/frames/images/`, for the points' colours. | Its models, into `colmap/global/`. |
 | `mapper` | The database, and the colour picks in `work/frames/images/`, for the points' colours. | Its models, into `colmap/incremental/`. |
 | `image_undistorter` | The final model, and the colour picks in `work/frames/images/`. | The warped colour picks and the undistorted model, into `colmap/undistorted/`. |
 | `image_undistorter_standalone` | `work/frames/mask.png`, with the final model's camera from `colmap/mask_camera.txt`. | The warped mask, into `colmap/mask_undistorted/`. |
@@ -633,13 +635,13 @@ work/cameras/
       feature_extractor.log
       sequential_matcher_near.log
       sequential_matcher_far.log
-      view_graph_calibrator.log        OPENCV only
+      view_graph_calibrator.log        RADIAL only
       global_mapper.log                unless the calibration failed
       mapper.log                       only when the fallback ran
       image_undistorter.log
       image_undistorter_standalone.log only with mask_used
     database.db                        the database
-    database_calibrated.db             the calibration copy, OPENCV only
+    database_calibrated.db             the calibration copy, RADIAL only
     global/                            the global mapper's models, 0/, 1/, ..., and project.ini
     incremental/                       the incremental mapper's models, only when the fallback ran
     undistorted/                       the undistortion's output
@@ -664,7 +666,7 @@ out/
 - `colmap/` is the COLMAP folder. It holds COLMAP's own files, for the team: `tmp/`, `logs/`, `database.db`, `database_calibrated.db`, `global/`, `incremental/`, `undistorted/`, `mask_camera.txt` and `mask_undistorted/`. Every COLMAP command runs with `colmap/` as its working folder and with `TMPDIR` and `TMP` set to `tmp/`, so COLMAP writes nothing outside the work folder. `logs/` holds each command's whole output, also when the command failed or ran past its time limit. The calibration changes only `database_calibrated.db`, so `database.db` stays as the match runs left it, for the incremental mapper. `global/` is there only when the global mapper ran, so not after a failed calibration. `mask_camera.txt` holds the final model's camera, as it was before the undistortion, for the mask warp. The undistortion writes its own `images/` and `sparse/` into `undistorted/`, so none of COLMAP's files land in `work/cameras/sparse/`.
 - `images/` holds the training images: each placed frame's warped colour pick, copied from `colmap/undistorted/images/` under its name in `sparse/images.bin`, the pick's `file`, like `000000.jpg`. It holds no other file. With `undistortion_blank_pixels` at 0, the undistortion crops each warped pick so that no pixel is blank, so the undistorted camera's size and principal point can differ a little from the picks'.
 - `masks/` holds the training masks, only when the frames record has `mask_used`. There's one per placed frame, named after it without `.jpg`, like `000000.png`, and each is the same undistorted mask: an 8-bit grey PNG at the undistorted camera's size that holds only 0 and 255. Black (0) tells the training loss to ignore a pixel, and white (255) to use it. A pixel is white only where every channel of the mask warp's output is 255, so the grey edges that the warp's bilinear sampling leaves around the black parts come out black. Without `mask_used` there's no `masks/` folder.
-- `sparse/` is the levelled model: exactly `cameras.bin`, `images.bin` and `points3D.bin`, in COLMAP 4.2.1's binary layout, below, with no `rigs.bin`, no `frames.bin` and no other file. COLMAP 4.2.1 reads the folder as it is, because it reads `rigs.bin` and `frames.bin` only when they exist. `cameras.bin` holds exactly one camera, the undistorted camera, of the model PINHOLE, and every image uses it. `images.bin` holds one image per placed frame, with the undistorted model's image id, camera id and 2D points, its pose moved by the level move, and its name, the pick's `file`. So the image `000000.jpg` has its training image at `work/cameras/images/000000.jpg`. `points3D.bin` holds every point of the undistorted model, with its id, colour, error and track, and its position moved by the level move.
+- `sparse/` is the levelled model: exactly `cameras.bin`, `images.bin` and `points3D.bin`, in COLMAP 4.2.1's binary layout, below, with no `rigs.bin`, no `frames.bin` and no other file. COLMAP 4.2.1 reads the folder as it is, because it reads `rigs.bin` and `frames.bin` only when they exist. `cameras.bin` holds exactly one camera, the undistorted camera, of the model PINHOLE, and every image uses it. Its fx and fy are equal: the solved RADIAL or RADIAL_FISHEYE camera has one focal length, f, and the undistortion keeps it as both fx and fy, changing only the size and the principal point. `images.bin` holds one image per placed frame, with the undistorted model's image id, camera id and 2D points, its pose moved by the level move, and its name, the pick's `file`. So the image `000000.jpg` has its training image at `work/cameras/images/000000.jpg`. `points3D.bin` holds every point of the undistorted model, with its id, colour, error and track, and its position moved by the level move.
 - `solve.json` is the solve record, below. The step writes it after every training image, every training mask and the levelled model. So a run that fails in the step's code leaves no `solve.json`, and the training step can treat a work folder without it as unfinished, whatever else it holds.
 
 The levelling gives the levelled model its frame. The level move is one rigid move, a rotation and then a translation, with scale 1, and the step applies the whole of it to every pose and every point at once:
@@ -683,11 +685,11 @@ The model files are in COLMAP 4.2.1's binary layout, as COLMAP's source at the `
 |---|---|---|
 | `num_cameras` | `uint64` | 1 in the levelled model. |
 | then, per camera: `camera_id` | `uint32` | |
-| `model_id` | `int32` | 1 PINHOLE, 4 OPENCV, 5 OPENCV_FISHEYE. The levelled model holds PINHOLE only. |
+| `model_id` | `int32` | 1 PINHOLE, 3 RADIAL, 9 RADIAL_FISHEYE. The levelled model holds PINHOLE only. |
 | `width`, `height` | `uint64`, `uint64` | In pixels. |
-| `params` | `float64` × the model's count | PINHOLE: fx, fy, cx, cy. OPENCV: fx, fy, cx, cy, k1, k2, p1, p2. OPENCV_FISHEYE: fx, fy, cx, cy, k1, k2, k3, k4. |
+| `params` | `float64` × the model's count | PINHOLE: fx, fy, cx, cy, with fx = fy in the levelled model. RADIAL: f, cx, cy, k1, k2. RADIAL_FISHEYE: f, cx, cy, k1, k2. |
 
-Cameras are in increasing `camera_id` order. A PINHOLE record is 56 bytes.
+Cameras are in increasing `camera_id` order. A PINHOLE record is 56 bytes, and a RADIAL or RADIAL_FISHEYE record 64.
 
 `images.bin` holds:
 
@@ -726,7 +728,7 @@ The poses follow COLMAP's convention. A world point x is at R x + t in the camer
 
 ```json
 {
-  "camera_model": "OPENCV",
+  "camera_model": "RADIAL",
   "calibration_ran": true,
   "calibration_failure": null,
   "mapper": "global",
@@ -746,8 +748,8 @@ The poses follow COLMAP's convention. A world point x is at R x + t in the camer
 
 | Field | What it holds |
 |---|---|
-| `camera_model` | The camera model, `"OPENCV"` or `"OPENCV_FISHEYE"`. |
-| `calibration_ran` | Whether the calibration ran: `false` for `"OPENCV_FISHEYE"`. |
+| `camera_model` | The camera model, `"RADIAL"` or `"RADIAL_FISHEYE"`. |
+| `calibration_ran` | Whether the calibration ran: `false` for `"RADIAL_FISHEYE"`. |
 | `calibration_failure` | Why the calibration failed, like `"rejected its focal length estimate and kept the starting one"`, or `null` when it didn't. |
 | `mapper` | Which mapper made the final model: `"global"` or `"incremental"`. |
 | `fallback_reason` | Why the fallback ran: the failed calibration's reason or the global mapper's, as in its warning. `null` when it didn't run. |
@@ -769,8 +771,8 @@ Every value is plain JSON, and floats keep full precision.
 
 | Key | Table | Value | What it is |
 |---|---|---|---|
-| `camera_model` | `[cameras]` | `"OPENCV"` | COLMAP's `--ImageReader.camera_model`: the camera every pick shares, `"OPENCV"`, or `"OPENCV_FISHEYE"` for very wide lenses. An `"OPENCV"` camera's focal length starts at `image_reader_default_focal_length_factor` times the picks' long edge, with no focal prior, and the calibration works it out. |
-| `fisheye_fov_degrees` | `[cameras]` | `120.0` | The field of view across the picks' long edge, in degrees, that an `"OPENCV_FISHEYE"` camera starts from, passed as `--ImageReader.camera_params`: fx = fy = (L / 2) / (θ / 2), with L the long edge in pixels and θ this angle in radians, cx and cy at the picks' centre, and k1 to k4 at 0. That gives the camera the focal prior COLMAP needs to keep fisheye pairs. 120° is a guess until we have real fisheye clips. |
+| `camera_model` | `[cameras]` | `"RADIAL"` | COLMAP's `--ImageReader.camera_model`: the camera every pick shares, `"RADIAL"`, with one focal length, for square pixels, or `"RADIAL_FISHEYE"` for very wide lenses. Both have five parameters: f, cx, cy, k1 and k2. A `"RADIAL"` camera's focal length starts at `image_reader_default_focal_length_factor` times the picks' long edge, with no focal prior, and the calibration works it out. |
+| `fisheye_fov_degrees` | `[cameras]` | `120.0` | The field of view across the picks' long edge, in degrees, that a `"RADIAL_FISHEYE"` camera starts from. The fisheye start is its five numbers, passed as `--ImageReader.camera_params` in the order f, cx, cy, k1, k2: f = (L / 2) / (θ / 2), with L the long edge in pixels and θ this angle in radians, cx and cy at the picks' centre, width / 2 and height / 2, and k1 and k2 at 0. That gives the camera the focal prior COLMAP needs to keep fisheye pairs. 120° is a guess until we have real fisheye clips. |
 | `far_overlap` | `[cameras]` | `10` | COLMAP's `--SequentialMatching.overlap` in the far match run: pick i meets pick i + 2^k, for k from 0 to this − 1. Keep it at 9 or more, so that with 400 picks the far match run reaches 256 picks ahead. |
 | `min_placed_frames` | `[cameras]` | `20` | The fewest picks the final model must place. |
 | `min_placed_share` | `[cameras]` | `0.5` | The smallest share of the picks, from 0 to 1, that the final model must place. |
@@ -789,7 +791,7 @@ Every value is plain JSON, and floats keep full precision.
 | `min_memory_gb` | `[cameras]` | `16` | The least memory the job's cloud machine needs for this step, in GB, a hard need. |
 | `near_overlap` | `[cameras.fast]`, `[cameras.default]` and `[cameras.quality]` | `15`, `15` and `25` | COLMAP's `--SequentialMatching.overlap` in the near match run: each pick meets the next this many picks. |
 
-Every other key in `[cameras]`, like `camera_model` above, sets one COLMAP option, which its comment in `config.toml` names. These option keys are named after their options. `--Group.name` becomes `<group>_<name>`, with the group in snake case and the whole key in lower case, so `--SiftExtraction.max_num_features` is `sift_extraction_max_num_features`, and `--GlobalMapper.ba_refine_points3D` is `global_mapper_ba_refine_points3d`. An option with no group gets its command's name in front, like `feature_extractor_descriptor_normalization` for `--descriptor_normalization`. The undistortion settings, which both undistorters take, start with `undistortion_`, and `--default_random_seed`, which every command takes, keeps its own name. Each value is the one in the colmap-cli skill's `.kiro/skills/colmap-cli/references/options.md`, which is COLMAP 4.2.1's default unless that file's notes say otherwise, except `camera_model`, which is `"OPENCV"` where that file has COLMAP's default, `SIMPLE_RADIAL`. A decimal option holds a TOML float, like `10.0` where that file writes `10`. The step writes each value on the command line so that COLMAP reads the same value: a bool as `1` or `0`, a whole number in decimal, a decimal with Python's `repr`, the shortest text that reads back as the same double, and a name as it is.
+Every other key in `[cameras]`, like `camera_model` above, sets one COLMAP option, which its comment in `config.toml` names. These option keys are named after their options. `--Group.name` becomes `<group>_<name>`, with the group in snake case and the whole key in lower case, so `--SiftExtraction.max_num_features` is `sift_extraction_max_num_features`, and `--GlobalMapper.ba_refine_points3D` is `global_mapper_ba_refine_points3d`. An option with no group gets its command's name in front, like `feature_extractor_descriptor_normalization` for `--descriptor_normalization`. The undistortion settings, which both undistorters take, start with `undistortion_`, and `--default_random_seed`, which every command takes, keeps its own name. Each value is the one in the colmap-cli skill's `.kiro/skills/colmap-cli/references/options.md`, which is COLMAP 4.2.1's default unless that file's notes say otherwise, except `camera_model`, which is `"RADIAL"` where that file has COLMAP's default, `SIMPLE_RADIAL`. A decimal option holds a TOML float, like `10.0` where that file writes `10`. The step writes each value on the command line so that COLMAP reads the same value: a bool as `1` or `0`, a whole number in decimal, a decimal with Python's `repr`, the shortest text that reads back as the same double, and a name as it is.
 
 Every COLMAP command takes:
 
@@ -820,7 +822,7 @@ Every COLMAP command takes:
 | `sift_extraction_dsp_max_scale` | `--SiftExtraction.dsp_max_scale` | `3.0` | Largest scale DSP-SIFT pools over. |
 | `sift_extraction_dsp_num_scales` | `--SiftExtraction.dsp_num_scales` | `10` | Scales DSP-SIFT pools over. |
 
-It also gets `--ImageReader.camera_mask_path` with `work/frames/mask.png` when the frames record has `mask_used`, and `--ImageReader.camera_params` with the fisheye start when `camera_model` is `"OPENCV_FISHEYE"`. Each is left out otherwise.
+It also gets `--ImageReader.camera_mask_path` with `work/frames/mask.png` when the frames record has `mask_used`, and `--ImageReader.camera_params` with the fisheye start's five numbers, joined with commas, when `camera_model` is `"RADIAL_FISHEYE"`. Each is left out otherwise.
 
 Both `colmap sequential_matcher` runs take these, with the same values:
 
@@ -898,7 +900,7 @@ Both `colmap sequential_matcher` runs take these, with the same values:
 | `global_mapper_gp_max_num_iterations` | `--GlobalMapper.gp_max_num_iterations` | `100` | Most solver iterations in global positioning. |
 | `global_mapper_ba_refine_focal_length` | `--GlobalMapper.ba_refine_focal_length` | `true` | Bundle adjustment refines the focal length. |
 | `global_mapper_ba_refine_principal_point` | `--GlobalMapper.ba_refine_principal_point` | `false` | Bundle adjustment refines the principal point. |
-| `global_mapper_ba_refine_extra_params` | `--GlobalMapper.ba_refine_extra_params` | `true` | Bundle adjustment refines the distortion. Keep it true for the undistortion. |
+| `global_mapper_ba_refine_extra_params` | `--GlobalMapper.ba_refine_extra_params` | `true` | Bundle adjustment refines the distortion. Must be true: the undistortion needs it, so the settings check refuses false. |
 | `global_mapper_refine_sensor_from_rig` | `--GlobalMapper.refine_sensor_from_rig` | `true` | Refine each camera's place in its rig. Each pick is its own frame. |
 | `global_mapper_ba_refine_rig_from_world` | `--GlobalMapper.ba_refine_rig_from_world` | `true` | Bundle adjustment refines the frames' poses. |
 | `global_mapper_ba_refine_points3d` | `--GlobalMapper.ba_refine_points3D` | `true` | Bundle adjustment refines the points. |
@@ -941,7 +943,7 @@ Both `colmap sequential_matcher` runs take these, with the same values:
 | `mapper_max_extra_param` | `--Mapper.max_extra_param` | `1.0` | Frames whose distortion goes past this are filtered out. |
 | `mapper_ba_refine_focal_length` | `--Mapper.ba_refine_focal_length` | `true` | Bundle adjustment refines the focal length. |
 | `mapper_ba_refine_principal_point` | `--Mapper.ba_refine_principal_point` | `false` | Bundle adjustment refines the principal point. |
-| `mapper_ba_refine_extra_params` | `--Mapper.ba_refine_extra_params` | `true` | Bundle adjustment refines the distortion. Keep it true for the undistortion. |
+| `mapper_ba_refine_extra_params` | `--Mapper.ba_refine_extra_params` | `true` | Bundle adjustment refines the distortion. Must be true: the undistortion needs it, so the settings check refuses false. |
 | `mapper_ba_refine_sensor_from_rig` | `--Mapper.ba_refine_sensor_from_rig` | `true` | Refine each camera's place in its rig. Each pick is its own frame. |
 | `mapper_ba_local_function_tolerance` | `--Mapper.ba_local_function_tolerance` | `0.0` | Ceres' function tolerance in local bundle adjustment. |
 | `mapper_ba_local_max_num_iterations` | `--Mapper.ba_local_max_num_iterations` | `25` | Most solver iterations per local bundle adjustment. |
@@ -1005,9 +1007,9 @@ Both `colmap sequential_matcher` runs take these, with the same values:
 - The step checks every setting before it reads `frames.json` or runs any COLMAP command. A value of the wrong kind or outside its range fails the step with a readable error that names the key, its table, COLMAP's option for an option key, and what the value must be. A bool is never a number here, and every whole number must fit a 32-bit signed int, the type COLMAP reads its whole-number options into. An option key holds the kind of value its option takes in COLMAP 4.2.1: a TOML bool for an option that's on or off, a TOML integer for a whole number, a TOML integer or float for a decimal, and for a choice, a TOML string that's one of the names this build can run. The ranges are our own sanity bounds, and COLMAP's own checks still run, so a value COLMAP refuses fails its command.
 - The step also fails, naming both settings and their values, when `sift_extraction_dsp_min_scale` is greater than `sift_extraction_dsp_max_scale`, `view_graph_calibrator_min_focal_length_ratio` greater than `view_graph_calibrator_max_focal_length_ratio`, `mapper_min_focal_length_ratio` greater than `mapper_max_focal_length_ratio`, `global_mapper_track_min_num_views_per_track` greater than `global_mapper_track_max_num_views_per_track`, or `undistortion_min_scale` greater than `undistortion_max_scale`. It fails too when `undistortion_roi_min_x` isn't below `undistortion_roi_max_x`, `undistortion_roi_min_y` isn't below `undistortion_roi_max_y`, or `global_mapper_ba_skip_fixed_rotation_stage` and `global_mapper_ba_skip_joint_optimization_stage` are both true.
 - A key that's missing from `[cameras]` or the preset table fails the step with the step runner's own readable error, which names the section, the table and the key.
-- Keep `global_mapper_ba_refine_extra_params` and `mapper_ba_refine_extra_params` true. With either one false, bundle adjustment leaves the distortion at 0, COLMAP's undistorter then keeps the camera's own model, and the step fails because the undistorted camera isn't PINHOLE.
+- `global_mapper_ba_refine_extra_params` and `mapper_ba_refine_extra_params` must be true, and the settings check refuses false, with a readable error that says why. Bundle adjustment has to refine the distortion: with it off, the distortion stays 0, COLMAP's undistorter keeps the camera's own model and copies the picks unwarped, and the step can't hand the train step a PINHOLE camera. Refusing false in the settings check stops the step before any COLMAP command, instead of at the undistortion check after the whole solve.
 - The real config keeps `global_mapper_multiple_models` and `mapper_multiple_models` true, so a mapper that can't join every pick into one model still writes each part, and the step keeps the part with the most placed frames. It keeps `undistortion_blank_pixels` at 0, so neither the training images nor the training masks have blank edges.
-- Each `*_timeout_seconds` is a guess for the largest job the settings allow, 400 picks of 1600 pixels on the long edge, on an 8-vCPU machine, with a few times the expected time to spare. The first real cloud runs should replace them with measured times. The step doesn't read `SPLATPIPE_CAP_DEADLINE`: each time limit catches a hung COLMAP command, and the machine's time cap stays the backstop.
+- Each `*_timeout_seconds` is a guess for the largest job the settings allow, 400 picks of 1600 pixels on the long edge, on an 8-vCPU machine, with a few times the expected time to spare. The first real cloud runs should replace them with measured times. Each time limit catches a hung COLMAP command. When `SPLATPIPE_CAP_DEADLINE` is set, the step caps each limit at the time left before the cap deadline as the command starts, so a hung command fails the step by the cap deadline at the latest, whatever its key holds, and the step's failed report is written before the machine's time cap. The time cap stays the backstop.
 
 These values stay in code, not in `config.toml`, because the build, our rules or the step's own design force them:
 
@@ -1021,7 +1023,7 @@ These values stay in code, not in `config.toml`, because the build, our rules or
 | `mapper` | `--Mapper.ba_use_gpu 0`, `--Mapper.ba_local_backend CERES` and `--Mapper.ba_global_backend CERES` | The same. |
 | `image_undistorter` | `--output_type COLMAP` | The step reads COLMAP's own layout, `images/` and `sparse/`. |
 | The paths | As under "What it reads" and "What it writes", each absolute. | The step decides where every file goes. |
-| The camera model names | `OPENCV` and `OPENCV_FISHEYE` | The two values `camera_model` can take. |
+| The camera model names | `RADIAL` and `RADIAL_FISHEYE` | The two values `camera_model` can take. |
 | The levelled model's camera | PINHOLE | The training step's contract: one camera with no distortion. |
 | The world up and the heading | (0, −1, 0) and +Z | The levelled model's frame, which the training step and the viewer rely on. |
 | The mask's values | 0 and 255 | Black means ignore and white means use, for COLMAP and the training loss alike. |
@@ -1046,14 +1048,14 @@ These values stay in code, not in `config.toml`, because the build, our rules or
 - `timings.levelling`: working out the level move and applying it.
 - `timings.writing`: the training images, the training masks, the levelled model, `solve.json` and `out/cameras.json`.
 - `warnings`, each only when it applies:
-  - When `camera_model` is `"OPENCV_FISHEYE"`: "The camera model is OPENCV_FISHEYE, so the focal length calibration was skipped, because COLMAP's view_graph_calibrator only fits pinhole cameras. The fisheye camera starts from fisheye_fov_degrees = <degrees> in [cameras]."
+  - When `camera_model` is `"RADIAL_FISHEYE"`: "The camera model is RADIAL_FISHEYE, so the focal length calibration was skipped, because COLMAP's view_graph_calibrator only fits pinhole cameras. The fisheye camera starts from fisheye_fov_degrees = <degrees> in [cameras]."
   - When the calibration failed, so the global mapper didn't run: "The focal length calibration <reason>, so the global mapper didn't run and the incremental mapper ran instead." The reason is "stopped with <exit code> (<last line>)", "found no image pairs to calibrate" or "rejected its focal length estimate and kept the starting one".
   - When the global mapper gave up: "The global mapper <reason>, so the incremental mapper ran instead." The reason is "stopped with <exit code> (<last line>)", "wrote no model" or "placed only <k> of the <n> picks in its best model, fewer than the <needed> the step needs". In this warning and the one above, <exit code> reads like `exit code 1`, or `exit code -6 (signal SIGABRT)` when a signal stopped COLMAP. <last line> is the last line that isn't empty in the command's output, before any `*** Check failure stack trace: ***` line, without glog's prefix of level, date, time, thread, file and line.
   - When the cameras' mean up vector is shorter than `up_agreement`: "The cameras don't agree on which way is up: their mean up vector is <length> long, below up_agreement = <value> in [cameras]. So the scene was left in COLMAP's frame, which may be tilted."
   - When no placed frame has a heading: "Every placed camera looks within heading_min_degrees = <degrees>° of straight up or down, so the scene couldn't be turned to face +Z and was left in COLMAP's frame, which may be tilted."
   - When the axis point isn't well defined and the model has no points: "The scene's centre couldn't be found: the cameras' view lines don't meet in a well defined point and the model has no 3D points. So the scene was left in COLMAP's frame, which may be tilted."
   - When working out the level move raises any other error or gives a value that isn't a finite number: "Levelling the scene failed (<type>: <message>), so the scene was left in COLMAP's frame, which may be tilted."
-- `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message, saying what went wrong and what to do. Those failures are an earlier `out/cameras.json` that can't be removed, a bad setting, a missing or broken frames record, a missing colour pick, grey copy or mask, no `colmap` on the PATH, and a COLMAP command that runs past its time limit, whose message names the command, the limit and its `*_timeout_seconds` key. So are a non-zero exit of `feature_extractor`, of a match run or of either undistorter, with the exit code, COLMAP's last line and the command's log, a non-zero exit of the incremental mapper, too few placed frames, a database that can't be read or doesn't hold exactly one camera, a model file that's missing or broken, an undistortion that doesn't give one PINHOLE camera with exactly the placed frames and their images, a warped mask that can't be read, isn't 8-bit or isn't the undistorted camera's size, and a file or folder that can't be written, like on a full disk. The incremental mapper's error and the placed check's say to film the place again: move slower, hold the phone steadier, overlap more between views, and film surfaces with more texture. A missing setting fails with the step runner's own readable error, also with `expected` at `true`. Any other error is a bug, with the general message. A failed calibration, a global mapper that gives up and anything in the levelling aren't failures, and only add warnings.
+- `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message, saying what went wrong and what to do. Those failures are an earlier `out/cameras.json` that can't be removed, a bad setting, a bad `SPLATPIPE_CAP_DEADLINE`, a missing or broken frames record, a missing colour pick, grey copy or mask, no `colmap` on the PATH, a COLMAP command that runs past a time limit its `*_timeout_seconds` key set, whose message names the command, the limit and the key, a cap deadline that leaves no time when a COLMAP command is about to start, and a COLMAP command that runs past a time limit the cap deadline set. So are a non-zero exit of `feature_extractor`, of a match run or of either undistorter, with the exit code, COLMAP's last line and the command's log, a non-zero exit of the incremental mapper, too few placed frames, a database that can't be read or doesn't hold exactly one camera, a model file that's missing or broken, an undistortion that doesn't give one PINHOLE camera with exactly the placed frames and their images, a warped mask that can't be read, isn't 8-bit or isn't the undistorted camera's size, and a file or folder that can't be written, like on a full disk. A bad `SPLATPIPE_CAP_DEADLINE` is an empty value, one that isn't a date and time, or one with no UTC offset. Its message is the train step's: it gives the value, says it must be a date and time with a UTC offset, like `2026-11-21T14:25:30Z`, and says to unset it on a laptop. When no time is left before the cap deadline, the command doesn't start and gets no timing, and the message names the command and the cap deadline. When a command runs past a time limit the cap deadline set, the message names the command and the cap deadline and gives the seconds that were left. Both of these say to give the job more time with a larger `cap_minutes` for its preset under `[cloud.presets]` in `config.toml`, then run the job again. When the undistorted camera isn't PINHOLE, the message says that COLMAP keeps a camera's own model when the camera's distortion came out as 0, and to run the step again. The incremental mapper's error and the placed check's say to film the place again: move slower, hold the phone steadier, overlap more between views, and film surfaces with more texture. A missing setting fails with the step runner's own readable error, also with `expected` at `true`. Any other error is a bug, with the general message. A failed calibration, a global mapper that gives up and anything in the levelling aren't failures, and only add warnings.
 
 The counts are whole numbers, so the mean reprojection error, the level move and the reasons are in `solve.json` instead. A failed report holds the counts and timings the step had worked out before it failed. Each command's timing goes in as soon as the command returns, so a failed report has the failing command's timing, but a stage's timing goes in only when its stage finishes. A run that fails the placed check, for example, has `counts.placed_frames` and its mappers' timings, but no `counts.points3d` and no `timings.mapping`.
 
@@ -1073,7 +1075,7 @@ The counts are whole numbers, so the mean reprojection error, the level move and
 
 | Field | What it holds |
 |---|---|
-| `camera` | The undistorted camera, the one PINHOLE camera of `sparse/cameras.bin`: `width` and `height` in pixels, and `fx`, `fy`, `cx` and `cy`. |
+| `camera` | The undistorted camera, the one PINHOLE camera of `sparse/cameras.bin`: `width` and `height` in pixels, and `fx`, `fy`, `cx` and `cy`, with `fx` = `fy`. |
 | `levelled` | Whether the levelling moved the scene, as in `solve.json`. |
 | `frames` | One object per placed frame, in pick number order. |
 
@@ -1089,7 +1091,7 @@ The poses follow the convention under "What it writes", and floats keep full pre
 
 The step removes an earlier `out/cameras.json` when its own code starts, before it does anything else, and writes a new one last of all, after `solve.json`. So a run that fails in the step's code leaves no `out/cameras.json`. When writing `out/cameras.json` itself fails, the step removes what it partly wrote and `solve.json` too, so that run leaves neither.
 
-A run that the step runner stops before the step's code starts, like one on a `[cameras]` section with a missing preset table, leaves the earlier run's `work/cameras/` and `out/cameras.json` in place, next to a failed report. So a reader that needs this run's cameras checks first that `out/reports/cameras.json` says done.
+A run that the step runner stops before the step's code starts leaves the earlier run's `out/cameras.json` in place, next to a failed report. When it stops on the config, like a `[cameras]` section with a missing preset table, it also leaves the earlier run's `work/cameras/`. When it stops later, like on a step module that fails to import, it has already emptied `work/cameras/`, so only `out/cameras.json` is left. So a reader that needs this run's cameras checks first that `out/reports/cameras.json` says done.
 
 Its report, `out/reports/cameras.json`, comes from the step runner, like every step's.
 

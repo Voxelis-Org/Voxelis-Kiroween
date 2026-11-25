@@ -93,13 +93,18 @@ COLMAP_INSTALLED = ("Yes, on the laptop through Homebrew and on the machine imag
 
 
 def test_the_colmap_row_names_the_cameras_step_commands_and_homebrews_colmap_on_laptops() -> None:
-    """Cameras spec, Req 15.8, 16.12."""
+    """Cameras spec, Req 15.8, 16.12 (D18): Homebrew's COLMAP runs the laptop tests, the
+    integration test's whole solve included, as Samarth OKed."""
     row = licence_row("COLMAP 4.2.1")
+    how = row["How we use it"]
     commands = [f"`{command}`" for command in COLMAP_COMMANDS]
     phrases = ("never vendored or linked", "no pycolmap",
-               "Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD", "`-h`", "`use_gpu 0`")
-    missing = [words for words in (*commands, *phrases) if words not in row["How we use it"]]
+               "Homebrew's COLMAP 4.2.1, which holds SiftGPU, CGAL and LSD", "`-h`", "`use_gpu 0`",
+               "the integration test's whole solve included", "as Samarth OKed")
+    missing = [words for words in (*commands, *phrases) if words not in how]
     assert not missing, f"The COLMAP 4.2.1 row should say {missing}"
+    old = "is used only for `-h` and small CPU tests"
+    assert old not in how, f"The COLMAP 4.2.1 row should no longer say {old!r}"
     assert row["Installed"] == COLMAP_INSTALLED, (
         f"The COLMAP 4.2.1 row's Installed cell should say {COLMAP_INSTALLED!r}")
 
@@ -322,7 +327,7 @@ def test_the_frames_step_report_fields_part_names_every_count_and_the_four_timin
     assert not missing, f"The frames section's Step report fields part should name {missing}"
 
 
-# The ## Step: cameras section (cameras spec, Req 15.1–15.6, 16.12)
+# The ## Step: cameras section (cameras spec, Req 15.1–15.6, 15.9, 15.10, 16.12)
 
 CAMERAS = "Step: cameras"
 # The Work_Folder's parts (Req 11.1) and the Model_Files of the Levelled_Model (Req 10.5).
@@ -357,7 +362,7 @@ def one_frame_model() -> Model:
 
 
 def solve_record_fields() -> list[str]:
-    """The Solve_Record's top-level fields, as solve_record gives them for an OPENCV camera whose
+    """The Solve_Record's top-level fields, as solve_record gives them for a RADIAL camera whose
     Calibration worked, then a global mapper whose one Model places Pick 0, and a Levelling that
     moved the scene with the identity as its Level_Move."""
     placed = ModelCount(number=0, placed=1)
@@ -367,7 +372,7 @@ def solve_record_fields() -> list[str]:
     levelling = Levelling(move=LevelMove(rotation=np.eye(3), translation=np.zeros(3)),
                           levelled=True, reason=None, mean_up_length=1.0,
                           scene_centre="axis_point", heading_camera=pick_name(0))
-    return list(solve_record(solved, levelling, "OPENCV", None))
+    return list(solve_record(solved, levelling, "RADIAL", None))
 
 
 def viewer_cameras_fields() -> list[str]:
@@ -431,16 +436,38 @@ def test_the_cameras_step_report_fields_part_names_every_count_and_timing() -> N
 
 
 def test_the_cameras_files_in_out_part_names_every_viewer_field_and_when_the_file_changes() -> None:
-    """Cameras spec, Req 15.6, 16.12."""
+    """Cameras spec, Req 15.6, 16.12: a run the step runner stops on the config also leaves the
+    earlier `work/cameras/`, and one it stops later leaves only `out/cameras.json`."""
     out = cameras_part("Files in out/")
     phrases = ("`out/cameras.json`",
                "removes an earlier `out/cameras.json` when its own code starts",
                "writes a new one last of all",
                "A run that the step runner stops before the step's code starts",
-               "leaves the earlier run's `work/cameras/` and `out/cameras.json` in place")
+               "it also leaves the earlier run's `work/cameras/`",
+               "so only `out/cameras.json` is left")
     fields = [f"`{field}`" for field in viewer_cameras_fields()]
     missing = [words for words in (*phrases, *fields) if words not in out]
     assert not missing, f"The cameras section's Files in out/ part should say {missing}"
+    old = "leaves the earlier run's `work/cameras/` and `out/cameras.json` in place"
+    assert old not in out, f"The cameras section's Files in out/ part should no longer say {old!r}"
+
+
+def test_the_cameras_section_names_radial_fx_fy_the_cap_deadline_and_the_refine_refusal() -> None:
+    """Cameras spec, Req 15.9, 15.10, 16.12 (D17, D19, D20): the Camera_Models are RADIAL and
+    RADIAL_FISHEYE, the levelled camera has fx = fy, each Time_Limit is capped at the time left
+    before the Cap_Deadline, and the settings check refuses a false refine key. No OPENCV is left,
+    and no words that the step doesn't read the Cap_Deadline."""
+    section = doc_part(pipeline_parts(), 2, CAMERAS)
+    phrases = ('`"RADIAL"`', '`"RADIAL_FISHEYE"`', "fx = fy",
+               "When `SPLATPIPE_CAP_DEADLINE` is set, the step caps each limit at the time left "
+               "before the cap deadline",
+               "`global_mapper_ba_refine_extra_params` and `mapper_ba_refine_extra_params` must be "
+               "true, and the settings check refuses false")
+    missing = [words for words in phrases if words not in section]
+    assert not missing, f"The ## {CAMERAS} section should say {missing}"
+    gone = ("OPENCV", "The step doesn't read `SPLATPIPE_CAP_DEADLINE`")
+    left = [words for words in gone if words in section]
+    assert not left, f"The ## {CAMERAS} section should no longer say {left}"
 
 
 # The ## Step: train section (training spec, Req 13.1, 13.5 to 13.7, 13.14)
@@ -503,27 +530,31 @@ def test_the_train_files_in_out_part_names_the_splat_and_the_clean_steps_limit()
 
 
 # The smoke test and cap deadline parts of ## Running a job in the cloud (training spec,
-# Req 12.13, 13.9, 13.11)
+# Req 12.13, 13.9, 13.11, and cameras spec, Req 15.10, 15.11)
 
 CLOUD = "Running a job in the cloud"
 
 
-def test_the_smoke_test_part_names_the_training_check_train_steps_and_cloud_smoke() -> None:
-    """Training spec, Req 12.13, 13.11: the smoke test part lists the training check and says its
-    numbers are in [cloud.smoke]."""
+def test_the_smoke_test_part_names_the_cameras_and_training_checks_and_their_cloud_smoke_keys() -> None:
+    """Training spec, Req 12.13, 13.11, and cameras spec, Req 15.11, 16.12: the smoke test part
+    lists the cameras check and the training check and says their numbers are in [cloud.smoke]."""
     cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
     smoke = doc_part(cloud, 3, "The smoke test", f"The ## {CLOUD} section")
-    phrases = ("training check", "`train_steps`", "`[cloud.smoke]`")
+    phrases = ("cameras check", "`cameras_frames`", "training check", "`train_steps`",
+               "`[cloud.smoke]`")
     missing = [words for words in phrases if words not in smoke]
     assert not missing, f"The part headed The smoke test should name {missing}"
 
 
-def test_the_cap_deadline_part_names_clean_reserve_minutes_and_no_longer_says_no_step_reads_it() -> None:
-    """Training spec, Req 13.9: the train step reads the cap deadline."""
+def test_the_cap_deadline_part_names_clean_reserve_minutes_and_that_the_cameras_step_reads_it() -> None:
+    """Training spec, Req 13.9: the train step reads the cap deadline. Cameras spec, Req 15.10,
+    16.12: the cameras step reads it too."""
     cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
     deadline = doc_part(cloud, 3, "The cap deadline", f"The ## {CLOUD} section")
     assert "`clean_reserve_minutes`" in deadline, (
         "The part headed The cap deadline should name `clean_reserve_minutes`")
+    cameras = "The cameras step reads it too"
+    assert cameras in deadline, f"The part headed The cap deadline should say {cameras!r}"
     assert "No current step reads it" not in deadline, (
         "The part headed The cap deadline should no longer say 'No current step reads it'")
 
@@ -539,3 +570,36 @@ def test_the_gsplat_training_skill_names_out_train_ply_and_no_longer_out_splat_p
     assert "`out/train.ply`" in skill, "The gsplat-training skill should name `out/train.ply`"
     assert "out/splat.ply" not in skill, (
         "The gsplat-training skill should no longer name out/splat.ply")
+
+
+# The colmap-cli skill (cameras spec, Req 15.12)
+
+COLMAP_CLI_SKILL = ROOT / ".kiro" / "skills" / "colmap-cli" / "SKILL.md"
+COLMAP_OPTIONS = ROOT / ".kiro" / "skills" / "colmap-cli" / "references" / "options.md"
+# The words in each file that name the two Camera_Models and when camera_params goes in.
+COLMAP_CLI_PHRASES = {
+    COLMAP_CLI_SKILL: ("RADIAL, one focal length f for square pixels, or RADIAL_FISHEYE for very "
+                       "wide lenses",
+                       "The cameras step passes it only for RADIAL_FISHEYE"),
+    COLMAP_OPTIONS: ("`--ImageReader.camera_model` takes `camera_model`, RADIAL or RADIAL_FISHEYE",
+                     "`--ImageReader.camera_params` goes in only for RADIAL_FISHEYE"),
+}
+# A "Left out:" note: its bullet line and the lines indented under it.
+LEFT_OUT_NOTE = re.compile(r"^- Left out:.*(?:\n  .*)*", re.MULTILINE)
+
+
+def test_the_colmap_cli_skill_names_both_camera_models_and_no_longer_leaves_out_camera_params() -> None:
+    """Cameras spec, Req 15.12, 16.12 (D19): both files say the step passes `camera_model`, RADIAL
+    or RADIAL_FISHEYE, and `--ImageReader.camera_params` only for RADIAL_FISHEYE, so no note of
+    options.md lists `--ImageReader.camera_params` as left out. Each file's text is read with its
+    line breaks as spaces, so a phrase that wraps still matches."""
+    for path, phrases in COLMAP_CLI_PHRASES.items():
+        text = " ".join(path.read_text(encoding="utf-8").split())
+        missing = [words for words in phrases if words not in text]
+        assert not missing, f"{path.relative_to(ROOT)} should say {missing}"
+    notes = LEFT_OUT_NOTE.findall(COLMAP_OPTIONS.read_text(encoding="utf-8"))
+    assert notes, "The colmap-cli skill's options.md should have its Left out notes"
+    listed = [note for note in notes if "`--ImageReader.camera_params`" in note]
+    assert not listed, (
+        f"No Left out note of the colmap-cli skill's options.md should list "
+        f"`--ImageReader.camera_params`, but these do: {listed}")
