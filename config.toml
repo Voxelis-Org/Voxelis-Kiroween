@@ -901,8 +901,8 @@ max_workers = 4
 splat_transform_timeout_seconds = 3600
 
 [clean.fast]
-# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
-sog_sh_bands = 3
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3. 0 skips splat-transform's CPU SH compression, which ran past an hour on a 912K-splat job.
+sog_sh_bands = 0
 # Iterations of splat-transform's spherical harmonic compression.
 sh_iterations = 10
 

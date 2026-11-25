@@ -87,8 +87,10 @@ REAL_SHARED = {
     "splat_transform_timeout_seconds": 3600,
 }
 # Each Preset's table: the two Preset_Settings of Req 6.3, with the values Req 6.4 gives them.
+# The fast Preset keeps no higher bands, because splat-transform's SH compression under -g cpu
+# ran past its hour on the first real job's 912K Gaussians, and with 0 bands it takes seconds.
 REAL_PRESETS = {
-    "fast": {"sog_sh_bands": 3, "sh_iterations": 10},
+    "fast": {"sog_sh_bands": 0, "sh_iterations": 10},
     "default": {"sog_sh_bands": 3, "sh_iterations": 10},
     "quality": {"sog_sh_bands": 3, "sh_iterations": 20},
 }
