@@ -1,10 +1,10 @@
 """Tests for splatpipe/cameras/model.py: the Model_Files cameras.bin, images.bin and points3D.bin.
 
-The hand-built model has one camera of each model the files may hold, PINHOLE, OPENCV and
-OPENCV_FISHEYE, two images, one with no 2D points and one with a 2D point that has NaN
-coordinates and no 3D point, and three points, one with an empty track. Its image id 3000000000
-and camera id 2³² − 1 don't fit a signed 32-bit field, and its point id 2⁶⁴ − 2 doesn't fit a
-signed 64-bit one, so its bytes show that every id field is unsigned.
+The hand-built model has one camera each of PINHOLE, RADIAL and RADIAL_FISHEYE, the model ids 1,
+3 and 9, whose records are 56, 64 and 64 bytes, two images, one with no 2D points and one with a
+2D point that has NaN coordinates and no 3D point, and three points, one with an empty track. Its
+image id 3000000000 and camera id 2³² − 1 don't fit a signed 32-bit field, and its point id
+2⁶⁴ − 2 doesn't fit a signed 64-bit one, so its bytes show that every id field is unsigned.
 
 The bytes that model must encode to are put together here field by field from the layout tables
 of the design's "The Model_Files", with struct.pack and explicit little-endian formats, and never
@@ -118,10 +118,9 @@ PAYLOAD_NAN = struct.unpack("<d", uint64(0xFFF8_0000_0000_0ABC))[0]
 # Its cameras, in increasing id order: camera_id, model_id, width, height and params.
 CAMERA_FIELDS = (
     (2, 1, 320, 240, (260.0, 261.5, 160.0, 120.0)),  # PINHOLE: fx, fy, cx, cy
-    (7, 4, 1920, 1080,  # OPENCV: fx, fy, cx, cy, k1, k2, p1, p2
-     (1500.0, 1501.5, 960.5, 540.25, -0.125, 0.0625, 0.001, -0.002)),
-    (2**32 - 1, 5, 4000, 3000,  # OPENCV_FISHEYE: fx, fy, cx, cy, k1, k2, k3, k4
-     (1154.5, 1155.0, 2000.0, 1500.0, 0.05, -0.01, 0.003, -0.0004)),
+    (7, 3, 1920, 1080, (1500.0, 960.5, 540.25, -0.125, 0.0625)),  # RADIAL: f, cx, cy, k1, k2
+    (2**32 - 1, 9, 4000, 3000,  # RADIAL_FISHEYE: f, cx, cy, k1, k2
+     (1154.5, 2000.0, 1500.0, 0.05, -0.01)),
 )
 # Its images, in the Model's order, which isn't id order: image_id, qvec, tvec, camera_id, name,
 # and each 2D point's x, y and point3d_id. The first image's 2D point 1 has NaN coordinates and
@@ -212,6 +211,9 @@ def test_the_hand_built_model_encodes_to_the_bytes_of_the_layout_tables() -> Non
     # The layout tables' point3D_id for a 2D point with no 3D point, and error for a point with
     # none.
     assert (NO_POINT3D, NO_ERROR) == (2**64 - 1, -1.0)
+    # The PINHOLE, RADIAL and RADIAL_FISHEYE records: 24 bytes up to height, then 4, 5 and 5
+    # params of 8 bytes each.
+    assert [len(record) for record in CAMERA_RECORDS] == [56, 64, 64]
     assert encode_cameras(MODEL.cameras) == FILES_BYTES["cameras.bin"]
     # The images' order isn't id order, so an encoder that sorted them would fail here too.
     assert encode_images(MODEL.images) == FILES_BYTES["images.bin"]
@@ -303,9 +305,9 @@ def unsigned(size: int) -> st.SearchStrategy[int]:
 UINT32S = unsigned(4)  # a camera_id, an image_id or a track element's field
 UINT64S = unsigned(8)  # a point3D_id, a 2D point's point3d_id, a width or a height
 COLOURS = st.tuples(*[st.integers(0, 255)] * 3)  # a point's r, g and b
-# Each camera model the files may hold, by model id, with its number of parameters (F2):
-# PINHOLE, OPENCV and OPENCV_FISHEYE.
-PARAMETER_COUNTS = {1: 4, 4: 8, 5: 8}
+# Each camera model Property 7 draws, by model id, with its number of parameters (F2): PINHOLE
+# (fx, fy, cx, cy), RADIAL and RADIAL_FISHEYE (each f, cx, cy, k1, k2).
+PARAMETER_COUNTS = {1: 4, 3: 5, 9: 5}
 
 
 def float_of_bits(bits: int) -> float:
@@ -432,7 +434,8 @@ def test_read_images_of_a_missing_images_bin_fails_naming_it(tmp_path: Path) -> 
 
 @pytest.mark.parametrize(("name", "cut", "part"), [
     # cameras.bin: the count, 8 bytes, then three cameras, each 24 bytes up to height and then its
-    # params, 8 bytes each: 4 for camera 1, the PINHOLE one, and 8 for cameras 2 and 3.
+    # params, 8 bytes each: 4 for camera 1, the PINHOLE one, and 5 for cameras 2 and 3, the
+    # RADIAL and RADIAL_FISHEYE ones.
     pytest.param("cameras.bin", 0, "inside its count of cameras", id="an empty cameras.bin"),
     pytest.param("cameras.bin", 5, "inside its count of cameras", id="the count of cameras"),
     pytest.param("cameras.bin", 8 + 20, "inside camera 1 of 3", id="a camera"),

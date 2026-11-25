@@ -6,6 +6,9 @@ one after another with no padding, and no header beyond each file's count. This 
 written fresh from those layout tables with struct and numpy, with nothing copied from COLMAP's
 scripts or another repo (Req 10.3).
 
+cameras.bin may hold the camera models of CAMERA_MODELS: PINHOLE, RADIAL, OPENCV, OPENCV_FISHEYE
+and RADIAL_FISHEYE (F2).
+
 The fixed part of each record goes through struct with an explicit little-endian format, and
 struct copies a double's 8 bytes as they are. Each image's 2D points and each point's track go
 through np.frombuffer and tobytes() with POINT2D and TRACK_ELEMENT. So every bit of every number
@@ -43,10 +46,12 @@ import numpy as np
 from splatpipe.errors import ExpectedFailure
 
 # The camera models the Model_Files may hold, by COLMAP's model id: the name and the number of
-# parameters (F2). PINHOLE takes fx, fy, cx, cy. OPENCV takes fx, fy, cx, cy, k1, k2, p1, p2, and
-# OPENCV_FISHEYE fx, fy, cx, cy, k1, k2, k3, k4.
-CAMERA_MODELS: Mapping[int, tuple[str, int]] = {1: ("PINHOLE", 4), 4: ("OPENCV", 8),
-                                                5: ("OPENCV_FISHEYE", 8)}
+# parameters (F2). PINHOLE takes fx, fy, cx, cy. RADIAL and RADIAL_FISHEYE each take f, cx, cy,
+# k1, k2. OPENCV takes fx, fy, cx, cy, k1, k2, p1, p2, and OPENCV_FISHEYE fx, fy, cx, cy, k1, k2,
+# k3, k4.
+CAMERA_MODELS: Mapping[int, tuple[str, int]] = {1: ("PINHOLE", 4), 3: ("RADIAL", 5),
+                                                4: ("OPENCV", 8), 5: ("OPENCV_FISHEYE", 8),
+                                                9: ("RADIAL_FISHEYE", 5)}
 NO_POINT3D = 2**64 - 1  # a 2D point's point3d_id when it has no 3D point, kInvalidPoint3DId (F1)
 NO_ERROR = -1.0  # a point's error when it has none (F15)
 # An image's 2D point, 24 bytes: its position in pixels, and its 3D point's id or NO_POINT3D.
@@ -62,7 +67,8 @@ _IMAGE = struct.Struct("<I4d3dI")  # image_id, qw, qx, qy, qz, tx, ty, tz, camer
 _POINT = struct.Struct("<Q3d3BdQ")  # point3D_id, x, y, z, r, g, b, error, track_length: 51 bytes
 _PARAMS: Mapping[int, struct.Struct] = {  # each camera model's parameters, by model id
     model_id: struct.Struct(f"<{count}d") for model_id, (_, count) in CAMERA_MODELS.items()}
-# The camera models, for the messages: PINHOLE (1), OPENCV (4), OPENCV_FISHEYE (5).
+# The camera models, for the messages: PINHOLE (1), RADIAL (3), OPENCV (4), OPENCV_FISHEYE (5),
+# RADIAL_FISHEYE (9).
 _KNOWN = ", ".join(f"{name} ({model_id})" for model_id, (name, _) in CAMERA_MODELS.items())
 
 
