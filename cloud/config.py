@@ -62,6 +62,13 @@ class SmokeChecks:
     train_refine_start_step: int     # Iteration after which the training check's MCMC refines
     train_refine_every: int          # Iterations between the training check's refines
     train_sh_degree_interval: int    # Iterations between rises of the training check's SH degree
+    cameras_frames: int              # made-up picks the cameras check solves with COLMAP
+    cameras_width: int               # width of the cameras check's picks, in pixels
+    cameras_height: int              # height of the cameras check's picks, in pixels
+    cameras_focal_pixels: float      # true focal length of the cameras check's picks, in pixels
+    cameras_placed_share: float      # smallest share of the picks the cameras check must place
+    cameras_focal_tolerance: float   # how far the solved focal may be off, as a share of it
+    cameras_timeout_seconds: float   # longest time each COLMAP command of the cameras check may run
 
 
 @dataclass(frozen=True)
@@ -245,6 +252,13 @@ def _read_smoke_checks(cloud: Mapping[str, object]) -> SmokeChecks:
         train_refine_start_step=_whole(table, "train_refine_start_step", label("train_refine_start_step")),
         train_refine_every=_whole(table, "train_refine_every", label("train_refine_every")),
         train_sh_degree_interval=_whole(table, "train_sh_degree_interval", label("train_sh_degree_interval")),
+        cameras_frames=_whole(table, "cameras_frames", label("cameras_frames")),
+        cameras_width=_whole(table, "cameras_width", label("cameras_width")),
+        cameras_height=_whole(table, "cameras_height", label("cameras_height")),
+        cameras_focal_pixels=_number(table, "cameras_focal_pixels", label("cameras_focal_pixels")),
+        cameras_placed_share=_number(table, "cameras_placed_share", label("cameras_placed_share")),
+        cameras_focal_tolerance=_number(table, "cameras_focal_tolerance", label("cameras_focal_tolerance")),
+        cameras_timeout_seconds=_number(table, "cameras_timeout_seconds", label("cameras_timeout_seconds")),
     )
 
 

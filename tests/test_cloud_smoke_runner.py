@@ -20,6 +20,8 @@ the CPU with no network, no GPU and no AWS account, against the `FakeAws` seam (
   test imports splatpipe/train/gpu.py.
 - The training check also runs here whole, with `cloud.smoke_runner.load_gpu` patched to give a
   FakeGpu, the GPU_Stand_In, in place of the GPU_Module (training spec, Req 12.9, 14.10).
+- The cameras check runs here with a stand-in for `run_cameras_smoke`, which records what the check
+  passes it, the `[cloud.smoke]` numbers among them (cameras spec, Req 16.14, 18.2, 18.8).
 """
 
 from __future__ import annotations
@@ -39,7 +41,8 @@ import pytest
 
 import cloud.runner
 import cloud.smoke_runner
-from splatpipe.config import load_config
+from splatpipe.cameras import smoke as cameras_smoke
+from splatpipe.config import Config, load_config
 from splatpipe.run import StepEntry
 
 from cloud.errors import CloudError
@@ -237,8 +240,10 @@ def test_main_refuses_without_the_image_id(
 def test_the_smoke_checks_cover_the_image_in_order() -> None:
     # The user's list, then training, the first of the GPU paths later specs add (Req 11.5;
     # training spec, Req 12.1), just before the Cloud_Runner on a fake-step job, which stays last.
+    # cameras comes right after colmap: it runs the image's COLMAP the way the Cameras_Step does,
+    # so it follows the check that COLMAP runs at all (cameras spec, Req 18.2).
     assert [check.name for check in SMOKE_CHECKS] == [
-        "torch-gpu", "gsplat", "fused-ssim", "ffmpeg-zscale", "colmap", "node",
+        "torch-gpu", "gsplat", "fused-ssim", "ffmpeg-zscale", "colmap", "cameras", "node",
         "splat-transform", "moge-weights", "training", "cloud-runner"]
 
 
@@ -389,6 +394,43 @@ def test_the_training_check_trains_with_the_smoke_numbers_and_gives_its_line(
             settings.refine_every, settings.sh_degree_interval) == (
         checks.train_steps, checks.train_splats, checks.train_refine_start_step,
         checks.train_refine_every, checks.train_sh_degree_interval)
+
+
+# The line the stand-in for run_cameras_smoke gives back, as run_cameras_smoke words its own.
+CAMERAS_LINE = ("every option the cameras step passes is in colmap -h for its 7 commands, and the "
+                "solve of 30 made-up picks placed 30 with the global mapper, at f = 259.8 px "
+                "against 260 px")
+
+
+def test_the_cameras_check_runs_the_cameras_smoke_check_with_the_smoke_numbers_and_gives_its_line(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Config, cameras_smoke.SmokeSizes, Path, str]] = []
+
+    def run_cameras_smoke(config: Config, sizes: cameras_smoke.SmokeSizes, scratch: Path,
+                          job_id: str) -> cameras_smoke.CamerasSmoke:
+        calls.append((config, sizes, scratch, job_id))
+        solve = cameras_smoke.SmokeSolve(folder=scratch / "job", picks=30, placed=30,
+                                         mapper="global", focal=259.8, fx=259.8, fy=259.8)
+        return cameras_smoke.CamerasSmoke(line=CAMERAS_LINE, solve=solve)
+
+    monkeypatch.setattr(cloud.smoke_runner.cameras_smoke, "run_cameras_smoke", run_cameras_smoke)
+    context = context_in(tmp_path)
+
+    detail = CHECKS["cameras"].run(context)
+
+    assert detail == CAMERAS_LINE
+    # The stand-in ran once, with the check's config, the seven cameras_* numbers of [cloud.smoke]
+    # and its check_timeout_seconds, the check's own scratch folder and this smoke run's Job_Id.
+    checks = context.cloud_config.smoke_checks
+    [(config, sizes, scratch, job_id)] = calls
+    assert config is context.config
+    assert sizes == cameras_smoke.SmokeSizes(
+        frames=checks.cameras_frames, width=checks.cameras_width, height=checks.cameras_height,
+        focal_pixels=checks.cameras_focal_pixels, placed_share=checks.cameras_placed_share,
+        focal_tolerance=checks.cameras_focal_tolerance,
+        timeout_seconds=checks.cameras_timeout_seconds,
+        help_timeout_seconds=checks.check_timeout_seconds)
+    assert (scratch, job_id) == (tmp_path, JOB_ID)
 
 
 # _run_command, which the tool checks use, on real tiny commands

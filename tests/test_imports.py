@@ -24,6 +24,13 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
 - The Frames_Step's imports (frames spec, Req 9.9, 13.10): every splatpipe/frames/*.py imports
   only names in sys.stdlib_module_names, numpy, cv2 and splatpipe, so torch, gsplat, boto3 and
   cloud/ stay out.
+- The Cameras_Step's imports (cameras spec, Req 2.1, 12.13, 12.14, 16.10): every
+  splatpipe/cameras/*.py imports only names in sys.stdlib_module_names, numpy, cv2 and
+  splatpipe, so torch, gsplat, boto3, pycolmap and cloud/ stay out. None of those files names
+  VideoCapture or VideoWriter, cv2's video classes: not in an import like `from cv2 import
+  VideoWriter`, an attribute like cv2.VideoCapture under any name the file gives cv2, or a bare
+  name. A docstring or comment that names one isn't code, so it doesn't count. With the
+  dependency check, this shows the step needs no new package (Req 12.12).
 - The Train_Step's imports (splat-training spec, Req 9.11, 9.13, 14.7): every
   splatpipe/train/*.py but gpu.py imports only names in sys.stdlib_module_names, numpy, cv2 and
   splatpipe, and gpu.py, the GPU_Module, imports only those and torch, gsplat and fused_ssim, so
@@ -47,7 +54,8 @@ splatpipe.step.run_step. A from-import reads as its module plus each imported na
   changing it.
 
 Each import check's failure lists the file and the line of every import it found, and the
-dependency check's failure lists the file of every package it found.
+cameras check's failure does the same for every video class it found. The dependency check's
+failure lists the file of every package it found.
 """
 
 import ast
@@ -81,6 +89,12 @@ LOADED_BY_RUN = ("import json, sys, splatpipe.run; "
 # The top-level names a splatpipe/frames/*.py may import besides the standard library (frames
 # spec, Req 9.9).
 FRAMES_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+# The top-level names a splatpipe/cameras/*.py may import besides the standard library (cameras
+# spec, Req 12.13).
+CAMERAS_IMPORTS = frozenset({"numpy", "cv2", "splatpipe"})
+# cv2's classes that read and write video, which no splatpipe/cameras/*.py names (cameras spec,
+# Req 12.14).
+VIDEO_CLASSES = frozenset({"VideoCapture", "VideoWriter"})
 # The top-level names a splatpipe/train/*.py may import besides the standard library, and the
 # GPU_Module's file, which may import torch, gsplat and fused_ssim too (splat-training spec,
 # Req 9.11).
@@ -187,6 +201,17 @@ def imports_of(path: Path) -> list[tuple[str, str]]:
     return [(f"{shown}:{line}", name) for line, name in imports_in(path.read_bytes(), package)]
 
 
+def video_classes_of(path: Path) -> list[tuple[str, str]]:
+    """Every attribute or name in the file at `path` that is one of VIDEO_CLASSES, as
+    ("<file>:<line>", its code), like cv2.VideoCapture under any name the file gives cv2. A
+    docstring or comment that names one isn't code, so it isn't read."""
+    shown = path.relative_to(REPO_ROOT).as_posix()
+    found = [(node.lineno, ast.unparse(node)) for node in ast.walk(ast.parse(path.read_bytes()))
+             if (isinstance(node, ast.Attribute) and node.attr in VIDEO_CLASSES)
+             or (isinstance(node, ast.Name) and node.id in VIDEO_CLASSES)]
+    return [(f"{shown}:{line}", code) for line, code in sorted(found)]
+
+
 def top(name: str) -> str:
     """The top-level package of a dotted module name."""
     return name.partition(".")[0]
@@ -277,9 +302,10 @@ def test_importing_splatpipe_run_loads_only_skeleton_modules() -> None:
 
 
 def test_each_step_list_entry_is_a_step_inside_splatpipe_with_its_config_section() -> None:
-    """The entries are the Frames_Step, the Train_Step and then the Clean_Step, so this loads
-    [frames], [train] and [clean] from the real config for each of the three Presets (frames
-    spec, Req 11.7, and splat-training spec, Req 14.9)."""
+    """The entries are the Frames_Step, the Cameras_Step, the Train_Step and then the Clean_Step,
+    so this loads [frames], [cameras], [train] and [clean] from the real config for each of the
+    three Presets (frames spec, Req 11.7; cameras spec, Req 14.7; splat-training spec,
+    Req 14.9)."""
     config = load_config(REAL_CONFIG)
     for entry in STEP_LIST:
         assert check_step_name(entry.name) == entry.name
@@ -294,6 +320,19 @@ def test_the_frames_step_imports_only_the_standard_library_numpy_cv2_and_splatpi
     allowed = sys.stdlib_module_names | FRAMES_IMPORTS
     found = [(where, name) for path in sorted(SPLATPIPE.glob("frames/*.py"))
              for where, name in imports_of(path) if top(name) not in allowed]
+    assert found == []
+
+
+def test_the_cameras_step_imports_only_stdlib_numpy_cv2_and_splatpipe_and_no_video_class() -> None:
+    """Cameras spec, Req 2.1, 12.13, 12.14 and 16.10. `from cv2 import VideoWriter` reads as
+    cv2.VideoWriter, so the import reader finds it, and video_classes_of finds the attributes and
+    names in the code. With the dependency check below, this shows that the step needs no new
+    package (Req 12.12)."""
+    allowed = sys.stdlib_module_names | CAMERAS_IMPORTS
+    paths = sorted(SPLATPIPE.glob("cameras/*.py"))
+    found = [(where, name) for path in paths for where, name in imports_of(path)
+             if top(name) not in allowed or name.removeprefix("cv2.") in VIDEO_CLASSES]
+    found += [use for path in paths for use in video_classes_of(path)]
     assert found == []
 
 
