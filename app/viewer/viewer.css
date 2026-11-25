@@ -1,0 +1,70 @@
+/* The 3D viewer. Styles only .splat-viewer and what's inside it, plus the standalone page. */
+
+.splat-viewer {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 80vh;
+  overflow: hidden;
+  background: #0f0f12;
+  color: #f2f2f2;
+  outline: none;
+}
+
+.splat-viewer:focus-visible {
+  box-shadow: inset 0 0 0 2px #7aa7ff;
+}
+
+.splat-viewer-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The viewer handles every touch itself, so a drag or a pinch never scrolls or zooms the page. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.splat-viewer-status,
+.splat-viewer-hint {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  margin: 0;
+  font: 0.9rem/1.3 system-ui, sans-serif;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+}
+
+.splat-viewer-status {
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+}
+
+.splat-viewer-hint {
+  bottom: 0.75rem;
+  opacity: 0.85;
+}
+
+.splat-viewer [hidden] {
+  display: none;
+}
+
+/* The standalone page, index.html: the viewer fills the window. */
+html:has(.splat-viewer-page),
+.splat-viewer-page {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #0f0f12;
+}
+
+.splat-viewer-page .splat-viewer {
+  position: fixed;
+  inset: 0;
+  aspect-ratio: auto;
+  max-height: none;
+  height: 100%;
+}
