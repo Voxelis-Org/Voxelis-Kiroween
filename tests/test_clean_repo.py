@@ -87,12 +87,13 @@ REAL_SHARED = {
     "splat_transform_timeout_seconds": 3600,
 }
 # Each Preset's table: the two Preset_Settings of Req 6.3, with the values Req 6.4 gives them.
-# The fast Preset keeps no higher bands, because splat-transform's SH compression under -g cpu
-# ran past its hour on the first real job's 912K Gaussians, and with 0 bands it takes seconds.
+# No Preset keeps higher bands in the Viewer_Copy, because splat-transform's SH compression under
+# -g cpu ran past its hour on the first real job's 912K Gaussians, and with 0 bands it takes
+# seconds. The Clean_Splat keeps every band.
 REAL_PRESETS = {
     "fast": {"sog_sh_bands": 0, "sh_iterations": 10},
-    "default": {"sog_sh_bands": 3, "sh_iterations": 10},
-    "quality": {"sog_sh_bands": 3, "sh_iterations": 20},
+    "default": {"sog_sh_bands": 0, "sh_iterations": 10},
+    "quality": {"sog_sh_bands": 0, "sh_iterations": 20},
 }
 # The most Gaussians whose Splat_Data fits in a quarter of the job machine's 8 GB, 2 * 10**9
 # bytes, at 62 float32 properties, or 248 bytes, a Gaussian: 8,064,516 (Req 6.17, A7).

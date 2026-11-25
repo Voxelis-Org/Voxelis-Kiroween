@@ -1629,10 +1629,10 @@ The step needs Node 22 or newer, and `npm ci` at the repo root, which installs s
 | `max_source_splats` | `[clean]` | `8000000` | The most Gaussians the step takes in. More fails the step before it reads their rows. |
 | `max_workers` | `[clean]` | `4` | The worker threads for the isolated filter's neighbour search and for splat-transform, at most 8. At 0, splat-transform encodes inline and the search uses 1. |
 | `splat_transform_timeout_seconds` | `[clean]` | `3600` | The longest time splat-transform may take to make the viewer copy, in seconds. Past it, the step stops splat-transform and fails. |
-| `sog_sh_bands` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `0`, `3` and `3` | The bands of higher spherical harmonics the viewer copy keeps, from 0 to 3. The fast preset keeps none, because splat-transform's spherical harmonic compression runs on the CPU and took over an hour on the first real job's 912,131 Gaussians, while with 0 bands it takes seconds. |
+| `sog_sh_bands` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `0`, `0` and `0` | The bands of higher spherical harmonics the viewer copy keeps, from 0 to 3. Every preset keeps none, because splat-transform's spherical harmonic compression runs on the CPU and took over an hour on the first real job's 912,131 Gaussians, while with 0 bands it takes seconds. |
 | `sh_iterations` | `[clean.fast]`, `[clean.default]` and `[clean.quality]` | `10`, `10` and `20` | The iterations of splat-transform's spherical harmonic compression. |
 
-All three presets clean the splat the same way, and only `sog_sh_bands` and `sh_iterations` differ between their viewer copies. The clean splat, `out/clean.ply`, keeps every band in every preset. The real `config.toml` has a comment on the line directly above every key.
+All three presets clean the splat the same way and keep no higher bands in the viewer copy. `sh_iterations` only changes a viewer copy that keeps some bands, so with `sog_sh_bands` at 0 the three viewer copies are made the same way. The clean splat, `out/clean.ply`, keeps every band in every preset. The real `config.toml` has a comment on the line directly above every key.
 
 ### Step report fields
 
