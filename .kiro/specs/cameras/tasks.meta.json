@@ -1,0 +1,1784 @@
+{
+  "pbtResults": {
+    "2.3 Write the property test for Property 7 in `tests/test_cameras_model.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795452889297
+    },
+    "3.3 Write the property test for Property 4 in `tests/test_cameras_level.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795458684425
+    },
+    "3.4 Write the property test for Property 5 in `tests/test_cameras_level.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795458684653
+    },
+    "3.5 Write the property test for Property 6 in `tests/test_cameras_level.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795458684684
+    },
+    "4.7 Write the property test for Property 1 in `tests/test_cameras_colmap.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795463951132
+    },
+    "5.5 Write the property test for Property 2 in `tests/test_cameras_solve.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795501150410
+    },
+    "6.3 Write the property test for Property 3 in `tests/test_cameras_undistort.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795503744465
+    },
+    "1.9 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for the true-only refine keys": {
+      "status": "passed",
+      "lastRunTimestamp": 1795553922554
+    },
+    "2.7 Update the property test for Property 7 in `tests/test_cameras_model.py`": {
+      "status": "passed",
+      "lastRunTimestamp": 1795554539337
+    },
+    "4.14 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for RADIAL and RADIAL_FISHEYE": {
+      "status": "passed",
+      "lastRunTimestamp": 1795607641142
+    },
+    "5.12 Write the property test for Property 8 in `tests/test_cameras_colmap.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795609011494
+    }
+  },
+  "executionHistory": {
+    "1.1 Add `[cameras]` and its Preset tables to `config.toml`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395177
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447443529
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795448782545
+      }
+    ],
+    "1.2 Write `splatpipe/cameras/settings.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395456
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447443678
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795448783620
+      }
+    ],
+    "1.3 Add `[cameras]`, `set_cameras` and the options oracle to `tests/conftest.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395616
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447443758
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795448784236
+      }
+    ],
+    "1.4 Write unit tests for the settings in `tests/test_cameras_settings.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395673
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795448802425
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795450012814
+      }
+    ],
+    "1.5 Write the cameras import check in `tests/test_imports.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395719
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795448802562
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795450012939
+      }
+    ],
+    "1.6 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395780
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795450027072
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795450227881
+      }
+    ],
+    "2.1 Write `splatpipe/cameras/model.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395887
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795450291293
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795451154254
+      }
+    ],
+    "2.2 Write unit tests for the model files in `tests/test_cameras_model.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447395945
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795451166126
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795452167523
+      }
+    ],
+    "2.3 Write the property test for Property 7 in `tests/test_cameras_model.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396013
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795452176958
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795452935025
+      }
+    ],
+    "2.4 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396054
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795452945373
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795453108668
+      }
+    ],
+    "3.1 Write the levelling in `splatpipe/cameras/level.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396096
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795453118595
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795454193988
+      }
+    ],
+    "3.2 Write unit tests for the levelling in `tests/test_cameras_level.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396135
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795454204836
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795455779952
+      }
+    ],
+    "3.3 Write the property test for Property 4 in `tests/test_cameras_level.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396195
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795455790267
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795456281827
+      }
+    ],
+    "3.4 Write the property test for Property 5 in `tests/test_cameras_level.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396228
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795456290045
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795456616396
+      }
+    ],
+    "3.5 Write the property test for Property 6 in `tests/test_cameras_level.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396265
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795456625061
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795457098183
+      }
+    ],
+    "3.6 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396315
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795457106166
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795458742312
+      }
+    ],
+    "4.1 Write `splatpipe/cameras/frames_input.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396350
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795458764687
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795459628222
+      }
+    ],
+    "4.2 Write `splatpipe/cameras/colmap.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396392
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795458764896
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795459628450
+      }
+    ],
+    "4.3 Write `splatpipe/cameras/commands.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396447
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795459639962
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795460573425
+      }
+    ],
+    "4.4 Add `cameras_job` to `tests/conftest.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396511
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795458765292
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795459628550
+      }
+    ],
+    "4.5 Write unit tests for the Frames_Contract in `tests/test_cameras_frames_input.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396564
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795459640709
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795460573169
+      }
+    ],
+    "4.6 Write unit tests for the runner and the command lines in `tests/test_cameras_colmap.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396599
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795460584821
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795461906025
+      }
+    ],
+    "4.7 Write the property test for Property 1 in `tests/test_cameras_colmap.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396633
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795461915275
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463172395
+      }
+    ],
+    "4.8 Write the `colmap <command> -h` test in `tests/test_cameras_colmap.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396677
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463181362
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463744780
+      }
+    ],
+    "4.9 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396720
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463753737
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463969945
+      }
+    ],
+    "5.1 Write `splatpipe/cameras/database.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396770
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463994796
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795465155295
+      }
+    ],
+    "5.2 Write `splatpipe/cameras/solve.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396814
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795465164542
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795498447567
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795498882360
+      }
+    ],
+    "5.3 Add `FakeColmap` and `fake_colmap` to `tests/conftest.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396855
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463995324
+      },
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795465155485
+      }
+    ],
+    "5.4 Write unit tests for the database and the solve flow in `tests/test_cameras_solve.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396892
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795498891548
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795498914672
+      }
+    ],
+    "5.5 Write the property test for Property 2 in `tests/test_cameras_solve.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396930
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795498914751
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795501175978
+      }
+    ],
+    "5.6 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447396974
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795501181999
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795501431714
+      }
+    ],
+    "6.1 Write `splatpipe/cameras/undistort.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397006
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795501444284
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795502107253
+      }
+    ],
+    "6.2 Write unit tests for the undistortion checks and the mask in `tests/test_cameras_undistort.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397043
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795502112136
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795502781107
+      }
+    ],
+    "6.3 Write the property test for Property 3 in `tests/test_cameras_undistort.py`, with Hypothesis": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397080
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795502786371
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795503332922
+      }
+    ],
+    "6.4 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397128
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795503348200
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795503819813
+      }
+    ],
+    "7.1 Write `splatpipe/cameras/outputs.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397179
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795503835345
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795504594348
+      }
+    ],
+    "7.2 Write the step in `splatpipe/cameras/__init__.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397220
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795504611078
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795505779351
+      }
+    ],
+    "7.3 Write `splatpipe/cameras/__main__.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397314
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795503835975
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795504594421
+      }
+    ],
+    "7.4 Give `FakeColmap` the two undistorters, and install it as the step's tools": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397372
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795505786288
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795506817374
+      }
+    ],
+    "7.5 Write unit tests for a done run in `tests/test_cameras_step.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397404
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795506824672
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795508266548
+      }
+    ],
+    "7.6 Write unit tests for failed runs and the CLI in `tests/test_cameras_step.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397439
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795508273235
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795509534212
+      }
+    ],
+    "7.7 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397537
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795509543329
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795509803283
+      }
+    ],
+    "8.1 Write the synthetic scene and its picks in `tests/test_cameras_real.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397597
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795509831998
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795515722266
+      }
+    ],
+    "8.2 Write the integration test in `tests/test_cameras_real.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397662
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795515728142
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795516963924
+      }
+    ],
+    "8.3 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397741
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795516970134
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795517154901
+      }
+    ],
+    "9.1 Write `## Step: cameras` in `docs/pipeline.md`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397801
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795517166810
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795518530386
+      }
+    ],
+    "9.2 Add the step's use to the COLMAP row in `docs/third-party-licences.md`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397838
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795517166958
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795518530601
+      }
+    ],
+    "9.3 Write the doc tests for the cameras section and the COLMAP row in `tests/test_docs.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397874
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795518536684
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519120650
+      }
+    ],
+    "9.4 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397910
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519126049
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519338832
+      }
+    ],
+    "10.1 Change the Step_List in `splatpipe/run.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397948
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519350190
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519575035
+      }
+    ],
+    "10.2 Update `tests/test_run.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447397993
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519583614
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520112579
+      }
+    ],
+    "10.3 Update `tests/test_frames_step.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447398037
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519585266
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520113206
+      }
+    ],
+    "10.4 Update `tests/test_imports.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447398079
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519585752
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520114829
+      }
+    ],
+    "10.5 Update \"The step list\" in `docs/pipeline.md`, with its test": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447398121
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519351162
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519575923
+      }
+    ],
+    "10.6 Add the notes to the frames spec's requirements": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447398162
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519351379
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519576624
+      }
+    ],
+    "10.7 Write the `run_job` test of both steps in `tests/test_cameras_step.py`": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447398203
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519587042
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520115376
+      }
+    ],
+    "10.8 Run the tests and commit": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795447398242
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520120557
+      },
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520280880
+      }
+    ],
+    "1. Settings, the test config and the import check": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795450228005
+      }
+    ],
+    "2. The model files": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795453108853
+      }
+    ],
+    "3. Levelling the scene": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795458742433
+      }
+    ],
+    "4. The Frames_Contract, the COLMAP runner and the command lines": [
+      {
+        "executionId": "cf67cb37-0a4e-4c8f-bb07-572c71413633",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795463970065
+      }
+    ],
+    "5. The database and the solve flow": [
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795501431783
+      }
+    ],
+    "6. Undistortion and the mask": [
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795503819963
+      }
+    ],
+    "7. The outputs, the step and its CLI": [
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795509803395
+      }
+    ],
+    "8. The integration test with the real COLMAP": [
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795517155001
+      }
+    ],
+    "9. The cameras section of the pipeline doc and the COLMAP licence row": [
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795519338923
+      }
+    ],
+    "10. The cameras step joins the step list": [
+      {
+        "executionId": "72f819fb-cdc2-4147-aa7d-c1f09db136eb",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795520280930
+      }
+    ],
+    "10.9 Merge origin/main into feat/camera-solve, run the tests and commit the merge": [
+      {
+        "executionId": "5f245a75-e0dc-4517-b37e-f49b72a458f6",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795536231938
+      },
+      {
+        "executionId": "5f245a75-e0dc-4517-b37e-f49b72a458f6",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795536257727
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795547754606
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795548029404
+      }
+    ],
+    "1.7 Make the two `ba_refine_extra_params` keys true-only in `splatpipe/cameras/settings.py` and `config.toml`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667188
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553681985
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553792870
+      }
+    ],
+    "1.8 Write unit tests for the true-only refine keys in `tests/test_cameras_settings.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667342
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553801092
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554006359
+      }
+    ],
+    "1.9 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for the true-only refine keys": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667417
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553801898
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554007246
+      }
+    ],
+    "1.10 Run the tests and commit": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667492
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554015410
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554219412
+      }
+    ],
+    "2.5 Add RADIAL and RADIAL_FISHEYE to `CAMERA_MODELS` in `splatpipe/cameras/model.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667588
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554227488
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554320330
+      }
+    ],
+    "2.6 Update the unit tests for the model files in `tests/test_cameras_model.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667670
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554326869
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554477298
+      }
+    ],
+    "2.7 Update the property test for Property 7 in `tests/test_cameras_model.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667773
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554485298
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554555898
+      }
+    ],
+    "2.8 Run the tests and commit": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667881
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795554562442
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606322695
+      }
+    ],
+    "4.10 Switch the step's code to RADIAL and RADIAL_FISHEYE": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553667973
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606332032
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606620689
+      }
+    ],
+    "4.11 Switch `FakeColmap` in `tests/conftest.py` to RADIAL cameras": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668071
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606332370
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606621473
+      }
+    ],
+    "4.12 Update the settings, model, command line and solve tests for RADIAL and RADIAL_FISHEYE": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668192
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606628367
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607365200
+      }
+    ],
+    "4.13 Update the step, undistortion and real COLMAP tests for RADIAL and RADIAL_FISHEYE": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668254
+      },
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606629322
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795606854723
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607365688
+      }
+    ],
+    "4.14 Update the property test for Property 1 in `tests/test_cameras_colmap.py` for RADIAL and RADIAL_FISHEYE": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668315
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607374004
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607661681
+      }
+    ],
+    "4.15 Write the unit test of `check_undistorted`'s other-camera refusal in `tests/test_cameras_undistort.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668379
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607374658
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607661866
+      }
+    ],
+    "4.16 Run the tests and commit": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668433
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607669213
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607890033
+      }
+    ],
+    "5.7 Add `Deadline`, `NO_DEADLINE`, `capped()` and `capped_at` to `splatpipe/cameras/colmap.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668512
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795607902075
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608140421
+      }
+    ],
+    "5.8 Cap every COLMAP run in `run_timed` in `splatpipe/cameras/solve.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668581
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608146505
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608363745
+      }
+    ],
+    "5.9 Read the Cap_Deadline in `work` in `splatpipe/cameras/__init__.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668646
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608371605
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608497576
+      }
+    ],
+    "5.10 Give `FakeColmap` a clock in `tests/conftest.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668752
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608507619
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608743447
+      }
+    ],
+    "5.11 Write unit tests for `capped` in `tests/test_cameras_colmap.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668864
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608508167
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608742873
+      }
+    ],
+    "5.12 Write the property test for Property 8 in `tests/test_cameras_colmap.py`, with Hypothesis": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553668995
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608754294
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609156787
+      }
+    ],
+    "5.13 Write unit tests for the capped solve in `tests/test_cameras_solve.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669133
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608755189
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609157689
+      }
+    ],
+    "5.14 Write unit tests for the step's read of the Cap_Deadline in `tests/test_cameras_step.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669237
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795608755923
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609158914
+      }
+    ],
+    "5.15 Run the tests and commit": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669366
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609168967
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609378636
+      }
+    ],
+    "8.4 Write `splatpipe/cameras/smoke.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669430
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609389422
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610007113
+      }
+    ],
+    "8.5 Write unit tests for the smoke check in `tests/test_cameras_smoke.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669489
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610017115
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610685889
+      }
+    ],
+    "8.6 Run the integration test on the smoke code in `tests/test_cameras_real.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669550
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610018095
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610686118
+      }
+    ],
+    "8.7 Run the `-h` test on the smoke code in `tests/test_cameras_colmap.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669629
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610019135
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610687673
+      }
+    ],
+    "8.8 Add the seven `cameras_*` numbers to `[cloud.smoke]`, `cloud/config.py` and `tests/fake_aws.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669713
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795609390234
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610008083
+      }
+    ],
+    "8.9 Add the `cameras` check to `cloud/smoke_runner.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669809
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610019972
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610688074
+      }
+    ],
+    "8.10 Write unit tests for the cloud side of the cameras smoke check": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669891
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610694276
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610966682
+      }
+    ],
+    "8.11 Run the tests and commit": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553669971
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795610976363
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611156676
+      }
+    ],
+    "9.5 Update `## Step: cameras`, \"The cap deadline\" and \"The smoke test\" in `docs/pipeline.md`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670050
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611168316
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611726162
+      }
+    ],
+    "9.6 Change the Homebrew sentence of the COLMAP row in `docs/third-party-licences.md`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670139
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611168546
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611726263
+      }
+    ],
+    "9.7 Name RADIAL and RADIAL_FISHEYE in the colmap-cli skill": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670257
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611168954
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612081228
+      }
+    ],
+    "9.8 Say Step_Needs in the frames spec and in `splatpipe/frames/settings.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670395
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611169506
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795611726697
+      }
+    ],
+    "9.9 Add the missing cameras lines to `docs/devlog.md`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670521
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612091582
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612259148
+      }
+    ],
+    "9.10 Write the doc tests for the update in `tests/test_docs.py`": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670672
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612266966
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612592415
+      }
+    ],
+    "9.11 Run the tests and commit": [
+      {
+        "executionId": "affaedb4-25cf-4835-b1fc-3811aaf2c028",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795553670741
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612599230
+      },
+      {
+        "executionId": "bef01ed1-3803-4585-b7c3-9cc24f4aaa05",
+        "chatSessionId": "sess_d0ae5643-1a17-459d-a109-e4c254c9b19f",
+        "timestamp": 1795612765587
+      }
+    ]
+  }
+}

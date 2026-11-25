@@ -44,12 +44,13 @@ class StepEntry:
     required: bool  # a Required_Step's failure fails the Job, an Optional_Step's doesn't
 
 
-# The Step_List: the Frames_Step, required (Req 8.2, frames spec, D1), the Depth_Step, optional
-# (depth-priors spec, Req 1.3, A11), the Train_Step, required (train spec, D5, Req 11.4), then the
-# Clean_Step, optional (clean spec, Req 8.4). The camera solve spec puts its entry between the
-# Frames_Step and the Depth_Step, so the order becomes frames, cameras, depth, train, clean. The
-# Fake_Step stays out, so it never runs on real Jobs, and tests that run it pass their own list.
+# The Step_List, in this order: the Frames_Step and the Cameras_Step, both required (Req 8.2;
+# frames spec, D1, Req 11.3; cameras spec, D1, Req 14.3), the Depth_Step, optional (depth-priors
+# spec, Req 1.3, A11), the Train_Step, required (train spec, D5, Req 11.4), then the Clean_Step,
+# optional (clean spec, Req 8.4). The Fake_Step stays out, so it never runs on real Jobs, and
+# tests that run it pass their own list.
 STEP_LIST: tuple[StepEntry, ...] = (StepEntry("frames", "splatpipe.frames", True),
+                                    StepEntry("cameras", "splatpipe.cameras", True),
                                     StepEntry("depth", "splatpipe.depth", False),
                                     StepEntry("train", "splatpipe.train", True),
                                     StepEntry("clean", "splatpipe.clean", False))

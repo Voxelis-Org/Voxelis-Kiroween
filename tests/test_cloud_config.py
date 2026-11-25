@@ -7,13 +7,16 @@ present; `[cloud]` holds no `[cloud.needs.*]` table; `smoke_instance_type` is an
 `[cloud.image].fallback`, the image builder's types, is g5.8xlarge then g5.4xlarge, both A10G types
 (Req 2.3, 2.4, 2.6, 2.7, 2.10). An empty builder list, or one naming a type that isn't an
 Allowed_Type, is a `CloudError` naming `fallback for [cloud.image]`. `[cloud.smoke]` also holds
-the training check's seven numbers at their A11 values (training spec, Req 12.4) and the depth
-check's `depth_normal_start_step` at 8 (depth-priors spec, Req 16.6). Second, corrupting one key
-of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the Config_Loader naming the key
-(Req 2.1), while a missing or wrong-typed key is a `CloudError` naming the key (Req 2.2). A float,
-a bool or 0 as one of the training check's numbers is a `CloudError` naming it as
-`<key> for [cloud.smoke]` (training spec, Req 12.5), and so is −1, 1.5, `true` or `"8"` as
-`depth_normal_start_step`, which may be 0 (depth-priors spec, Req 16.6).
+the training check's seven numbers at their A11 values (training spec, Req 12.4), the depth
+check's `depth_normal_start_step` at 8 (depth-priors spec, Req 16.6), and the cameras check's
+seven numbers at their values, three whole and four numbers (cameras spec, Req 18.9). Second,
+corrupting one key of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the
+Config_Loader naming the key (Req 2.1), while a missing or wrong-typed key is a `CloudError` naming
+the key (Req 2.2). A float, a bool or 0 as one of the training check's numbers is a `CloudError`
+naming it as `<key> for [cloud.smoke]` (training spec, Req 12.5), and so is −1, 1.5, `true` or
+`"8"` as `depth_normal_start_step`, which may be 0 (depth-priors spec, Req 16.6). So is a float as
+one of the cameras check's whole numbers, or a bool or 0 as any of its seven (cameras spec,
+Req 18.9).
 
 Property 2 (any single corruption of a valid `[cloud]` is refused by name) is the Hypothesis test
 at the end of this file (task 1.5): it builds a valid `[cloud]` mapping, corrupts one key, writes it
@@ -69,6 +72,13 @@ TRAIN_SMOKE = {"train_images": 4, "train_points": 200, "train_splats": 400, "tra
 
 # The depth check's Normal_Start in [cloud.smoke] (depth-priors spec, Req 16.6, A5).
 DEPTH_NORMAL_START_STEP = 8
+
+# The cameras check's seven [cloud.smoke] numbers, at their values (cameras spec, Req 18.9): three
+# whole numbers, read with _whole, and four numbers, read with _number and given back as floats.
+CAMERAS_WHOLE = {"cameras_frames": 30, "cameras_width": 320, "cameras_height": 240}
+CAMERAS_NUMBERS = {"cameras_focal_pixels": 260.0, "cameras_placed_share": 0.8,
+                   "cameras_focal_tolerance": 0.02, "cameras_timeout_seconds": 600.0}
+CAMERAS_SMOKE = {**CAMERAS_WHOLE, **CAMERAS_NUMBERS}
 
 
 @pytest.fixture
@@ -132,6 +142,11 @@ def test_the_smoke_machines_settings_load_and_its_video_is_long_enough_for_a_job
     # The depth check's Normal_Start is the whole number 8 (depth-priors spec, Req 16.6, A5).
     assert checks.depth_normal_start_step == DEPTH_NORMAL_START_STEP
     assert type(checks.depth_normal_start_step) is int
+    # The cameras check's numbers are at their values, three whole numbers and four floats
+    # (cameras spec, Req 18.9).
+    assert {key: getattr(checks, key) for key in CAMERAS_SMOKE} == CAMERAS_SMOKE
+    assert all(type(getattr(checks, key)) is int for key in CAMERAS_WHOLE)
+    assert all(type(getattr(checks, key)) is float for key in CAMERAS_NUMBERS)
 
 
 def test_the_smoke_and_image_instance_types_are_allowed_types(cc: CloudConfig) -> None:
@@ -193,7 +208,7 @@ def valid_cloud() -> dict[str, Any]:
         },
         "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
                   "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE,
-                  "depth_normal_start_step": DEPTH_NORMAL_START_STEP},
+                  "depth_normal_start_step": DEPTH_NORMAL_START_STEP, **CAMERAS_SMOKE},
         "image": {"fallback": ["g5.8xlarge", "g5.xlarge"], "expected_minutes": 45,
                   "cap_minutes": 120},
         "upload_margin_minutes": 10,
@@ -270,6 +285,19 @@ CORRUPTIONS += [
                  id=f"{what} as depth_normal_start_step")
     for what, value in (("-1", -1), ("1.5", 1.5), ("true", True), ('"8"', "8"))
 ]
+# Each of the cameras check's three whole numbers given a float, here its value as a float, so
+# even a whole one is refused, a bool, or 0, and each of its four numbers given a bool or 0. The
+# CloudError names it as "<key> for [cloud.smoke]" (cameras spec, Req 18.9).
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key, whole in CAMERAS_WHOLE.items()
+    for what, value in (("a float", float(whole)), ("a bool", True), ("0", 0))
+]
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key in CAMERAS_NUMBERS
+    for what, value in (("a bool", True), ("0", 0))
+]
 
 
 @pytest.mark.parametrize(("corrupt", "key"), CORRUPTIONS)
@@ -309,9 +337,10 @@ cloud_text = st.text(
 def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     """A valid `[cloud]` mapping that from_mapping accepts: 1-3 Allowed_Types, the three Presets
     whose fallbacks, the smoke instance type and the image builder list all name those types, and
-    positive times, prices and scalars. The smoke table's whole numbers, the training check's seven among them,
-    are integers above 0, and the depth check's depth_normal_start_step is an integer of 0 or
-    more (depth-priors spec, Req 16.6)."""
+    positive times, prices and scalars. The smoke table's whole numbers, the training check's seven
+    and the cameras check's three among them, are integers above 0, the cameras check's other four
+    are numbers, and the depth check's depth_normal_start_step is an integer of 0 or more
+    (depth-priors spec, Req 16.6)."""
     names = draw(st.lists(st.sampled_from(ALLOWED_TYPES), min_size=1, max_size=3, unique=True))
     types = {
         name: {
@@ -341,7 +370,9 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
                   "image_pixels": draw(st.integers(min_value=1, max_value=4096)),
                   "video_seconds": draw(cloud_numbers),
                   **{key: draw(st.integers(min_value=1, max_value=4096)) for key in TRAIN_SMOKE},
-                  "depth_normal_start_step": draw(st.integers(min_value=0, max_value=4096))},
+                  "depth_normal_start_step": draw(st.integers(min_value=0, max_value=4096)),
+                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in CAMERAS_WHOLE},
+                  **{key: draw(cloud_numbers) for key in CAMERAS_NUMBERS}},
         "image": {"fallback": draw(st.lists(st.sampled_from(names), min_size=1,
                                             max_size=len(names), unique=True)),
                   "expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
@@ -358,8 +389,8 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
 def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
     """Every single-key corruption target in `mapping`, as (path, category). "whole" is a TOML
     integer (vcpus, the smoke scene's Gaussian count and image size, the training check's seven
-    numbers and the depth check's depth_normal_start_step); "table" is a sub-table (types,
-    presets, smoke, image)."""
+    numbers, the depth check's depth_normal_start_step and the cameras check's three whole ones);
+    "table" is a sub-table (types, presets, smoke, image)."""
     targets: list[tuple[tuple[str, ...], str]] = [
         (("upload_margin_minutes",), "number"),
         (("poll_seconds",), "number"),
@@ -401,6 +432,8 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
     ]
     targets += [(("smoke", key), "whole") for key in TRAIN_SMOKE]
     targets.append((("smoke", "depth_normal_start_step"), "whole"))
+    targets += [(("smoke", key), "whole") for key in CAMERAS_WHOLE]
+    targets += [(("smoke", key), "number") for key in CAMERAS_NUMBERS]
     return targets
 
 
