@@ -19,7 +19,12 @@ Step_Runner and returns its Step_Report. `__main__.py` is the CLI,
 
 1. It removes an earlier out/cameras.json, before anything else, so a run that fails in the
    step's own code leaves none (Req 11.10, A9).
-2. The settings, every one checked before the step reads frames.json (Req 12.8).
+2. The settings, every one checked before the step reads frames.json (Req 12.8). Then the
+   Cap_Deadline, read once from SPLATPIPE_CAP_DEADLINE with read_cap_deadline, so a bad value
+   fails with that function's own message before frames.json is read or any COLMAP_Command runs
+   (Req 17.1, 17.2, C12). The step caps each COLMAP_Command's Time_Limit at the time left before
+   the Cap_Deadline as the command starts, with no cap when the variable isn't set (Req 17.3,
+   17.4, D17).
 3. The Frames_Contract: frames.json and the files it names, checked before any COLMAP_Command
    runs (Req 1.1 to 1.4). The count picks goes in.
 4. COLMAP: when colmap isn't on the PATH, the step fails before any COLMAP_Command (Req 2.7).
@@ -48,10 +53,11 @@ ExpectedFailure (Req 14.10). An OSError while the step makes a folder or writes 
 Req 11.12 failure, which names it and the reason.
 
 `work` reads the module constant TOOLS each time it's called, so a test that replaces the tools
-with monkeypatch reaches the step through run_step and the CLI.
+with monkeypatch reaches the step through run_step and the CLI. TOOLS.now is the clock the
+Cap_Deadline is read against, so a test can move the time (C16).
 
-From splatpipe, this file imports only splatpipe.errors, splatpipe.frames.files, splatpipe.step
-and the step's own modules. Every file in this package imports only the standard library, numpy,
+From splatpipe, this file imports only splatpipe.errors, splatpipe.frames.files, splatpipe.step,
+splatpipe.train.deadline and the step's own modules. Every file in this package imports only the standard library, numpy,
 cv2 and splatpipe.
 """
 
@@ -61,6 +67,7 @@ import os
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -69,8 +76,8 @@ import numpy as np
 # The modules level and solve, not their functions of the same names, so splatpipe.cameras.level
 # and splatpipe.cameras.solve stay the modules.
 from splatpipe.cameras import commands, level, solve
-from splatpipe.cameras.colmap import (NOT_INSTALLED, PROGRAM, ColmapRun, RunResult, colmap_env,
-                                      run_colmap)
+from splatpipe.cameras.colmap import (NOT_INSTALLED, PROGRAM, ColmapRun, Deadline, RunResult,
+                                      colmap_env, run_colmap)
 from splatpipe.cameras.commands import Paths
 from splatpipe.cameras.frames_input import FramesInput, read_frames
 from splatpipe.cameras.level import Levelling, move_model, scene_of
@@ -85,6 +92,7 @@ from splatpipe.errors import ExpectedFailure
 from splatpipe.frames.files import MASK
 # Config comes through splatpipe.step, as for the Fake_Step and the Frames_Step.
 from splatpipe.step import Config, StepContext, run_step
+from splatpipe.train.deadline import read_cap_deadline, utc_now
 
 # The Undistortion's own layout in colmap/undistorted/, as --output_type COLMAP writes it (A1):
 # the warped Colour_Picks in images/, and the Undistorted_Model, all five files, in sparse/.
@@ -101,16 +109,18 @@ class Tools:
     find_colmap: Callable[[], str | None]
     # run(colmap_run), like colmap.run_colmap: runs one COLMAP_Command and gives its RunResult.
     run: Callable[[ColmapRun], RunResult]
+    # now(), like utc_now: the clock the Cap_Deadline is read against (C16).
+    now: Callable[[], datetime] = utc_now
 
 
 # The real tools. work reads TOOLS each time it's called, so a test can monkeypatch it.
-TOOLS = Tools(find_colmap=lambda: shutil.which(PROGRAM), run=run_colmap)
+TOOLS = Tools(find_colmap=lambda: shutil.which(PROGRAM), run=run_colmap, now=utc_now)
 
 
 @dataclass(frozen=True)
 class _Flow:
     """What the parts after the solve use: the step, the COLMAP runner, the checked settings, the
-    Frames_Contract, the paths and the COLMAP_Commands' environment."""
+    Frames_Contract, the paths, the COLMAP_Commands' environment and the Cap_Deadline."""
 
     step: StepContext
     run: Callable[[ColmapRun], RunResult]
@@ -118,6 +128,7 @@ class _Flow:
     frames: FramesInput
     paths: Paths
     env: Mapping[str, str]
+    deadline: Deadline
 
 
 def run(job_id: str, preset: str | None = None, *,
@@ -135,6 +146,7 @@ def work(step: StepContext) -> None:
     _remove_earlier_viewer(step.out_folder / VIEWER)
     tools = TOOLS  # read now, so a test's monkeypatch is seen
     cfg = read_settings(step.settings, step.name, step.preset)
+    deadline = Deadline(read_cap_deadline(os.environ), tools.now)  # once, before frames.json
     frames = read_frames(step.job.folder / "work" / "frames", step.job.id)  # the Frames_Step's
     step.add_count("picks", int(len(frames.picks)))
     if tools.find_colmap() is None:
@@ -142,8 +154,9 @@ def work(step: StepContext) -> None:
     paths = Paths.of(step.work_folder, frames.folder, step.out_folder)
     _make_folders(paths.colmap, paths.tmp, paths.logs)
     env = colmap_env(paths.tmp, os.environ)
-    solved = solve.solve(step, tools.run, cfg, frames, paths, env)
-    flow = _Flow(step=step, run=tools.run, cfg=cfg, frames=frames, paths=paths, env=env)
+    solved = solve.solve(step, tools.run, cfg, frames, paths, env, deadline=deadline)
+    flow = _Flow(step=step, run=tools.run, cfg=cfg, frames=frames, paths=paths, env=env,
+                 deadline=deadline)
     undistorted, mask = _undistort(flow, solved)
     levelling, levelled = _levelling(flow, undistorted)
     _write(flow, solved, levelling, levelled, mask)
@@ -182,7 +195,8 @@ def _undistort(flow: _Flow, solved: Solved) -> tuple[Model, np.ndarray | None]:
     step, paths = flow.step, flow.paths
     with step.timed("undistortion"):
         run_or_fail(step, flow.run,
-                    commands.image_undistorter(flow.cfg, paths, flow.env, solved.folder))
+                    commands.image_undistorter(flow.cfg, paths, flow.env, solved.folder),
+                    deadline=flow.deadline)
         undistorted = read_model(paths.undistorted / _UNDISTORTED_MODEL)
         camera = check_undistorted(undistorted, solved.placed_names,
                                    paths.undistorted / _UNDISTORTED_IMAGES)
@@ -203,7 +217,8 @@ def _warp_mask(flow: _Flow, final: Camera, undistorted: Camera) -> np.ndarray:
     paths = flow.paths
     _write_camera_line(paths.mask_camera, mask_camera_line(final))
     run_or_fail(flow.step, flow.run,
-                commands.image_undistorter_standalone(flow.cfg, paths, flow.env))
+                commands.image_undistorter_standalone(flow.cfg, paths, flow.env),
+                deadline=flow.deadline)
     return read_warped_mask(paths.mask_warped / MASK, undistorted.width, undistorted.height)
 
 

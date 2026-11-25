@@ -45,11 +45,15 @@ FakeColmap stands in for the colmap program in every run of the Cameras_Step, so
 on a machine with no COLMAP (cameras spec, Req 16.5). fake_colmap gives the class, and installs
 each FakeColmap it builds as the step's tools, so a run through splatpipe.cameras.run, run_step
 or the step's CLI in this process uses it, and finds colmap unless it's built with
-installed=False. A test of the solve flow passes its run to solve instead, in place of
-colmap.run_colmap. The script says which runs time out, which exit with a given code and line,
-what the Calibration does to the Calibration_Copy, how many Picks each Model of each mapper
+installed=False. The step's clock is then the FakeColmap's `now`, a stand-in clock, when the test
+gives one, or utc_now when it gives none, so a test that sets SPLATPIPE_CAP_DEADLINE with
+monkeypatch.setenv moves the clock as it likes (cameras spec, C16). The autouse no_cap_deadline
+keeps every other test uncapped. A test of the solve flow passes its run to solve instead, in
+place of colmap.run_colmap. The script says which runs time out, which exit with a given code and
+line, what the Calibration does to the Calibration_Copy, how many Picks each Model of each mapper
 places, whether the mappers turn every other camera upside down, and what the image_undistorter
-gets wrong. FakeColmap records each run and writes its Command_Log. Every other run exits with 0
+gets wrong. FakeColmap records each ColmapRun, with the timeout_seconds and capped_at the run
+got, and writes its Command_Log. Every other run exits with 0
 after writing what the real command would: the Database with its one RADIAL or RADIAL_FISHEYE
 camera, the Calibration_Copy's changed camera, each mapper's Models, written with the step's own
 Model_Writer, with a RADIAL camera and Poses along a walk seen through a fixed rigid move, the
@@ -988,8 +992,13 @@ class FakeColmap:
     FakeColmap is built with installed=False, so the step fails as when colmap isn't on the PATH
     (Req 2.7).
 
-    run(colmap_run) records the ColmapRun in `runs` and writes its Command_Log, a line with the
-    command line. Then it follows the script for colmap_run.name:
+    `now`, when the test gives it, is a stand-in clock, which fake_colmap installs as the step's
+    Tools.now, the clock the Cap_Deadline is read against (C16). With none, fake_colmap installs
+    utc_now. The stand-in itself never reads it.
+
+    run(colmap_run) records the ColmapRun in `runs`, so each record holds the timeout_seconds and
+    capped_at the run got, and writes its Command_Log, a line with the command line. Then it
+    follows the script for colmap_run.name:
     - a name in `timeouts` gives a RunResult with exit_code None, after the run's Time_Limit;
     - a name in `exits`, mapped to (code, line), writes the line to the Command_Log too and gives
       that code;
@@ -1061,6 +1070,7 @@ class FakeColmap:
     second_camera: bool = False  # image_undistorter adds a second camera
     leave_out_image: bool = False  # image_undistorter leaves the Model's last image out
     installed: bool = True  # find_colmap finds colmap, or with False gives None (Req 2.7)
+    now: Callable[[], datetime] | None = None  # the stand-in clock for Tools.now, None: utc_now
     runs: list[ColmapRun] = field(default_factory=list, init=False)  # every run, in order
 
     def __post_init__(self) -> None:
@@ -1136,22 +1146,26 @@ def fake_colmap(monkeypatch: pytest.MonkeyPatch) -> type[FakeColmap]:
     tools for this test (cameras spec, Req 16.5). Building another one installs that one instead.
 
     Installing is monkeypatch.setattr("splatpipe.cameras.TOOLS", ...) with a Tools of the
-    FakeColmap's find_colmap and run, so find_colmap gives FAKE_COLMAP, or None when the
-    FakeColmap is built with installed=False (Req 2.7). The step reads TOOLS each time it runs,
-    so a run through splatpipe.cameras.run, run_step or the step's CLI in this process uses the
-    stand-in. A test of the solve flow passes its run to solve instead, in place of
-    colmap.run_colmap. Either way, its `runs` then lists every ColmapRun it stood in for, in
-    order. splatpipe.cameras is imported here, so only the tests that use this fixture need it.
+    FakeColmap's find_colmap and run, and its `now`, or utc_now when it's built with none (C16).
+    So find_colmap gives FAKE_COLMAP, or None when the FakeColmap is built with installed=False
+    (Req 2.7). The step reads TOOLS each time it runs, so a run through splatpipe.cameras.run,
+    run_step or the step's CLI in this process uses the stand-in. A test of the solve flow passes
+    its run to solve instead, in place of colmap.run_colmap. Either way, its `runs` then lists
+    every ColmapRun it stood in for, in order, with the timeout_seconds and capped_at each got.
+    splatpipe.cameras and splatpipe.train.deadline are imported here, so only the tests that use
+    this fixture need them.
     """
     from splatpipe.cameras import Tools
+    from splatpipe.train.deadline import utc_now
 
     class Installed(FakeColmap):
         """A FakeColmap that installs itself as the Cameras_Step's tools once it's built."""
 
         def __post_init__(self) -> None:
             super().__post_init__()  # a script it refuses installs nothing
+            clock = utc_now if self.now is None else self.now
             monkeypatch.setattr("splatpipe.cameras.TOOLS",
-                                Tools(find_colmap=self.find_colmap, run=self.run))
+                                Tools(find_colmap=self.find_colmap, run=self.run, now=clock))
 
     return Installed
 

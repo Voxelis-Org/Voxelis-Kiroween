@@ -3,7 +3,14 @@
 COLMAP runs only as the separate program colmap, PROGRAM, through subprocess.run. It's never
 linked or imported, and there's no pycolmap (Req 2.1, D12). A ColmapRun holds one COLMAP_Command:
 its name, its whole command line, its Time_Limit and that limit's key in [cameras], its
-Command_Log, its working folder and its environment. commands.py builds each one.
+Command_Log, its working folder and its environment. commands.py builds each one. Its capped_at
+is the Cap_Deadline when the Cap_Deadline set its Time_Limit, and None otherwise.
+
+capped is pure. Just before a run starts, it caps the run's Time_Limit at the seconds left before
+the Cap_Deadline, when fewer are left than the Time_Limit key's value, and raises the Req 17.5
+failure when no time is left, so no COLMAP process starts (Req 17.3 to 17.5, C13, C14). A Deadline
+holds the Cap_Deadline, or None when SPLATPIPE_CAP_DEADLINE isn't set, and the clock. NO_DEADLINE
+has no Cap_Deadline, so a run is never capped.
 
 run_colmap runs the command line as an argument list with no shell and with standard input
 closed, in the COLMAP_Folder, with the run's environment (Req 2.2). glog writes all of COLMAP's
@@ -34,8 +41,9 @@ import re
 import signal
 import subprocess
 import time
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from splatpipe.errors import ExpectedFailure
@@ -69,6 +77,7 @@ class ColmapRun:
     log: Path  # the Command_Log, colmap/logs/<name>.log
     cwd: Path  # the COLMAP_Folder
     env: Mapping[str, str]  # the environment, from colmap_env
+    capped_at: datetime | None = None  # the Cap_Deadline, when it set timeout_seconds (Req 17.3)
 
     def value(self, option: str) -> str:
         """The argument after `option` in the command line, for the stand-in and the tests.
@@ -83,6 +92,40 @@ class RunResult:
     exit_code: int | None  # None: stopped at its Time_Limit
     seconds: float  # how long it ran, also when it failed or was stopped
     last_line: str  # the Last_Error_Line, "" when the log has none
+
+
+@dataclass(frozen=True)
+class Deadline:
+    """The Cap_Deadline and the clock that capped's `now` comes from."""
+
+    at: datetime | None  # the Cap_Deadline in UTC, None when SPLATPIPE_CAP_DEADLINE isn't set
+    now: Callable[[], datetime]  # the clock, Tools.now in the step
+
+
+NO_DEADLINE = Deadline(at=None, now=lambda: datetime.now(timezone.utc))
+
+
+def capped(colmap_run: ColmapRun, deadline: datetime | None, now: datetime) -> ColmapRun:
+    """`colmap_run` with its Time_Limit capped at the seconds left before the Cap_Deadline
+    `deadline` at the time `now` (Req 17.3 to 17.5, C13, C14).
+
+    With no Cap_Deadline, or at least `timeout_seconds` left, the run is given as it is, since the
+    key's value comes first. With fewer seconds left, but more than 0, the run gets those seconds
+    as its `timeout_seconds` and `deadline` as its `capped_at`. With 0 seconds or less left, it's
+    the Req 17.5 failure, before any COLMAP process starts.
+    """
+    if deadline is None:
+        return colmap_run
+    left = (deadline - now).total_seconds()
+    if left >= colmap_run.timeout_seconds:
+        return colmap_run
+    if left > 0:
+        return replace(colmap_run, timeout_seconds=left, capped_at=deadline)
+    when = deadline.astimezone(timezone.utc).isoformat()  # ISO 8601, in UTC
+    raise ExpectedFailure(f"The job's cap deadline, {when}, had passed before COLMAP's "
+                          f"{colmap_run.command} could start, so the step stopped. Give the job "
+                          "more time with a larger cap_minutes for its preset under "
+                          "[cloud.presets] in config.toml, then run the job again.")
 
 
 def colmap_env(tmp: Path, base: Mapping[str, str]) -> dict[str, str]:

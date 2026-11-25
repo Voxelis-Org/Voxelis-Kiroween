@@ -26,11 +26,15 @@ run one at a time, each after the one before has returned, and none runs twice o
    Placed_Check is the Placed_Failure, before any Undistortion (Req 7.2, 7.3). Otherwise it's read
    whole and given back.
 
-A Timeout of any command fails the step with no Fallback (Req 2.8), and so does a non-zero exit of
-the extractor or of a Match_Run (Req 2.9). Each command's timing is added as soon as the command
-returns, whatever its result. The stage timings matching and mapping are added when their blocks
-finish, so a failed report holds the failing command's timing but not its stage's (Req 13.2,
-13.3). Each count is added as an int (Req 13.1, 13.4).
+Every command goes through run_timed, which caps its Time_Limit at the seconds left before the
+Cap_Deadline in solve's `deadline` just before it starts, and fails the step with no process
+started when no time is left (Req 17.3 to 17.5, C13, C14). A Timeout of any command fails the step
+with no Fallback, with the Req 2.8 message under its key's limit and the Req 17.6 message under a
+limit the Cap_Deadline set (C15), and so does a non-zero exit of the extractor or of a Match_Run
+(Req 2.9). Each command's timing is added as soon as the command returns, whatever its result.
+The stage timings matching and mapping are added when their blocks finish, so a failed report
+holds the failing command's timing but not its stage's (Req 13.2, 13.3). Each count is added as an
+int (Req 13.1, 13.4).
 
 kept_model and placed_needed are pure, and model_counts reads each Model's images.bin. The
 Kept_Model has the most Placed_Frames, and the lowest Model number among those with as many
@@ -50,12 +54,13 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import timezone
 from fractions import Fraction
 from pathlib import Path
 from typing import Literal, Protocol
 
 from splatpipe.cameras import commands
-from splatpipe.cameras.colmap import ColmapRun, RunResult, exit_text
+from splatpipe.cameras.colmap import NO_DEADLINE, ColmapRun, Deadline, RunResult, capped, exit_text
 from splatpipe.cameras.commands import RADIAL_FISHEYE, Paths
 from splatpipe.cameras.database import calibration_failure, copy_database, read_camera
 from splatpipe.cameras.frames_input import FramesInput
@@ -124,6 +129,7 @@ class _Flow:
     frames: FramesInput
     paths: Paths
     env: Mapping[str, str]
+    deadline: Deadline
 
     def needed(self) -> int:
         """The fewest Placed_Frames that pass the Placed_Check for these Picks (Req 7.1)."""
@@ -140,33 +146,33 @@ def timed(report: Report, name: str) -> Iterator[None]:
     report.add_timing(name, time.perf_counter() - started)
 
 
-def run_timed(report: Report, run: Callable[[ColmapRun], RunResult],
-              colmap_run: ColmapRun) -> RunResult:
-    """Run `colmap_run` with `run`, add its timing under its name at once, whatever the result,
-    and give the result back (Req 13.3).
+def run_timed(report: Report, run: Callable[[ColmapRun], RunResult], colmap_run: ColmapRun,
+              *, deadline: Deadline = NO_DEADLINE) -> RunResult:
+    """Cap `colmap_run` at `deadline`, run it with `run`, add its timing under its name at once,
+    whatever the result, and give the result back (Req 13.3, 17.3, 17.4, C13).
 
-    A Timeout is the Req 2.8 failure, which names the command, its Time_Limit and the
-    Time_Limit's key in [cameras], and which never has a Fallback.
+    With no time left before the Cap_Deadline, capped raises the Req 17.5 failure before `run`
+    is called, so no COLMAP process starts and the command gets no timing (C14). A Timeout is the
+    Req 2.8 failure under a limit its key set, and the Req 17.6 failure under a limit the
+    Cap_Deadline set (C15). Neither failure ever has a Fallback.
     """
+    colmap_run = capped(colmap_run, deadline.at, deadline.now())
     result = run(colmap_run)
     report.add_timing(colmap_run.name, result.seconds)
     if result.exit_code is None:
-        raise ExpectedFailure(
-            f"COLMAP's {colmap_run.command} ran longer than its limit of "
-            f"{colmap_run.timeout_seconds} seconds, so the step stopped it. Raise "
-            f"{colmap_run.timeout_key} in [cameras] in config.toml, then run the step again.")
+        raise _timeout_failure(colmap_run)
     return result
 
 
-def run_or_fail(report: Report, run: Callable[[ColmapRun], RunResult],
-                colmap_run: ColmapRun) -> RunResult:
+def run_or_fail(report: Report, run: Callable[[ColmapRun], RunResult], colmap_run: ColmapRun,
+                *, deadline: Deadline = NO_DEADLINE) -> RunResult:
     """run_timed, and the Req 2.9 failure for a non-zero exit, which gives the exit code, the
     Last_Error_Line and the Command_Log.
 
     The Feature_Extraction, the Match_Runs and both undistorters run through it. The Calibration
     and both mappers run through run_timed, because their non-zero exits have rules of their own.
     """
-    result = run_timed(report, run, colmap_run)
+    result = run_timed(report, run, colmap_run, deadline=deadline)
     if result.exit_code != 0:
         raise ExpectedFailure(
             f"COLMAP's {colmap_run.command} {_stopped_with(result)}. Check that COLMAP 4.2.1 is "
@@ -208,22 +214,27 @@ def model_counts(folder: Path, numbers: Mapping[str, int]) -> tuple[ModelCount, 
 
 
 def solve(report: Report, run: Callable[[ColmapRun], RunResult], cfg: CamerasSettings,
-          frames: FramesInput, paths: Paths, env: Mapping[str, str]) -> Solved:
+          frames: FramesInput, paths: Paths, env: Mapping[str, str],
+          *, deadline: Deadline = NO_DEADLINE) -> Solved:
     """Solve the cameras of the Picks in `frames`, from the Feature_Extraction to the Final_Model,
     as the module says, and give back what the flow found, the Final_Model read whole included.
 
     `run` runs each COLMAP_Command, `cfg` holds the checked settings, `paths` the step's paths,
-    whose colmap/, colmap/tmp/ and colmap/logs/ already exist, and `env` the COLMAP_Commands'
-    environment. The command and stage timings, the counts fallback_ran, kept_from_global,
-    models_found, placed_frames and points3d, and the Req 5.3, 5.5 and 6.7 warnings go into
-    `report`. Every failure the requirements name raises an ExpectedFailure.
+    whose colmap/, colmap/tmp/ and colmap/logs/ already exist, `env` the COLMAP_Commands'
+    environment, and `deadline` the Cap_Deadline that caps every run's Time_Limit (Req 17.3).
+    The command and stage timings, the counts fallback_ran, kept_from_global, models_found,
+    placed_frames and points3d, and the Req 5.3, 5.5 and 6.7 warnings go into `report`. Every
+    failure the requirements name raises an ExpectedFailure.
     """
-    run_or_fail(report, run, commands.feature_extractor(cfg, frames, paths, env))
+    run_or_fail(report, run, commands.feature_extractor(cfg, frames, paths, env),
+                deadline=deadline)
     with timed(report, "matching"):
-        run_or_fail(report, run, commands.sequential_matcher(cfg, paths, env, far=False))
-        run_or_fail(report, run, commands.sequential_matcher(cfg, paths, env, far=True))
+        run_or_fail(report, run, commands.sequential_matcher(cfg, paths, env, far=False),
+                    deadline=deadline)
+        run_or_fail(report, run, commands.sequential_matcher(cfg, paths, env, far=True),
+                    deadline=deadline)
     with timed(report, "mapping"):
-        return _mapping(_Flow(report, run, cfg, frames, paths, env))
+        return _mapping(_Flow(report, run, cfg, frames, paths, env, deadline))
 
 
 def _mapping(flow: _Flow) -> Solved:
@@ -255,7 +266,8 @@ def _calibrate(flow: _Flow) -> str | None:
     """
     copy_database(flow.paths.database, flow.paths.calibrated)
     result = run_timed(flow.report, flow.run,
-                       commands.view_graph_calibrator(flow.cfg, flow.paths, flow.env))
+                       commands.view_graph_calibrator(flow.cfg, flow.paths, flow.env),
+                       deadline=flow.deadline)
     if result.exit_code != 0:
         return _stopped_with(result)
     return calibration_failure(read_camera(flow.paths.database),
@@ -291,7 +303,8 @@ def _global_run(flow: _Flow, database: Path) -> tuple[tuple[ModelCount, ...], st
     """
     flow.paths.global_models.mkdir()
     result = run_timed(flow.report, flow.run,
-                       commands.global_mapper(flow.cfg, flow.paths, flow.env, database))
+                       commands.global_mapper(flow.cfg, flow.paths, flow.env, database),
+                       deadline=flow.deadline)
     if result.exit_code != 0:
         return (), _stopped_with(result)
     models = model_counts(flow.paths.global_models, flow.frames.numbers)
@@ -312,7 +325,8 @@ def _incremental_run(flow: _Flow) -> tuple[ModelCount, ...]:
     the Filming_Advice. A Timeout fails the step too (Req 2.8).
     """
     flow.paths.incremental_models.mkdir()
-    result = run_timed(flow.report, flow.run, commands.mapper(flow.cfg, flow.paths, flow.env))
+    result = run_timed(flow.report, flow.run, commands.mapper(flow.cfg, flow.paths, flow.env),
+                       deadline=flow.deadline)
     if result.exit_code != 0:
         raise ExpectedFailure(
             f"COLMAP's incremental mapper stopped with an error ({exit_text(result.exit_code)}: "
@@ -352,6 +366,24 @@ def _placed(model: Path, numbers: Mapping[str, int]) -> int:
     """How many images of the images.bin in the Model folder `model` are named after a Pick's
     file, a key of `numbers` (C11)."""
     return sum(1 for image in read_images(model / _IMAGES) if image.name in numbers)
+
+
+def _timeout_failure(colmap_run: ColmapRun) -> ExpectedFailure:
+    """The failure for `colmap_run` stopped at its Time_Limit: the Req 2.8 one, which names the
+    Time_Limit's key in [cameras], when its key set the limit, and otherwise the Req 17.6 one,
+    which gives the Cap_Deadline in ISO 8601 UTC, the seconds that were left, rounded to a whole
+    second, and the cap_minutes advice, with no [cameras] key (C15)."""
+    if colmap_run.capped_at is None:
+        return ExpectedFailure(
+            f"COLMAP's {colmap_run.command} ran longer than its limit of "
+            f"{colmap_run.timeout_seconds} seconds, so the step stopped it. Raise "
+            f"{colmap_run.timeout_key} in [cameras] in config.toml, then run the step again.")
+    when = colmap_run.capped_at.astimezone(timezone.utc).isoformat()  # ISO 8601, in UTC
+    return ExpectedFailure(
+        f"COLMAP's {colmap_run.command} was still running at the job's cap deadline, {when}, "
+        f"after the {round(colmap_run.timeout_seconds)} seconds that were left, so the step "
+        "stopped it. Give the job more time with a larger cap_minutes for its preset under "
+        "[cloud.presets] in config.toml, then run the job again.")
 
 
 def _stopped_with(result: RunResult) -> str:

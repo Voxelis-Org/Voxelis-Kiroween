@@ -30,6 +30,14 @@ min_placed_frames is 1 and its min_placed_share the real 0.5, so 8 Picks need 4 
   "Traceback" (Req 16.9). After each failure, the report holds the counts, timings and warnings
   worked out before it, the failing command's timing included (Req 13.1 to 13.3). Every list of
   runs is checked to hold no command twice (Req 2.12).
+- With a Deadline whose stand-in clock, a RunClock, moves on by a fixed step each time a run
+  returns, each run's timeout_seconds is the smaller of its key's 60 s and the seconds left, with
+  capped_at set only when the Cap_Deadline gave the limit (Req 17.3, C13). A Timeout under a
+  limit the Cap_Deadline set is the Req 17.6 failure, which names no [cameras] key, with no
+  Fallback, and a Timeout under a key's limit is still the Req 2.8 failure (C15). A clock past
+  the Cap_Deadline before the Global_Run is the Req 17.5 failure: nothing more runs, no Fallback
+  either, and the report holds the earlier commands' timings and none for the Global_Run
+  (Req 13.3, C14). With no Deadline, every run gets its key's value (Req 17.4).
 - placed_needed and the Placed_Check at the edges: exactly min_placed_frames and one fewer,
   exactly min_placed_share of the Picks and one fewer, and 0.3 of 10 Picks needing 3 (Req 7.1,
   C7). model_counts ignores folders whose names aren't numbers and images that aren't Picks
@@ -55,6 +63,7 @@ import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +73,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from conftest import CAMERAS_TABLE, FakeColmap  # COLMAP 4.2.1's cameras table (F12), the stand-in
-from splatpipe.cameras.colmap import ColmapRun, RunResult, colmap_env
+from splatpipe.cameras.colmap import ColmapRun, Deadline, RunResult, colmap_env
 from splatpipe.cameras.commands import Paths
 from splatpipe.cameras.database import (DatabaseCamera, calibration_failure, copy_database,
                                         read_camera)
@@ -149,15 +158,20 @@ class SolveJob:
     paths: Paths
     env: Mapping[str, str]
 
-    def solve(self, run: Callable[[ColmapRun], RunResult]) -> Solved:
-        """Run solve on this Job with `run` in place of colmap.run_colmap."""
-        return solve(self.step, run, self.cfg, self.frames, self.paths, self.env)
+    def solve(self, run: Callable[[ColmapRun], RunResult],
+              deadline: Deadline | None = None) -> Solved:
+        """Run solve on this Job with `run` in place of colmap.run_colmap, and with `deadline`
+        when the test gives one. With none, solve gets no deadline at all, so it runs with its
+        own default, uncapped."""
+        options = {} if deadline is None else {"deadline": deadline}
+        return solve(self.step, run, self.cfg, self.frames, self.paths, self.env, **options)
 
-    def failure(self, run: Callable[[ColmapRun], RunResult]) -> str:
-        """The Readable_Error of the ExpectedFailure that solve raises on this Job with `run`,
-        checked to hold no traceback (Req 16.9)."""
+    def failure(self, run: Callable[[ColmapRun], RunResult],
+                deadline: Deadline | None = None) -> str:
+        """The Readable_Error of the ExpectedFailure that solve raises on this Job with `run` and
+        `deadline`, checked to hold no traceback (Req 16.9)."""
         with pytest.raises(ExpectedFailure) as caught:
-            self.solve(run)
+            self.solve(run, deadline)
         message = str(caught.value)
         assert "Traceback" not in message
         return message
@@ -513,6 +527,119 @@ def test_the_mappers_exit_0_with_no_model_is_the_placed_failure_with_0_placed(
     assert job.step.counts == {"fallback_ran": 1, "kept_from_global": 0, "models_found": 0,
                                "placed_frames": 0}
     assert job.step.warnings == [global_warning("wrote no model")]
+
+
+# The Cap_Deadline (Req 2.8, 13.3, 17.3 to 17.6, C13 to C15)
+
+KEY_LIMIT = 60  # every Time_Limit key's value in the test config, in seconds (C5)
+# The time the stand-in clock starts at, and the Cap_Deadline 99.6 seconds later, so the seconds
+# left are never whole and the Req 17.6 message's rounding shows.
+CLOCK_START = datetime(2026, 11, 24, 12, 0, tzinfo=timezone.utc)
+DEADLINE = CLOCK_START + timedelta(seconds=99.6)
+DEADLINE_TEXT = "2026-11-24T12:01:39.600000+00:00"  # DEADLINE in ISO 8601 UTC, as the messages say
+
+
+@dataclass
+class RunClock:
+    """A stand-in clock that reads CLOCK_START until a run returns, and then moves on by `step`
+    seconds each time a run returns, as if each COLMAP_Command took that long."""
+
+    step: float
+    time: datetime = CLOCK_START
+
+    def now(self) -> datetime:
+        """The time now, for Deadline.now."""
+        return self.time
+
+    def moving(self, run: Callable[[ColmapRun], RunResult]) -> Callable[[ColmapRun], RunResult]:
+        """`run`, with this clock moved on by `step` seconds as each run returns."""
+        def run_then_move_on(colmap_run: ColmapRun) -> RunResult:
+            result = run(colmap_run)
+            self.time += timedelta(seconds=self.step)
+            return result
+
+        return run_then_move_on
+
+    def deadline(self) -> Deadline:
+        """The Deadline of DEADLINE, read against this clock."""
+        return Deadline(at=DEADLINE, now=self.now)
+
+
+def limits(fake: FakeColmap) -> list[tuple[str, float, datetime | None]]:
+    """Each run that `fake` stood in for, as (name, timeout_seconds, capped_at) as it got them."""
+    return [(run.name, run.timeout_seconds, run.capped_at) for run in fake.runs]
+
+
+def test_with_a_cap_deadline_each_run_gets_the_smaller_of_its_keys_value_and_the_seconds_left(
+        solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap]) -> None:
+    job = solve_job()
+    fake = fake_colmap()
+    clock = RunClock(step=20.0)
+    solved = job.solve(clock.moving(fake.run), clock.deadline())
+    assert run_names(fake) == list(RADIAL_RUNS)
+    # The runs start with 99.6, 79.6, 59.6, 39.6 and 19.6 seconds left. The first two keep their
+    # key's 60 s, with no capped_at, and the last three get the seconds left and the Cap_Deadline.
+    assert limits(fake) == [(EXTRACT, KEY_LIMIT, None), (NEAR, KEY_LIMIT, None),
+                            (FAR, 59.6, DEADLINE), (CALIBRATE, 39.6, DEADLINE),
+                            (GLOBAL, 19.6, DEADLINE)]
+    assert (solved.mapper, solved.fallback_reason) == ("global", None)
+
+
+def test_a_timeout_under_a_limit_the_cap_deadline_set_fails_with_no_fallback_and_no_key(
+        solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap]) -> None:
+    job = solve_job()
+    fake = fake_colmap(timeouts=(GLOBAL,))
+    clock = RunClock(step=20.0)  # the Global_Run starts with 19.6 seconds left
+    message = job.failure(clock.moving(fake.run), clock.deadline())
+    assert message == (
+        f"COLMAP's global_mapper was still running at the job's cap deadline, {DEADLINE_TEXT}, "
+        "after the 20 seconds that were left, so the step stopped it. Give the job more time "
+        "with a larger cap_minutes for its preset under [cloud.presets] in config.toml, then run "
+        "the job again.")
+    assert "[cameras]" not in message and "global_mapper_timeout_seconds" not in message
+    assert run_names(fake) == list(RADIAL_RUNS)  # no Fallback, though the Global_Run failed
+    assert set(job.step.timings) == {*RADIAL_RUNS, "matching"}
+    assert job.step.timings[GLOBAL] == 19.6  # FakeColmap's Timeout lasts the Time_Limit
+    assert job.step.counts == {}
+    assert job.step.warnings == []
+
+
+def test_with_a_cap_deadline_a_timeout_under_its_keys_limit_still_names_the_key(
+        solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap]) -> None:
+    job = solve_job()
+    fake = fake_colmap(timeouts=(EXTRACT,))
+    clock = RunClock(step=20.0)  # the Feature_Extraction starts with 99.6 seconds left
+    assert job.failure(clock.moving(fake.run), clock.deadline()) == (
+        f"COLMAP's feature_extractor ran longer than its limit of {KEY_LIMIT} seconds, so the "
+        "step stopped it. Raise feature_extractor_timeout_seconds in [cameras] in config.toml, "
+        "then run the step again.")
+    assert limits(fake) == [(EXTRACT, KEY_LIMIT, None)]
+    assert job.step.timings == {EXTRACT: KEY_LIMIT}
+    assert job.step.counts == {}
+
+
+def test_a_clock_past_the_cap_deadline_before_the_global_mapper_runs_nothing_more(
+        solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap]) -> None:
+    job = solve_job()
+    fake = fake_colmap()
+    clock = RunClock(step=25.0)  # the Global_Run would start 100 s in, 0.4 s past the deadline
+    assert job.failure(clock.moving(fake.run), clock.deadline()) == (
+        f"The job's cap deadline, {DEADLINE_TEXT}, had passed before COLMAP's global_mapper "
+        "could start, so the step stopped. Give the job more time with a larger cap_minutes for "
+        "its preset under [cloud.presets] in config.toml, then run the job again.")
+    assert run_names(fake) == [*MATCHED, CALIBRATE]  # no Global_Run and no Fallback
+    # The earlier commands' timings, none for the Global_Run, and no mapping stage's.
+    assert set(job.step.timings) == {*MATCHED, CALIBRATE, "matching"}
+    assert job.step.counts == {}
+    assert job.step.warnings == []
+
+
+def test_with_no_deadline_every_run_gets_its_keys_value(
+        solve_job: Callable[..., SolveJob], fake_colmap: type[FakeColmap]) -> None:
+    job = solve_job()
+    fake = fake_colmap()
+    job.solve(fake.run)
+    assert limits(fake) == [(name, KEY_LIMIT, None) for name in RADIAL_RUNS]
 
 
 # The Placed_Check at the edges (Req 7.1 to 7.3, C7)

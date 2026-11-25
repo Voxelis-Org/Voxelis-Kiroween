@@ -52,6 +52,18 @@ child, sys.executable -c, which writes a line and sleeps until its Time_Limit of
 (Req 2.8, 2.10). last_error_line gets Command_Logs as glog writes them under --log_target stderr
 (F16, C3), and exit_text an exit code and a signal.
 
+capped gets the Calibration's run, which its builder gives for the real config with the key
+view_graph_calibrator_timeout_seconds at 600 s, and a Cap_Deadline in UTC at the edges of C13 and
+C14: none, exactly 600 s left, 599 s, a microsecond, exactly 0 and a minute past. Each gives the
+run with its Time_Limit and capped_at, every other field as it was, or the Req 17.5 failure
+(Req 17.3 to 17.5). Property 8 gives that run, with dataclasses.replace, a Time_Limit key's value
+drawn with Hypothesis from 1e-6 to 1e6 s, the ends included, and draws a time now from 2000 to
+2100 in UTC with microseconds, and a Cap_Deadline of None or now plus an offset from -2e6 to 2e6 s
+in microsecond steps, often exactly the key's value or 0. Its oracle works out the seconds left
+with its own timedelta arithmetic, without capped, and gives the run as it was, the run with
+those seconds as its Time_Limit and the Cap_Deadline as its capped_at, or the Req 17.5 failure,
+which names the command and the Cap_Deadline (Req 17.3 to 17.5, 17.8).
+
 The -h test is the one test here that runs COLMAP, and it's skipped, saying COLMAP isn't
 installed, where colmap isn't on the PATH (Req 16.8). For each of the seven commands it runs
 colmap <command> -h, which only prints the command's options, with a timeout of 60 s and with
@@ -71,6 +83,8 @@ import sys
 import tomllib
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -81,7 +95,7 @@ from hypothesis import strategies as st
 
 from conftest import ColmapOption  # an option of options.md, as the colmap_options oracle sorts it
 from splatpipe.cameras import commands
-from splatpipe.cameras.colmap import (ColmapRun, colmap_env, exit_text, last_error_line,
+from splatpipe.cameras.colmap import (ColmapRun, capped, colmap_env, exit_text, last_error_line,
                                       run_colmap)
 from splatpipe.cameras.commands import Paths, fisheye_start, format_value
 from splatpipe.cameras.frames_input import FramesInput, Pick
@@ -761,6 +775,136 @@ def test_colmap_run_value_gives_the_argument_after_an_option(tmp_path: Path) -> 
     run = colmap_run(tmp_path)
     assert run.value("--database_path") == str(tmp_path / "database.db")
     assert run.value("--Mapper.init_image_id1") == "-1"
+
+
+# capped (Req 17.3 to 17.5, C13 to C15)
+
+# The Time_Limit that the capped tests' run gets from its key, and the Cap_Deadline, in UTC as
+# read_cap_deadline gives it, with its text in ISO 8601.
+KEY_SECONDS = 600
+CAP_DEADLINE = datetime(2026, 11, 23, 5, 0, tzinfo=timezone.utc)
+CAP_DEADLINE_TEXT = "2026-11-23T05:00:00+00:00"
+
+
+def keyed_run(tmp_path: Path) -> ColmapRun:
+    """The Calibration's run, as its builder gives it for the real config with the Preset default
+    and view_graph_calibrator_timeout_seconds at KEY_SECONDS, for a Job in tmp_path/job, which
+    isn't made."""
+    job = tmp_path / "job"
+    paths = Paths.of(job / "work" / "cameras", job / "work" / "frames", job / "out")
+    cfg = real_settings("default", view_graph_calibrator_timeout_seconds=KEY_SECONDS)
+    run = commands.view_graph_calibrator(cfg, paths,
+                                         colmap_env(paths.tmp, {"PATH": "/usr/bin:/bin"}))
+    assert (run.timeout_seconds, run.capped_at) == (KEY_SECONDS, None)
+    return run
+
+
+def test_capped_gives_the_run_as_it_is_with_no_cap_deadline(tmp_path: Path) -> None:
+    run = keyed_run(tmp_path)
+    assert capped(run, None, CAP_DEADLINE) == run  # with no Cap_Deadline, the time is never read
+
+
+@pytest.mark.parametrize(("left", "timeout_seconds", "capped_at"), [
+    pytest.param(timedelta(seconds=KEY_SECONDS), KEY_SECONDS, None,
+                 id="exactly the key's value left"),
+    pytest.param(timedelta(seconds=KEY_SECONDS - 1), KEY_SECONDS - 1, CAP_DEADLINE,
+                 id="a second less"),
+    pytest.param(timedelta(microseconds=1), 1e-6, CAP_DEADLINE, id="a microsecond left"),
+])
+def test_capped_gives_the_smaller_of_the_keys_value_and_the_seconds_left(
+        tmp_path: Path, left: timedelta, timeout_seconds: float,
+        capped_at: datetime | None) -> None:
+    run = keyed_run(tmp_path)
+    got = capped(run, CAP_DEADLINE, CAP_DEADLINE - left)
+    # Only the Time_Limit and capped_at may change. Every other field stays as it was.
+    assert got == replace(run, timeout_seconds=timeout_seconds, capped_at=capped_at)
+
+
+@pytest.mark.parametrize("left", [
+    pytest.param(timedelta(0), id="exactly 0 s left"),
+    pytest.param(timedelta(minutes=-1), id="a minute past"),
+])
+def test_capped_fails_naming_the_command_and_the_cap_deadline_when_no_time_is_left(
+        tmp_path: Path, left: timedelta) -> None:
+    with pytest.raises(ExpectedFailure) as caught:
+        capped(keyed_run(tmp_path), CAP_DEADLINE, CAP_DEADLINE - left)
+    message = readable(caught.value)
+    # The command, the Cap_Deadline, a larger cap_minutes under [cloud.presets], and run the Job
+    # again (Req 17.5, C15).
+    for words in ("COLMAP's view_graph_calibrator", CAP_DEADLINE_TEXT, "a larger cap_minutes",
+                  "[cloud.presets]", "run the job again"):
+        assert words in message
+
+
+# Property 8: The Cap_Deadline caps each Time_Limit, and no time left starts nothing (Req 17.3 to
+# 17.5, 17.8)
+
+# A Time_Limit key's value from 1e-6 to 1e6 s, the two ends included: whole seconds, as a TOML
+# integer gives them, a whole number of microseconds, so an offset of the key's value leaves
+# exactly that many seconds, and any float.
+KEY_VALUES = (st.sampled_from((1e-6, 1e6)) | st.integers(1, 10**6)
+              | st.integers(1, 10**12).map(lambda micros: micros / 10**6)
+              | st.floats(1e-6, 1e6))
+# A time now from 2000 to 2100, in UTC with microseconds, as utc_now gives it.
+NOWS = st.datetimes(datetime(2000, 1, 1), datetime(2100, 1, 1), timezones=st.just(timezone.utc))
+# An offset from -2e6 to 2e6 s in microsecond steps.
+OFFSETS = st.integers(-2 * 10**12, 2 * 10**12).map(lambda micros: timedelta(microseconds=micros))
+
+
+@st.composite
+def cap_cases(draw: st.DrawFn) -> tuple[float, datetime, datetime | None]:
+    """A Time_Limit key's value, a time now, and a Cap_Deadline: None, or now plus an offset from
+    OFFSETS, with an offset of exactly the key's value and of 0 each drawn about a quarter of the
+    time."""
+    key = draw(KEY_VALUES)
+    now = draw(NOWS)
+    offset = draw(st.none() | st.just(timedelta(seconds=key)) | st.just(timedelta(0)) | OFFSETS)
+    return key, now, None if offset is None else now + offset
+
+
+def cap_oracle(run: ColmapRun, deadline: datetime | None, now: datetime) -> ColmapRun | None:
+    """What capped should give for `run` with the Cap_Deadline `deadline` at the time `now`,
+    worked out here with timedelta arithmetic: the run as it is, the run with the seconds left as
+    its Time_Limit and `deadline` as its capped_at, or None for the Req 17.5 failure."""
+    if deadline is None:
+        return run  # no Cap_Deadline, so the key's value, with no cap (Req 17.4)
+    left = deadline - now  # exact, in whole microseconds
+    if left <= timedelta(0):
+        return None  # no time left, so no start (Req 17.5)
+    seconds_left = left / timedelta(seconds=1)
+    if seconds_left >= run.timeout_seconds:
+        return run  # at least the key's value left (Req 17.3)
+    return replace(run, timeout_seconds=seconds_left, capped_at=deadline)  # Req 17.3
+
+
+@pytest.fixture(scope="module")
+def calibration_run(tmp_path_factory: pytest.TempPathFactory) -> ColmapRun:
+    """keyed_run's run, which Property 8's examples share. capped only reads it, and nothing is
+    made in its Job folder."""
+    return keyed_run(tmp_path_factory.mktemp("capped"))
+
+
+@given(case=cap_cases())
+def test_the_cap_deadline_caps_each_time_limit_and_no_time_left_starts_nothing(
+        calibration_run: ColmapRun, case: tuple[float, datetime, datetime | None]) -> None:
+    """Feature: cameras, Property 8: The Cap_Deadline caps each Time_Limit, and no time left starts nothing
+
+    **Validates: Requirements 17.3, 17.4, 17.5, 17.8**
+    """
+    key, now, deadline = case
+    run = replace(calibration_run, timeout_seconds=key)
+    wanted = cap_oracle(run, deadline, now)
+    if wanted is not None:
+        # The run as it is, or with only its Time_Limit and capped_at changed.
+        assert capped(run, deadline, now) == wanted
+        return
+    assert deadline is not None
+    with pytest.raises(ExpectedFailure) as caught:
+        capped(run, deadline, now)
+    message = readable(caught.value)
+    # The Req 17.5 failure names the command and gives the Cap_Deadline in ISO 8601, in UTC.
+    assert f"COLMAP's {run.command}" in message
+    assert deadline.isoformat() in message
 
 
 # run_colmap with a stand-in for subprocess.run (Req 2.2, 2.7, 2.8, 2.10, 11.12)

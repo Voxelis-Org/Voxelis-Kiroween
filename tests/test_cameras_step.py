@@ -29,7 +29,9 @@ Point_Median. Three changes to that:
   COLMAP's error of -1, which means none.
 
 The failed runs each make one failure: sift_extraction_max_num_features at 0, the design's own
-example of a refused setting, once with a frames.json cut short too; a missing Grey_Copy; a
+example of a refused setting, once with a frames.json cut short too; a SPLATPIPE_CAP_DEADLINE
+that read_cap_deadline refuses, set with monkeypatch.setenv, which the autouse no_cap_deadline
+otherwise keeps unset; a missing Grey_Copy; a
 FakeColmap built with installed=False; mappers whose Models place 3 of the 8 Picks, under the 4
 needed; each of the fake image_undistorter's three flags; a non-zero exit of either undistorter
 in the fake's script; and a full disk, an OSError with ENOSPC, while a Training_Image is copied
@@ -93,6 +95,13 @@ The tests check:
   when frames.json is cut short, and before any COLMAP_Command runs (Req 12.8). A broken
   Frames_Contract and a missing colmap each fail before any COLMAP_Command runs, the missing
   colmap with the design's message (Req 1.1, 2.7).
+- An empty SPLATPIPE_CAP_DEADLINE, "soon" and a time with no UTC offset each fail the step with
+  read_cap_deadline's own message before the step reads frames.json, also when frames.json is cut
+  short, and before any COLMAP_Command runs, and a bad setting still fails first (Req 17.1, 17.2,
+  C12). With a good one and a stand-in clock that stays 42.5 s before it, under the test config's
+  60 s, every COLMAP_Command, both undistorters included, gets 42.5 s as its Time_Limit and the
+  Cap_Deadline as its capped_at, and the step is done. With none, each gets its Time_Limit key's
+  value (Req 17.3, 17.4, C16).
 - A Placed_Failure, after which no undistorter runs, each fault of the Undistortion, and a full
   disk while a Training_Image is copied each leave no solve.json and no out/cameras.json, where an
   earlier run's out/cameras.json was (Req 7.2, 8.2, 11.6, 11.10, 16.11). A full disk while
@@ -123,6 +132,7 @@ import shutil
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -144,10 +154,12 @@ from splatpipe.cameras.model import (CAMERA_MODELS, FILES, NO_ERROR, Image, Mode
                                      read_images, read_model, write_model)
 from splatpipe.clean.export import export_sog
 from splatpipe.config import PRESETS, REPO_ROOT, load_config
+from splatpipe.errors import ExpectedFailure
 from splatpipe.frames.ffmpeg import VideoInfo
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json, write_json
 from splatpipe.run import run_job
+from splatpipe.train.deadline import CAP_DEADLINE_ENV, read_cap_deadline
 
 # The runs of a done run, by their names, which are also the names of their timings and of their
 # Command_Logs.
@@ -864,6 +876,89 @@ def test_without_colmap_on_the_path_the_step_fails_before_any_colmap_command_run
     # The step had read the Frames_Contract, so picks is in, and then nothing ran.
     assert fake.runs == []
     assert (failed.report["counts"], failed.report["timings"]) == ({"picks": PICKS}, {})
+
+
+# The Cap_Deadline (Req 17.1 to 17.4, C12, C16)
+
+# The values of SPLATPIPE_CAP_DEADLINE that read_cap_deadline refuses.
+REFUSED_DEADLINES = [pytest.param("", id="empty"), pytest.param("soon", id="not a time"),
+                     pytest.param("2026-11-21T14:25:30", id="no UTC offset")]
+# A good Cap_Deadline, and the text of it that the test sets, in the form the User_Data writes.
+CAP_DEADLINE = datetime(2026, 11, 21, 14, 25, 30, tzinfo=timezone.utc)
+CAP_DEADLINE_TEXT = "2026-11-21T14:25:30Z"
+# The stand-in clock's time, which stays LEFT seconds before CAP_DEADLINE, under the test config's
+# 60 s for each Time_Limit key, and enough for every COLMAP_Command of a done run.
+LEFT = 42.5
+NOW = CAP_DEADLINE - timedelta(seconds=LEFT)
+
+
+def cap_deadline_refusal(value: str) -> str:
+    """read_cap_deadline's own message for SPLATPIPE_CAP_DEADLINE at `value`."""
+    with pytest.raises(ExpectedFailure) as refused:
+        read_cap_deadline({CAP_DEADLINE_ENV: value})
+    return str(refused.value)
+
+
+@pytest.mark.parametrize("cut_short", [False, True],
+                         ids=["frames.json as the frames step left it", "frames.json cut short"])
+@pytest.mark.parametrize("value", REFUSED_DEADLINES)
+def test_a_refused_cap_deadline_fails_the_step_with_its_own_message_before_frames_json_and_colmap(
+        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap],
+        monkeypatch: pytest.MonkeyPatch, value: str, cut_short: bool) -> None:
+    job_id = cameras_job()
+    if cut_short:  # a Frames_Record that the step would refuse if it read it first
+        record = folder_of(job_id) / "work" / "frames" / "frames.json"
+        record.write_text('{"pick_width": 16, ', encoding="utf-8")
+    monkeypatch.setenv(CAP_DEADLINE_ENV, value)
+    fake = fake_colmap()
+    failed = run_failed(job_id)  # expected: true, with no traceback (Req 14.10, 16.9)
+    # read_cap_deadline's own message, also with frames.json cut short, so the step hadn't read
+    # frames.json (Req 17.2, C12).
+    assert failed.readable == cap_deadline_refusal(value)
+    # No COLMAP_Command ran, and the step worked out no count, picks included, and no timing.
+    assert fake.runs == []
+    assert (failed.report["counts"], failed.report["timings"]) == ({}, {})
+
+
+def test_a_bad_setting_still_fails_the_step_before_a_refused_cap_deadline(
+        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap],
+        set_cameras: Callable[..., None], monkeypatch: pytest.MonkeyPatch) -> None:
+    set_cameras(**BAD_SETTING)
+    job_id = cameras_job()
+    monkeypatch.setenv(CAP_DEADLINE_ENV, "soon")
+    fake = fake_colmap()
+    # The step reads the Cap_Deadline only once the settings checks pass (Req 17.1, C12).
+    assert run_failed(job_id).readable == BAD_SETTING_ERROR
+    assert fake.runs == []
+
+
+def test_with_a_cap_deadline_every_colmap_command_gets_the_seconds_left_and_the_step_is_done(
+        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap],
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    job_id = cameras_job(mask_used=True)
+    monkeypatch.setenv(CAP_DEADLINE_ENV, CAP_DEADLINE_TEXT)
+    fake = fake_colmap(now=lambda: NOW)  # the step's clock, which stays at NOW (C16)
+    run_done(job_id)
+    keys = load_config().step_settings("cameras", "fast")
+    # Every COLMAP_Command ran, both undistorters included. Fewer seconds were left than each one's
+    # Time_Limit key gives, so each got the seconds left as its Time_Limit and the Cap_Deadline as
+    # its capped_at (Req 17.3, C13).
+    assert [run.name for run in fake.runs] == [*RADIAL_RUNS, WARP]
+    for run in fake.runs:
+        assert keys[run.timeout_key] > LEFT, run.name
+        assert (run.timeout_seconds, run.capped_at) == (LEFT, CAP_DEADLINE), run.name
+
+
+def test_without_a_cap_deadline_every_colmap_command_gets_its_time_limit_keys_value(
+        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap]) -> None:
+    job_id = cameras_job(mask_used=True)  # no_cap_deadline left SPLATPIPE_CAP_DEADLINE unset
+    fake = fake_colmap()
+    run_done(job_id)
+    keys = load_config().step_settings("cameras", "fast")
+    # No cap: each COLMAP_Command got its Time_Limit key's value, with no capped_at (Req 17.4).
+    assert [run.name for run in fake.runs] == [*RADIAL_RUNS, WARP]
+    for run in fake.runs:
+        assert (run.timeout_seconds, run.capped_at) == (keys[run.timeout_key], None), run.name
 
 
 # Failures that leave no solve.json and no out/cameras.json (Req 7.2, 8.2, 11.6, 11.10, 11.12,
