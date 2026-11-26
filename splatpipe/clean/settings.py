@@ -1,4 +1,4 @@
-"""The clean step's settings: the eighteen keys of [clean] and its Preset tables, checked.
+"""The clean step's settings: the nineteen keys of [clean] and its Preset tables, checked.
 
 `check_settings` turns the StepSettings that the step's `work` gets into a CleanSettings. It
 reads every key first, with settings[key], so a missing key is the Step_Runner's own refusal
@@ -34,10 +34,11 @@ from splatpipe.step import StepSettings
 class CleanSettings:
     """The clean step's checked settings. Each field is named after its key in the config."""
 
-    # The sixteen Shared_Settings of Req 6.2, from [clean]
+    # The seventeen Shared_Settings of Req 6.2, from [clean]
     train_ply: str  # Plain_File_Name, read from out/
     clean_ply: str  # Plain_File_Name ending in .ply
     clean_sog: str  # Plain_File_Name ending in .sog
+    min_seen_frames: int  # above 0, for the Unseen_Filter
     min_opacity: float  # 0 to 1
     faint_cube_divisions: int  # above 0
     faint_min_per_cube: int  # above 0
@@ -80,6 +81,7 @@ def _up_to(low: int, high: int) -> _Range:
 # order they're checked. The ranges are the requirements' own, not tunables, and no setting's
 # range depends on another's.
 _WHOLE_NUMBERS = {
+    "min_seen_frames": _above(0),
     "min_kept_splats": _above(0),
     "max_source_splats": _above(0),
     "neighbours": _above(0),

@@ -72,6 +72,7 @@ REAL_SHARED = {
     "train_ply": "train.ply",
     "clean_ply": "clean.ply",
     "clean_sog": "clean.sog",
+    "min_seen_frames": 2,
     "min_opacity": 0.005,
     "faint_cube_divisions": 128,
     "faint_min_per_cube": 8,

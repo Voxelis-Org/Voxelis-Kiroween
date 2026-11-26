@@ -873,6 +873,8 @@ train_ply = "train.ply"
 clean_ply = "clean.ply"
 # File in out/ that the clean step writes: the small copy for the web viewer. Must end in .sog.
 clean_sog = "clean.sog"
+# Fewest training frames that must see a Gaussian's centre, in front of the camera and inside the frame, to keep it.
+min_seen_frames = 2
 # Real opacity, 0 to 1, below which a Gaussian is faint and judged with the rest of its cube.
 min_opacity = 0.005
 # Cube side for the faint filter: the trimmed box's longest side divided by this, a whole number above 0.

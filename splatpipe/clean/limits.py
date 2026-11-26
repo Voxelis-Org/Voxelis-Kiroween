@@ -9,7 +9,9 @@ checks in this order, so a given splat and settings always give the same message
 
 1. The Removal_Cap. The Gaussians the faint and isolated filters dropped, together, may be at
    most max_removed_fraction of the trained splat's Gaussians (Req 3.2). The broken Gaussians
-   are always removed and don't count toward the cap (A4).
+   are always removed and don't count toward the cap (A4), and neither do the ones the
+   Unseen_Filter dropped. A camera solve whose frames see none of the splat still stops at
+   min_kept_splats.
 2. min_kept_splats. Fewer Gaussians left than that fails (Req 3.5).
 3. warn_kept_fraction. Keeping less than that share of the trained splat's Gaussians gives a
    warning for the Clean_Report, and the step goes on (Req 3.6).
@@ -82,7 +84,8 @@ def _over_cap(source: int, capped: int, removed: float, kept: Kept,
         f"The faint and isolated filters would remove {capped} of the trained splat's {source} "
         f"Gaussians, {removed:.1%}, more than the cap of {s.max_removed_fraction:.1%} that "
         f"max_removed_fraction sets in [clean], so the clean step stopped. {_drops(kept)} "
-        "Broken Gaussians are always removed and don't count toward the cap. To make the "
+        "Broken Gaussians are always removed and don't count toward the cap, and neither do the "
+        "unseen ones, which too few training frames saw. To make the "
         f"filters remove less, change these settings in [clean]: {_LOOSER_FILTERS}. Or raise "
         "max_removed_fraction, so they may remove more. Then run the clean step again.")
 
@@ -93,8 +96,8 @@ def _too_few_left(source: int, left: int, kept: Kept, s: CleanSettings) -> Expec
         f"The clean would leave only {left} of the trained splat's {source} Gaussians, fewer "
         f"than the {s.min_kept_splats} that min_kept_splats asks for in [clean], so the clean "
         f"step stopped. {_drops(kept)} To make the filters remove less, change these settings "
-        f"in [clean]: {_LOOSER_FILTERS}. Or, if the splat is meant to be that small, lower "
-        "min_kept_splats. Then run the clean step again.")
+        f"in [clean]: {_LOOSER_FILTERS}, or lower min_seen_frames. Or, if the splat is meant to "
+        "be that small, lower min_kept_splats. Then run the clean step again.")
 
 
 def _kept_little(source: int, left: int, removed: float, s: CleanSettings) -> str:
@@ -107,5 +110,6 @@ def _kept_little(source: int, left: int, removed: float, s: CleanSettings) -> st
 
 def _drops(kept: Kept) -> str:
     """Each filter's drops, as a sentence for both failures' messages (Req 3.3, 3.5)."""
-    return (f"The broken filter dropped {kept.dropped_broken}, the faint filter "
-            f"{kept.dropped_faint} and the isolated filter {kept.dropped_isolated}.")
+    return (f"The broken filter dropped {kept.dropped_broken}, the unseen filter "
+            f"{kept.dropped_unseen}, the faint filter {kept.dropped_faint} and the isolated "
+            f"filter {kept.dropped_isolated}.")

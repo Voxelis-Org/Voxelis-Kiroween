@@ -1581,6 +1581,7 @@ Its CLI is `uv run python -m splatpipe.clean --job <id> [--preset P]`, and its p
   - `scale_0` to `scale_2`, stored as logarithms.
   - `rot_0` to `rot_3`, the rotation quaternion.
   - Sometimes `nx`, `ny` and `nz`, which nothing uses.
+- `work/cameras/sparse/`, the camera solve's model: `cameras.bin`, `images.bin` and `points3D.bin`, read with the training step's model reader. The step uses each image's pose and the shared PINHOLE camera, which are the training frames the training step trained with, in the same frame and units as the trained splat. A missing file fails the step with a message that names it and says to run the camera solve step, and a model the reader refuses fails with the reader's own message.
 - Its settings, from `[clean]` and from the job's preset table, like `[clean.fast]`.
 
 The step reads meaning only into `x`, `y`, `z`, `opacity`, `scale_0` to `scale_2` and `rot_0` to `rot_3`. It carries every other property through to the clean splat unchanged, a NaN or an infinity in a colour included. It never writes `out/<train_ply>`, so the trained splat survives a failed clean.
@@ -1591,15 +1592,16 @@ The step works in this order, and each filter gets what the one before it kept:
 
 1. It fails when the trained splat holds more than `max_source_splats` (8,000,000) Gaussians, before it reads their rows.
 2. The broken filter drops every Gaussian with a NaN or an infinity in `x`, `y`, `z`, `opacity`, `scale_0` to `scale_2` or `rot_0` to `rot_3`, or with a rotation of zero length, because nothing can draw one. It looks at no other property.
-3. The faint filter judges every faint Gaussian together with the rest of its cube. A Gaussian is faint when its real opacity, the sigmoid of its `opacity`, is below `min_opacity` (0.005). Every Gaussian that isn't faint is kept, and no Gaussian is dropped for its opacity alone. Space is cut into cubes whose side is the trimmed extent divided by `faint_cube_divisions` (128). The trimmed extent is the longest side of the box that leaves out `extent_trim_percent` (1%) of the centres at each end of each axis, so a few far-off Gaussians can't make the cubes huge. A cube keeps all its faint Gaussians when it holds at least `faint_min_per_cube` (8) of them and they paint more than `faint_min_paint_share` (10%) of what the whole cube paints, and drops them all otherwise. A Gaussian's paint is its real opacity × π × its two largest real scales, the exponentials of its `scale_*`. So a sheet of faint Gaussians that together paint a visible surface stays, and scattered faint specks go.
-4. The isolated filter drops every Gaussian whose mean distance to its `neighbours` (8) nearest other Gaussians is more than `isolation_ratio` (8) times the median of that number over those neighbours. The test is a local ratio, so the sky and the far background, sparse but even, survive.
-5. The limits, all checked before either output is written, in this order:
-   - The removal cap. The faint and isolated filters together may remove at most `max_removed_fraction` (70%) of the trained splat's Gaussians. Broken Gaussians are always removed and don't count toward the cap. Past the cap, the step fails and writes neither output, rather than trim the removals back to the cap.
+3. The unseen filter drops every Gaussian whose centre fewer than `min_seen_frames` (2) training frames see. A frame sees a centre when the centre is in front of the frame's camera and lands inside the frame, on [0, W) × [0, H) with the shared camera at its full size W × H. The training masks aren't used. The training step only trains a Gaussian through the frames that see it, so this drops what no frame, or only one, ever checked against a picture, like fog above a room. It runs before the faint filter, so that fog doesn't stretch the faint filter's trimmed extent.
+4. The faint filter judges every faint Gaussian together with the rest of its cube. A Gaussian is faint when its real opacity, the sigmoid of its `opacity`, is below `min_opacity` (0.005). Every Gaussian that isn't faint is kept, and no Gaussian is dropped for its opacity alone. Space is cut into cubes whose side is the trimmed extent divided by `faint_cube_divisions` (128). The trimmed extent is the longest side of the box that leaves out `extent_trim_percent` (1%) of the centres at each end of each axis, so a few far-off Gaussians can't make the cubes huge. A cube keeps all its faint Gaussians when it holds at least `faint_min_per_cube` (8) of them and they paint more than `faint_min_paint_share` (10%) of what the whole cube paints, and drops them all otherwise. A Gaussian's paint is its real opacity × π × its two largest real scales, the exponentials of its `scale_*`. So a sheet of faint Gaussians that together paint a visible surface stays, and scattered faint specks go.
+5. The isolated filter drops every Gaussian whose mean distance to its `neighbours` (8) nearest other Gaussians is more than `isolation_ratio` (8) times the median of that number over those neighbours. The test is a local ratio, so the sky and the far background, sparse but even, survive.
+6. The limits, all checked before either output is written, in this order:
+   - The removal cap. The faint and isolated filters together may remove at most `max_removed_fraction` (70%) of the trained splat's Gaussians. Broken Gaussians are always removed and don't count toward the cap, and neither do unseen ones. Past the cap, the step fails and writes neither output, rather than trim the removals back to the cap.
    - Fewer than `min_kept_splats` (10,000) Gaussians left fails the step the same way.
    - Keeping less than `warn_kept_fraction` (50%) of the trained splat's Gaussians adds a warning, and the step goes on.
-6. `work/clean/<clean_ply>`, the clean splat: the kept Gaussians as a `binary_little_endian` PLY, with every property of the trained splat in the same order and with the same type, and the trained splat's `comment` lines.
-7. `work/clean/<clean_sog>`, the viewer copy: splat-transform 3.8.0 makes it from the clean splat, as one bundled `.sog` file that keeps at most `sog_sh_bands` bands of spherical harmonics. The step writes splat-transform's whole output to `work/clean/splat-transform.log`.
-8. Then it moves both into `out/`, as "Files in out/" says.
+7. `work/clean/<clean_ply>`, the clean splat: the kept Gaussians as a `binary_little_endian` PLY, with every property of the trained splat in the same order and with the same type, and the trained splat's `comment` lines.
+8. `work/clean/<clean_sog>`, the viewer copy: splat-transform 3.8.0 makes it from the clean splat, as one bundled `.sog` file that keeps at most `sog_sh_bands` bands of spherical harmonics. The step writes splat-transform's whole output to `work/clean/splat-transform.log`.
+9. Then it moves both into `out/`, as "Files in out/" says.
 
 When the step fails, the trained splat is still in `out/`, as it was. The clean step is an optional step in the step list, so a failed clean ends the job done with warnings.
 
@@ -1616,6 +1618,7 @@ The step needs Node 22 or newer, and `npm ci` at the repo root, which installs s
 | `train_ply` | `[clean]` | `"train.ply"` | The trained splat's file in `out/`, which the training step writes and this step reads. |
 | `clean_ply` | `[clean]` | `"clean.ply"` | The clean splat's file in `out/`. It must end in `.ply`. |
 | `clean_sog` | `[clean]` | `"clean.sog"` | The viewer copy's file in `out/`. It must end in `.sog`. |
+| `min_seen_frames` | `[clean]` | `2` | The fewest training frames that must see a Gaussian's centre, in front of the camera and inside the frame, for the unseen filter to keep it. A whole number above 0. |
 | `min_opacity` | `[clean]` | `0.005` | The real opacity below which a Gaussian is faint. |
 | `faint_cube_divisions` | `[clean]` | `128` | The side of the faint filter's cubes is the trimmed extent divided by this. |
 | `faint_min_per_cube` | `[clean]` | `8` | The fewest faint Gaussians a cube must hold to keep them. |
@@ -1637,10 +1640,10 @@ All three presets clean the splat the same way and keep no higher bands in the v
 ### Step report fields
 
 - `counts.source_splats`: the Gaussians in the trained splat.
-- `counts.dropped_broken`, `counts.dropped_faint` and `counts.dropped_isolated`: the Gaussians each filter dropped.
-- `counts.kept_splats`: the Gaussians left after the three filters.
+- `counts.dropped_broken`, `counts.dropped_unseen`, `counts.dropped_faint` and `counts.dropped_isolated`: the Gaussians each filter dropped, in the order the filters run.
+- `counts.kept_splats`: the Gaussians left after the four filters.
 - `counts.clean_ply_bytes` and `counts.clean_sog_bytes`: the sizes of the clean splat and the viewer copy, in bytes.
-- `timings.read_ply`, `timings.clean`, `timings.write_ply` and `timings.export_sog`: the seconds it took to read the trained splat, run the three filters, write the clean splat and run splat-transform.
+- `timings.read_cameras`, `timings.read_ply`, `timings.clean`, `timings.write_ply` and `timings.export_sog`: the seconds it took to read the camera solve's model, read the trained splat, run the four filters, write the clean splat and run splat-transform.
 - `warnings`, which gets a warning in each of these cases:
   - When the step keeps less than `warn_kept_fraction` of the trained splat's Gaussians. The warning gives both counts and the share the faint and isolated filters removed.
   - When the preset's `sog_sh_bands` is more than the bands the trained splat has. The warning names both numbers, and the viewer copy keeps the trained splat's bands.
