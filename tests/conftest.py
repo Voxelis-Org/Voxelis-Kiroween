@@ -302,7 +302,7 @@ CLEAN_SHARED: dict[str, object] = {
     "clean_ply": "clean.ply",
     "clean_sog": "clean.sog",
     "min_seen_frames": 2,
-    "min_opacity": 0.005,
+    "min_opacity": 0.005,  # real: 0, which turns the faint filter off. So its tests have faint ones.
     "faint_cube_divisions": 128,
     "faint_min_per_cube": 8,
     "faint_min_paint_share": 0.10,

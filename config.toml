@@ -875,8 +875,8 @@ clean_ply = "clean.ply"
 clean_sog = "clean.sog"
 # Fewest training frames that must see a Gaussian's centre, in front of the camera and inside the frame, to keep it.
 min_seen_frames = 2
-# Real opacity, 0 to 1, below which a Gaussian is faint and judged with the rest of its cube.
-min_opacity = 0.005
+# Real opacity, 0 to 1, below which a Gaussian is faint and judged with the rest of its cube. 0 turns the faint filter off: at 0.005 it removed a faint white wall in a real job.
+min_opacity = 0.0
 # Cube side for the faint filter: the trimmed box's longest side divided by this, a whole number above 0.
 faint_cube_divisions = 128
 # Fewest faint Gaussians a cube must hold to keep them.

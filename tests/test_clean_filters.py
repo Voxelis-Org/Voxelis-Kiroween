@@ -1020,6 +1020,18 @@ def real_settings() -> CleanSettings:
     return check_settings(load_config(REAL_CONFIG).step_settings("clean", "default"))
 
 
+def test_the_real_config_turns_the_faint_filter_off_so_faint_specks_stay() -> None:
+    """The real config's min_opacity is 0, so no Gaussian is a Faint_Gaussian and the faint
+    filter keeps every one. At 0.005 it removed a faint white wall above a window in a real job,
+    whose faint Gaussians were too few in each Cube."""
+    assert real_settings().min_opacity == 0.0
+    specks = in_a_row(-3.4e38, -1000.0, -40.0, -6.0)  # each alone in its Cube
+    points = np.array([g.centre for g in specks], dtype=np.float64).reshape(-1, 3)
+    opacity = np.array([g.opacity for g in specks], dtype=np.float64)
+    sums = np.array([top_two(g.scales) for g in specks], dtype=np.float64)
+    assert faint_keep(points, opacity, sums, real_settings()).tolist() == [True] * 4
+
+
 @settings(deadline=None)
 # Deferred, so the real config is read when this test runs, and a bad one fails this test alone.
 @given(st.deferred(lambda: grids(min_opacity=real_settings().min_opacity,

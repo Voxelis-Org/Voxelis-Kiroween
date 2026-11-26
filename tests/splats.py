@@ -868,7 +868,7 @@ TURN_STEPS = 1024
 def grids(draw: st.DrawFn, *, min_opacity: float, neighbours: int) -> np.ndarray:
     """Splat_Data on an evenly spaced grid of more than `neighbours` Gaussians, for Property 6, as
     a structured array with a float32 field for each property of standard_fields(), as gaussians
-    gives. `min_opacity` has to be above 0 and below 1, as the real config's is.
+    gives. `min_opacity` has to be from 0 up to but not including 1, as the real config's is.
 
     - The grid has nx, ny and nz Gaussians along x, y and z, each from 1 to GRID_SIDE, with a
       product above `neighbours`. Its rows run along x first, then y, then z.
@@ -876,7 +876,9 @@ def grids(draw: st.DrawFn, *, min_opacity: float, neighbours: int) -> np.ndarray
       whole multiple of that spacing from origin_multiples. Every coordinate is checked to be the
       float32 value equal to the exact one, so the grid really is even.
     - Stored opacities are float32 values from OPACITY_MARGIN above the logit of `min_opacity` up
-      to float32's largest, so every Real_Opacity is above `min_opacity`.
+      to float32's largest, so every Real_Opacity is above `min_opacity`. At a `min_opacity` of
+      0, which has no logit, they're any finite float32 values, because no Real_Opacity is
+      below 0.
     - Quaternions are random unit ones, by Shoemake's method: for u from 0 to 1 and any v and w,
       (sqrt(1 - u) sin 2πv, sqrt(1 - u) cos 2πv, sqrt(u) sin 2πw, sqrt(u) cos 2πw) has length 1,
       and it's a uniformly random rotation when u, v and w are uniform from 0 up to 1. Each of
@@ -903,7 +905,8 @@ def grids(draw: st.DrawFn, *, min_opacity: float, neighbours: int) -> np.ndarray
     data = gaussians(n)
     for name, coordinates in (("x", x), ("y", y), ("z", z)):
         data[name] = exactly_float32(coordinates.ravel())
-    lowest = float32_at_least(math.log(min_opacity / (1 - min_opacity)) + OPACITY_MARGIN)
+    lowest = (-FLOAT32_MAX if min_opacity == 0 else
+              float32_at_least(math.log(min_opacity / (1 - min_opacity)) + OPACITY_MARGIN))
     data["opacity"] = draw(arrays(np.float32, n, elements=st.floats(
         min_value=lowest, max_value=FLOAT32_MAX, width=32)))
     scales = draw(arrays(np.float32, (3, n), elements=finite_float32s))

@@ -73,7 +73,8 @@ REAL_SHARED = {
     "clean_ply": "clean.ply",
     "clean_sog": "clean.sog",
     "min_seen_frames": 2,
-    "min_opacity": 0.005,
+    # 0 turns the faint filter off: at 0.005 it removed a faint white wall in a real job.
+    "min_opacity": 0.0,
     "faint_cube_divisions": 128,
     "faint_min_per_cube": 8,
     "faint_min_paint_share": 0.10,
