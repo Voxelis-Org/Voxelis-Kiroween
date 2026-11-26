@@ -1,8 +1,9 @@
 """The Clean_Step: it cleans the trained splat and makes the small copy for the web viewer.
 
-It reads the splat the training step wrote, out/train.ply, and drops the Gaussians a viewer
-shouldn't see: the broken ones, the ones too faint to add anything and the isolated floaters. It
-writes the rest to out/clean.ply as a binary PLY, then runs splat-transform under Node to make
+It reads the splat the training step wrote, out/train.ply, and the camera solve's model,
+work/cameras/sparse/, and drops the Gaussians a viewer shouldn't see: the broken ones, the ones
+too few training frames saw, like fog above a room, the ones too faint to add anything and the
+isolated floaters. It writes the rest to out/clean.ply as a binary PLY, then runs splat-transform under Node to make
 out/clean.sog for the web viewer. Every part of it is CPU work. The file names and every
 threshold are settings in [clean] in config.toml.
 
@@ -13,19 +14,19 @@ The package is built like the Fake_Step, and this file holds its two entry point
 - `work(step)`, the step's own code. The Step_Runner calls it once it has emptied work/clean/.
 
 The CLI, `uv run python -m splatpipe.clean --job <id> [--preset <name>]`, is __main__.py. The
-step isn't in STEP_LIST yet, so it runs only through these.
+step is STEP_LIST's last entry, an optional one, and it also runs on its own through these.
 
 `work` runs in four phases, and what out/ holds after a failure depends only on the phase it
 stopped in (Req 4.8 to 4.13):
 
-1. `check_settings` checks the eighteen settings before anything in the Job_Folder is opened,
+1. `check_settings` checks the nineteen settings before anything in the Job_Folder is opened,
    written or removed, so a refused setting leaves the earlier outputs as they were (Req 6.9).
 2. `remove_outputs` removes the earlier out/clean.sog, then the earlier out/clean.ply. A file it
    can't remove stops the step and leaves the files it hadn't removed yet.
-3. `clean_and_write` reads the trained splat, runs the three filters and the Requirement 3
-   limits, and writes the clean splat into work/clean/. None of its arrays outlive it, and
-   gc.collect() runs before node starts. Then `export_sog` makes the viewer copy from it, in
-   work/clean/ too. A failure here leaves neither output in out/.
+3. `clean_and_write` reads the cameras and the trained splat, runs the four filters and the
+   Requirement 3 limits, and writes the clean splat into work/clean/. None of its arrays
+   outlive it, and gc.collect() runs before node starts. Then `export_sog` makes the viewer
+   copy from it, in work/clean/ too. A failure here leaves neither output in out/.
 4. `move_outputs` moves the clean splat into out/, then the viewer copy. A failure between the
    two moves, Ctrl+C included, removes what had moved, so out/ again holds neither.
 
@@ -36,11 +37,14 @@ this run's whole clean splat alone in out/, with no done report, and the next ru
 first.
 
 The other modules do the work: settings.py checks the settings, ply_read.py reads the trained
-splat, filters.py runs the three filters in order, limits.py holds the Requirement 3 limits,
+splat, unseen.py reads the cameras and holds the Unseen_Filter, filters.py runs the four
+filters in order, limits.py holds the Requirement 3 limits,
 ply_write.py writes the clean splat and export.py runs splat-transform.
 
-From splatpipe, the package imports only splatpipe.step, splatpipe.errors and splatpipe.config,
-and this file only splatpipe.step, splatpipe.errors and the package's own modules. Outside the
+From splatpipe, the package imports only splatpipe.step, splatpipe.errors, splatpipe.config
+and the training step's Model_Reader and its helpers in splatpipe.train.colmap, .files and
+.scene, and this file only splatpipe.step, splatpipe.errors, splatpipe.train.files and the
+package's own modules. Outside the
 standard library the package imports only numpy and scipy.spatial, and nothing from cloud/,
 boto3, torch or gsplat (Req 8.5).
 """
@@ -60,9 +64,11 @@ from splatpipe.clean.limits import check_limits, check_source_count
 from splatpipe.clean.ply_read import read_header, read_splat
 from splatpipe.clean.ply_write import write_splat
 from splatpipe.clean.settings import CleanSettings, check_settings
+from splatpipe.clean.unseen import read_views
 from splatpipe.errors import ExpectedFailure
 # Config comes through splatpipe.step, as in the Fake_Step.
 from splatpipe.step import Config, StepContext, run_step
+from splatpipe.train.files import CAMERAS, SPARSE
 
 
 @dataclass(frozen=True)
@@ -101,22 +107,26 @@ def work(step: StepContext) -> None:
 
 
 def clean_and_write(step: StepContext, s: CleanSettings) -> Written:
-    """Read the trained splat, run the filters and the limits, and write the Clean_Splat into
-    work/clean/. Only its path and the trained splat's SH_Bands come back, so every array made
-    here is freed when this returns (Req 8.9).
+    """Read the training frames' cameras and the trained splat, run the filters and the limits,
+    and write the Clean_Splat into work/clean/. Only its path and the trained splat's SH_Bands
+    come back, so every array made here is freed when this returns (Req 8.9).
 
-    The source count is checked before the rows are read (Req 3.1), and the limits before
-    anything is written (Req 3.7). Each count is added as soon as it's known, and the timing of
-    each stage, read_ply, clean and write_ply, only once that stage is done. So a failure leaves
-    exactly the counts and timings worked out before it in the Clean_Report (Req 7.2).
+    The cameras come first, from work/cameras/sparse/, so a job with no camera solve fails before
+    the trained splat's rows are read. The source count is checked before the rows are read
+    (Req 3.1), and the limits before anything is written (Req 3.7). Each count is added as soon
+    as it's known, and the timing of each stage, read_cameras, read_ply, clean and write_ply,
+    only once that stage is done. So a failure leaves exactly the counts and timings worked out
+    before it in the Clean_Report (Req 7.2).
     """
+    with step.timed("read_cameras"):
+        views = read_views(step.job.folder / "work" / CAMERAS / SPARSE)
     with step.timed("read_ply"):
         header = read_header(step.out_folder / s.train_ply)  # Req 1.1
         step.add_count("source_splats", header.count)
         check_source_count(header.count, s)  # Req 3.1, before the rows are read
         data = read_splat(header)
     with step.timed("clean"):
-        kept = run_filters(data, s, step.add_count)
+        kept = run_filters(data, s, step.add_count, views=views)
     warning = check_limits(header.count, kept, s)  # Req 3.2 to 3.7, before anything is written
     if warning is not None:
         step.add_warning(warning)

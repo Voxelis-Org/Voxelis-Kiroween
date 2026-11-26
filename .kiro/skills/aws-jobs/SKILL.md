@@ -59,7 +59,7 @@ The plan, from the rules and the setup guide:
 4. The shutdown terminates the machine, which deletes its root volume. Billing for the machine stops when it enters `shutting-down`.
 5. The start command, or a person with the read profile, fetches `out/` from the bucket.
 
-The smoke test runs on a g5.xlarge and the image build on a g5.4xlarge (Step 8 of the setup guide). They're paid runs under the same rules.
+The smoke test runs on a g5.xlarge. The image build tries a g5.8xlarge, then a g5.4xlarge, the way a job tries its fallback list: `fallback` in `[cloud.image]` (Step 8 of the setup guide). Both are A10G types, because fused-ssim compiles for the builder's own GPU. They're paid runs under the same rules.
 
 ### The launch request
 
@@ -123,7 +123,7 @@ The stop-all command terminates every machine with our tag that isn't terminated
 
 From AWS's pages:
 
-1. Launch a builder machine (g5.4xlarge) from the base AMI, with the same launch settings as a job and a time cap in its user data that leaves room for the install. Set its root volume's size in the launch's `BlockDeviceMappings`, because CreateImage can't change volume sizes ([CreateImage API](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)) and the runner role can't resize a volume.
+1. Launch a builder machine (a g5.8xlarge, else a g5.4xlarge) from the base AMI, with the same launch settings as a job and a time cap in its user data that leaves room for the install. Set its root volume's size in the launch's `BlockDeviceMappings`, because CreateImage can't change volume sizes ([CreateImage API](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)) and the runner role can't resize a volume.
 2. Install everything.
 3. Remove what a job machine mustn't inherit. AWS says to delete the builder's user data script from `/var/lib/cloud/instances/<instance-id>/` before making an image ([user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html)). `cloud-init clean --logs --machine-id` does that and more: it removes cloud-init's files under `/var/lib/cloud` and its logs, and resets `/etc/machine-id`, as cloud-init advises before cloning an image ([cloud-init CLI](https://docs.cloud-init.io/en/latest/reference/cli.html)). Leave no AWS keys and no `~/.aws` files: boto3 tries the instance role last, after environment variables and those files ([boto3 credentials](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html)), so they would win over the job role.
 4. Stop the builder with `StopInstances`, then call `CreateImage` on the stopped machine, with the project tag on the image and on its snapshots in that same call. The runner role refuses it without both tags. CreateImage takes a running machine too, but then it reboots it by default for consistent snapshots, and `NoReboot` skips the reboot at the price of snapshots that miss whatever was still in memory ([CreateImage API](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)). AWS's pages don't say whether that reboot counts as a shutdown from inside the machine, which would terminate our builder. An API stop never triggers the terminate behaviour ([shutdown behaviour](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_ChangingInstanceInitiatedShutdownBehavior.html)), so stopping first avoids the question.
@@ -152,6 +152,7 @@ work/<job id>/
 ```
 
 - It mirrors the job folder in `docs/pipeline.md`: `data/jobs/<job id>/work/` goes to `work/<job id>/`, and the rest of `data/jobs/<job id>/` goes to `jobs/<job id>/`.
+- Two more folders sit under `jobs/`, so the runner role may upload to them and the job role may read and write them. `jobs/_image/<image name>/` holds the five dependency manifests (`pyproject.toml`, `uv.lock`, `.python-version`, `package.json`, `package-lock.json`) that the image-build command uploads from HEAD before the launch, because `uv.lock` alone is over the 16 KB user data limit. The builder fetches them with the AWS CLI. `jobs/_smoke/<image id>.json` is the marker a passing smoke test writes, and `jobs/_smoke/<image id>.log` holds the smoke machine's check results, pass or fail.
 - Never put a finished result under `work/`, because the 60-day rule deletes everything there. S3 runs lifecycle rules once a day and rounds each date up to the next midnight UTC, so a work file can last a day or so past its 60 days, though its billing stops on the date ([AWS re:Post](https://repost.aws/knowledge-center/s3-lifecycle-rule-delay)).
 - An upload that's still unfinished 7 days after it started gets cancelled, anywhere in the bucket, and its parts deleted.
 - The bucket's name is the stack's `BucketName` output. The start command reads it by the stack's name, `[aws].stack_name`, and passes it to the machine in the user data.
@@ -165,7 +166,7 @@ work/<job id>/
 
 - Apart from the 60-day rule, only the admin login deletes files.
 - On the machine, every list names a prefix, like `work/<job id>/`. A list of the whole bucket is refused, and so is HeadBucket, which S3 checks as a list with no prefix. boto3's `upload_file` and `download_file` don't call HeadBucket, so they work (aws-setup design, "Risks and limits").
-- S3 answers a download of a missing file with `404` only when the caller may list the bucket, and with `403` otherwise ([GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)). The job role may list only with a prefix, so on the machine a missing file may show up as `403 Access Denied`.
+- S3 answers a download of a missing file with `404` only when the caller may list the bucket, and with `403` otherwise ([GetObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)). The job role may list only with a prefix, so on the machine a missing file may show up as `403 Access Denied`. That's why `BotoAws.s3_exists` asks with a list whose prefix is the key, not with a HeadObject.
 
 ## User data
 

@@ -14,8 +14,10 @@ and no AWS account (Req 16.1):
   one `smoke_instance_type` from the current Machine_Image with the Requirement 8 request and the
   Smoke_Test's `cap_minutes`, and appends a `smoke-test` Spend_Line to the laptop's `data/spend.jsonl`
   (Req 11.1, 11.4, 12.2). The launch request satisfies Property 4's shape (Req 8.9).
-- The GPU code paths (Req 11.2) run only on the real GPU machine, through the launched machine's
-  User_Data; the note below records that the CPU suite never runs them.
+- `smoke_log_key` puts the smoke machine's results beside the marker, and the launch message names
+  both keys.
+
+What the smoke machine itself runs, `cloud.smoke_runner`, is tested in `test_cloud_smoke_runner.py`.
 
 `cloud.smoke.REPO_ROOT` is pointed at a committed `git_repo`, the way the module's docstring says a
 test controls the Code_Archive and the lock hashes, so the archive and `lock_hashes` need no real
@@ -37,7 +39,7 @@ from splatpipe.config import Config
 from cloud.aws import ImageInfo
 from cloud.errors import CloudError
 from cloud.launch import JOB_ID_TAG
-from cloud.smoke import image_id_from_marker, run_smoke, smoke_marker_key
+from cloud.smoke import image_id_from_marker, run_smoke, smoke_log_key, smoke_marker_key
 from cloud.spend import SpendRefused, check_spend as _real_check_spend
 from cloud.spend_file import LABEL_SMOKE
 from cloud.stack import StackOutputs
@@ -147,6 +149,16 @@ def test_image_id_from_marker_rejects_a_non_marker_key(bad_key: str) -> None:
     # as a Smoke_Marker.
     with pytest.raises(CloudError):
         image_id_from_marker(bad_key)
+
+
+@pytest.mark.parametrize("image_id", IMAGE_IDS)
+def test_the_smoke_log_sits_beside_the_marker_and_is_never_one(image_id: str) -> None:
+    key = smoke_log_key(image_id)
+    assert key == f"jobs/_smoke/{image_id}.log"
+    # The results go up pass or fail, so their key must never read as a passing marker.
+    assert key != smoke_marker_key(image_id)
+    with pytest.raises(CloudError):
+        image_id_from_marker(key)
 
 
 # Req 6.1, 11.4: no launch without the Spend_Guard's yes.
@@ -261,20 +273,10 @@ def test_run_smoke_launches_one_smoke_machine_after_the_spend_guard(
     assert spend["estimate"] is True
     assert spend["seconds"] == cc.smoke.expected_minutes * 60
 
-    # The report names the type, the zone and the Smoke_Marker key the machine will write on a pass.
+    # The report names the type, the zone, where the machine puts its results, and the Smoke_Marker
+    # key it writes on a pass.
     out = capsys.readouterr().out
     assert cc.smoke_instance_type in out
     assert "us-east-1a" in out
+    assert smoke_log_key(IMAGE_ID) in out
     assert smoke_marker_key(IMAGE_ID) in out
-
-
-# Req 11.2: the GPU code paths run only on the real machine, never in this CPU suite.
-
-@pytest.mark.skip(reason="The smoke test's GPU code paths (every GPU path on a tiny synthetic scene, "
-                         "and the Cloud_Runner end to end on a tiny Fake_Step job) run only on the "
-                         "real GPU machine, through the launched machine's user data; the CPU test "
-                         "suite never runs them (Req 11.2, 11.5).")
-def test_gpu_code_paths_run_only_on_the_real_machine() -> None:
-    """A placeholder that records, in the test report, that the Smoke_Test's GPU work is exercised on
-    the real machine and not on the laptop CPU; each later spec that adds a GPU code path adds it to
-    the on-machine Smoke_Test, not here (Req 11.2, 11.5)."""

@@ -72,7 +72,7 @@ from splatpipe.jsonio import read_json
 
 import fake_splat_transform as fake
 from conftest import CLEAN_PRESETS, CLEAN_SHARED
-from splats import PRESET, gaussians, put_source
+from splats import FAR_BEHIND, PRESET, gaussians, put_cameras, put_source
 from test_clean_export import find_stand_in, needs_splat_transform, use_stand_in, without
 from test_clean_limits import numbers_in
 
@@ -81,9 +81,9 @@ from test_clean_limits import numbers_in
 N = 20
 # The counts and the timings of a done Clean_Report, each in the order the step works it out
 # (Req 7.1).
-COUNTS = ("source_splats", "dropped_broken", "dropped_faint", "dropped_isolated", "kept_splats",
-          "clean_ply_bytes", "clean_sog_bytes")
-TIMINGS = ("read_ply", "clean", "write_ply", "export_sog")
+COUNTS = ("source_splats", "dropped_broken", "dropped_unseen", "dropped_faint",
+          "dropped_isolated", "kept_splats", "clean_ply_bytes", "clean_sog_bytes")
+TIMINGS = ("read_cameras", "read_ply", "clean", "write_ply", "export_sog")
 
 
 def folder_of(job_id: str) -> Path:
@@ -145,14 +145,14 @@ def test_a_done_run_writes_both_outputs_and_reports_the_counts_timings_and_setti
     assert all(type(value) is int for value in counts.values())  # whole numbers (Req 7.3)
     assert all(type(seconds) is float and seconds >= 0 for seconds in timings.values())
     out = folder_of(job_id) / "out"
-    assert counts == {"source_splats": N, "dropped_broken": 1, "dropped_faint": 0,
-                      "dropped_isolated": 0, "kept_splats": N - 1,
+    assert counts == {"source_splats": N, "dropped_broken": 1, "dropped_unseen": 0,
+                      "dropped_faint": 0, "dropped_isolated": 0, "kept_splats": N - 1,
                       "clean_ply_bytes": (out / "clean.ply").stat().st_size,
                       "clean_sog_bytes": len(fake.OK_BYTES)}  # both outputs' sizes (Req 5.14)
     assert (out / "clean.sog").read_bytes() == fake.OK_BYTES
-    # The eighteen settings, as the test config gives them (Req 7.7).
+    # The nineteen settings, as the test config gives them (Req 7.7).
     assert saved["settings"] == {**CLEAN_SHARED, **CLEAN_PRESETS[PRESET]}
-    assert len(saved["settings"]) == 18
+    assert len(saved["settings"]) == 19
 
 
 def test_the_kept_fraction_and_band_count_warnings_land_in_the_report(
@@ -168,6 +168,18 @@ def test_the_kept_fraction_and_band_count_warnings_land_in_the_report(
     assert "warn_kept_fraction" in kept_little and {"8", "20"} <= numbers_in(kept_little)
     assert {"3", "1"} <= numbers_in(fewer_bands)
     assert stand_in.bands == [1]  # the trained splat's own band count, in place of the Preset's
+
+
+def test_a_gaussian_behind_every_training_frame_is_dropped_as_unseen(
+        new_job: Callable[..., str], stand_in: StandIn) -> None:
+    job_id = new_job()
+    data = gaussians(N)
+    data["z"][0] = -2 * FAR_BEHIND  # behind both of put_cameras's frames, so no frame sees it
+    put_source(job_id, data)
+    report = clean.run(job_id)
+    assert report["outcome"] == "done", report["error"]
+    counts = report["counts"]
+    assert (counts["dropped_unseen"], counts["kept_splats"]) == (1, N - 1)
 
 
 # Failed runs
@@ -213,9 +225,16 @@ def refuse_replace(monkeypatch: pytest.MonkeyPatch, target: Path) -> None:
 Breaker = Callable[[str, Callable[..., None], pytest.MonkeyPatch], None]
 
 
+def no_camera_solve(job_id: str, set_clean: Callable[..., None],
+                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Write the trained splat but no work/cameras/sparse/, which the Unseen_Filter needs."""
+    put_source(job_id, gaussians(N), cameras=False)
+
+
 def no_trained_splat(job_id: str, set_clean: Callable[..., None],
                      monkeypatch: pytest.MonkeyPatch) -> None:
-    """Leave out/train.ply out of the Job (Req 1.1, 1.6)."""
+    """Leave out/train.ply out of the Job, which has its cameras (Req 1.1, 1.6)."""
+    put_cameras(job_id)
 
 
 def too_many_gaussians(job_id: str, set_clean: Callable[..., None],
@@ -256,17 +275,20 @@ def a_refused_move(job_id: str, set_clean: Callable[..., None],
 # Where a run fails, from reading the splat to the moves: how to make it fail there, how many of
 # COUNTS and of TIMINGS the step has worked out by then, and words of the step's own message.
 STAGES = [
-    pytest.param(no_trained_splat, 0, 0,
+    pytest.param(no_camera_solve, 0, 0,
+                 (str(Path("work", "cameras", "sparse", "cameras.bin")), "camera solve step"),
+                 id="reading, no camera solve"),
+    pytest.param(no_trained_splat, 0, 1,
                  (str(Path("out", "train.ply")), "doesn't exist", "training step"),
                  id="reading, no trained splat"),
-    pytest.param(too_many_gaussians, 1, 0, ("max_source_splats",),
+    pytest.param(too_many_gaussians, 1, 1, ("max_source_splats",),
                  id="reading, too many gaussians"),
-    pytest.param(over_the_cap, 5, 2, ("max_removed_fraction",), id="the limits, over the cap"),
-    pytest.param(a_full_disk, 5, 2, ("couldn't be written", "No space left on device"),
+    pytest.param(over_the_cap, 6, 3, ("max_removed_fraction",), id="the limits, over the cap"),
+    pytest.param(a_full_disk, 6, 3, ("couldn't be written", "No space left on device"),
                  id="writing, a full disk"),
-    pytest.param(a_failing_splat_transform, 6, 3, (f"exit code {fake.FAIL_EXIT_CODE}",),
+    pytest.param(a_failing_splat_transform, 7, 4, (f"exit code {fake.FAIL_EXIT_CODE}",),
                  id="the export, splat-transform fails"),
-    pytest.param(a_refused_move, 7, 4, ("couldn't move", "Permission denied"),
+    pytest.param(a_refused_move, 8, 5, ("couldn't move", "Permission denied"),
                  id="the moves, a refused move"),
 ]
 
@@ -745,8 +767,8 @@ def test_no_array_outlives_the_clean_phase_and_the_peak_stays_within_600_bytes_a
     # Full-size work: no filter dropped a Gaussian, all MANY were written, and no stage was
     # skipped.
     out = folder_of(job_id) / "out"
-    assert report["counts"] == {"source_splats": MANY, "dropped_broken": 0, "dropped_faint": 0,
-                                "dropped_isolated": 0, "kept_splats": MANY,
+    assert report["counts"] == {"source_splats": MANY, "dropped_broken": 0, "dropped_unseen": 0,
+                                "dropped_faint": 0, "dropped_isolated": 0, "kept_splats": MANY,
                                 "clean_ply_bytes": (out / "clean.ply").stat().st_size,
                                 "clean_sog_bytes": len(fake.OK_BYTES)}
     assert list(report["timings"]) == list(TIMINGS)

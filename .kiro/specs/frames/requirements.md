@@ -11,7 +11,7 @@ Later the step runs on the Job's cloud machine, which needs at least 16 vCPUs an
 Out of scope:
 
 - The Camera_Solve_Step. This spec only writes the files it reads and states that contract in the Pipeline_Doc.
-- The cloud wrapper, which reads the Machine_Needs from Config and picks the machine. Nothing in this spec runs anything paid.
+- The cloud wrapper, which reads the Step_Needs from Config and picks the machine. Nothing in this spec runs anything paid.
 - How COLMAP and training use the Mask. This spec writes the Mask in the form both need and says so in the Pipeline_Doc.
 - GPU work. Nothing here needs a GPU, torch, gsplat or AWS.
 - Changing Skeleton modules beyond the Step_List and its comment in `splatpipe/run.py`, and `splatpipe/probe.py` if the design has the Video_Probe read the colour transfer (A7).
@@ -108,7 +108,7 @@ Note on the clean-export spec: its A4 says the first spec with a Step worth runn
 - **Mask**: `work/frames/mask.png`, the black-and-white PNG that marks the Stuck_Pixels black, written only when the step uses it.
 - **Frames_Record**: `work/frames/frames.json`, which describes the Picks and the Mask for the Camera_Solve_Step.
 - **Frames_Report**: the Frames_Step's Step_Report, with the fields Requirement 10 lists.
-- **Machine_Needs**: `min_vcpus` and `min_memory_gb` in `[frames]`, which the cloud spec reads to pick the machine.
+- **Step_Needs**: `min_vcpus` and `min_memory_gb` in `[frames]`, the cloud-jobs spec's name for a step's needs, which the cloud spec reads to pick the machine.
 
 Terms this spec uses as the pipeline-core spec and the Pipeline_Doc define them: Pipeline, Skeleton, Step, Step_Name, Job, Job_Id, Jobs_Folder, Job_Folder, Job_Record, Trim, Used_Part, Video_Length, Video_Probe, Step_Runner, Step_Report, Step_List, Required_Step, Optional_Step, Fake_Step, Work_Folder, Config, Preset, Shared_Setting, Preset_Setting, Step_Section, Expected_Failure, Unexpected_Error, Readable_Error, Job_Runner, Job_Status, JSON_Value, Pipeline_Doc, Licence_List, CLI and Test_Suite.
 
@@ -134,7 +134,7 @@ Terms this spec uses as the pipeline-core spec and the Pipeline_Doc define them:
 10. IF ffmpeg or ffprobe exits with a non-zero code, other than in the Tone_Map case of Requirement 2, criterion 5, THEN THE Frames_Step SHALL fail with an Expected_Failure whose Readable_Error holds the tool's last line of error output, with no traceback.
 11. IF the Score_Pass gives no Score_Frame inside the Used_Part, THEN THE Frames_Step SHALL fail with an Expected_Failure whose Readable_Error says that no frames could be read from the chosen part of the video and says to check that the video plays.
 12. WHILE a Decode_Pass runs, THE Frames_Step SHALL take the frames one at a time from ffmpeg's pipe and hold, whatever the video's length, at most the Score_Frame before, the current Score_Frame and the Sample_Buffer's at most twice `mask_samples` Score_Frames in the Score_Pass, and one colour frame at a time in the Pick_Pass, keeping only each frame's Frame_Time and scores for every frame. The Sample_Buffer SHALL keep every k-th Score_Frame by Frame_Number, from the first with k = 1, and whenever it holds more than twice `mask_samples` Score_Frames, drop every other Score_Frame it holds and double k (D4, A15).
-13. THE Frames_Step SHALL keep its peak memory, ffmpeg included, under 16 GB for a 10-minute 4K clip, which is the design target behind criterion 12 and the Machine_Needs (D4).
+13. THE Frames_Step SHALL keep its peak memory, ffmpeg included, under 16 GB for a 10-minute 4K clip, which is the design target behind criterion 12 and the Step_Needs (D4).
 14. IF ffmpeg's output can't be read, because a frame comes without its time or the output ends inside a frame, THEN THE Frames_Step SHALL fail with an Expected_Failure whose Readable_Error says that ffmpeg's output couldn't be read and says to install ffmpeg 5.1 or newer (D5).
 
 Note for the design: ffmpeg can give two frames the same timestamp. The design says how the step keeps the Frame_Times strictly increasing (criterion 6) and how it reads each frame's timestamp alongside the raw frames.
@@ -279,7 +279,7 @@ Note for the design: ffmpeg can give two frames the same timestamp. The design s
 7. IF `min_picks` is greater than `base_picks`, or `base_picks` is greater than `max_picks`, THEN THE Frames_Step SHALL fail with an Expected_Failure, before ffprobe or ffmpeg runs, whose Readable_Error names the settings and their values.
 8. THE `pyproject.toml` SHALL gain only numpy and `opencv-python-headless` as runtime dependencies: no scipy, never plain `opencv-python` and no GPU package, so `uv sync` on a laptop still installs no torch, no gsplat and no CUDA wheel (A12).
 9. THE Frames_Step SHALL import only the Python standard library, numpy, OpenCV (`cv2`) and `splatpipe`, and import nothing from `cloud/`, boto3, torch or gsplat.
-10. THE Frames_Step SHALL run the same whatever the machine's CPUs and memory, and leave the Machine_Needs for the cloud spec to read (D4).
+10. THE Frames_Step SHALL run the same whatever the machine's CPUs and memory, and leave the Step_Needs for the cloud spec to read (D4).
 11. THE `tests/conftest.py` test config SHALL gain a `[frames]` section with the section's three Preset tables, so a test that runs the step through the step's CLI or `run()` without a Config of the test's own gets settings, and a test SHALL be able to change any one of the settings for that test.
 
 ### Requirement 10: The step report
@@ -308,7 +308,13 @@ Note for the design: ffmpeg can give two frames the same timestamp. The design s
 1. THE Frames_Step SHALL be a package `splatpipe/frames/` built like the Fake_Step: `work(step)`, `run(job_id, preset=None, *, config=None)` and a `__main__.py` whose `main(argv)` calls the Skeleton's `step_main`.
 2. THE CLI `uv run python -m splatpipe.frames --job <id> [--preset P]` SHALL run the step on one Job, print `frames: done` on standard output and exit with 0 when the step is done, and print the Readable_Error on standard error with no traceback and exit with 1 when the step failed.
 3. THE Step_List in `splatpipe/run.py` SHALL be `(StepEntry("frames", "splatpipe.frames", True),)`, with the Step_List's comment saying that the Frames_Step is the first entry and that each later step spec adds the spec's own entry after it, in order (D1).
+
+   Note: The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it.
+
 4. WHILE the Frames_Step is the only entry in the Step_List, THE Job_Runner SHALL give a Job the Job_Status `done` once the Frames_Step is done (D1).
+
+   Note: The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it.
+
 5. IF a caller gives the Job_Runner an empty Step_List, THEN THE Job_Runner SHALL still refuse with the Readable_Error that starts "No steps are set up yet", before the Job_Runner writes anything (D1).
 6. THE `tests/test_run.py` SHALL change in the same task as the Step_List: the test that asserted `STEP_LIST == ()` SHALL assert the Step_List of criterion 3, the test that ran the default Step_List with `steps=None` and the CLI test that expected "No steps are set up yet" SHALL set the Step_List to empty for that test, and the test that runs `python -m splatpipe.run --job ../x` SHALL expect "That isn't a job id." (D1).
 7. THE `tests/test_imports.py` SHALL load `[frames]` from the real Config for each of the three Presets through the existing Step_List check, with the check's docstrings no longer saying the Step_List starts empty (D1).
@@ -328,8 +334,11 @@ Note for the design: ffmpeg can give two frames the same timestamp. The design s
 1. THE Pipeline_Doc SHALL gain a `## Step: frames` section with the same parts as the Fake_Step's section: a `### What it reads`, a `### What it writes`, a `### Config section`, a `### Step report fields` and a `### Files in out/` part.
 2. THE `### Files in out/` part SHALL say that the Frames_Step writes no files to `out/` other than the Frames_Report, which the Step_Runner writes.
 3. THE `### What it writes` part SHALL give the Work_Folder's layout and the Frames_Record's fields as the contract the Camera_Solve_Step reads, say that only matching uses the Grey_Copies, and say that COLMAP takes the Mask as `--ImageReader.camera_mask_path` and the training loss reads the same file (D3).
-4. THE Frames_Step's section SHALL state the Machine_Needs, at least 16 vCPUs and 16 GB of memory on the Job's cloud machine, and say that the step itself never checks the machine (D4).
+4. THE Frames_Step's section SHALL state the Step_Needs, at least 16 vCPUs and 16 GB of memory on the Job's cloud machine, and say that the step itself never checks the machine (D4).
 5. THE Pipeline_Doc's "The step list" section SHALL say that the Step_List holds the Frames_Step as the Step_List's first, required entry, that each later step spec adds the spec's own entry after it, and that a Job is done after the Frames_Step alone until the camera solve spec adds the camera solve's entry, in place of the paragraph that says the list starts empty (D1).
+
+   Note: The cameras spec added the second Step_List entry, `StepEntry("cameras", "splatpipe.cameras", True)`. This criterion describes the Step_List as the frames spec left it.
+
 6. THE Licence_List SHALL mark numpy and `opencv-python-headless` as installed and keep scipy's row at "Not yet", and the ffmpeg row SHALL say that ffmpeg decodes the frames of the Used_Part and tone maps HDR video with `zscale` and `tonemap` when the ffmpeg build has both filters, in the same task that adds the dependencies.
 7. THE Licence_List SHALL gain a line for zimg (libzimg, WTFPL), which ffmpeg's `zscale` filter needs, only after Samarth has OKed the licence, and the task that builds the Tone_Map SHALL stop for Samarth's answer, because the review left O1 open (O1).
 8. THE Frames_Step's section SHALL say that the Job's machine image needs ffmpeg and ffprobe 5.1 or newer, because the Frames_Step uses ffmpeg's `-fps_mode` option, and that Ubuntu 24.04's packaged ffmpeg, version 6.1, is new enough (D5).

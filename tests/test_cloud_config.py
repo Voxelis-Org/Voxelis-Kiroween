@@ -3,10 +3,20 @@
 Two things, as the task and design describe. First, the real config.toml `[cloud]` loads through
 `load_cloud_config`: there are 8 `types`, each a full Machine_Spec; every Preset Fallback_List is
 non-empty and names only Allowed_Types; the pinned primaries and fallbacks and the Q2 minutes are
-present; `[cloud]` holds no `[cloud.needs.*]` table; and `smoke_instance_type` and
-`image_builder_type` are Allowed_Types (Req 2.3, 2.4, 2.6, 2.7, 2.10). Second, corrupting one key
-of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the Config_Loader naming the key
-(Req 2.1), while a missing or wrong-typed key is a `CloudError` naming the key (Req 2.2).
+present; `[cloud]` holds no `[cloud.needs.*]` table; `smoke_instance_type` is an Allowed_Type; and
+`[cloud.image].fallback`, the image builder's types, is g5.8xlarge then g5.4xlarge, both A10G types
+(Req 2.3, 2.4, 2.6, 2.7, 2.10). An empty builder list, or one naming a type that isn't an
+Allowed_Type, is a `CloudError` naming `fallback for [cloud.image]`. `[cloud.smoke]` also holds
+the training check's seven numbers at their A11 values (training spec, Req 12.4), the depth
+check's `depth_normal_start_step` at 8 (depth-priors spec, Req 16.6), and the cameras check's
+seven numbers at their values, three whole and four numbers (cameras spec, Req 18.9). Second,
+corrupting one key of a valid `[cloud]`: `nan`, `inf` or a TOML date is refused by the
+Config_Loader naming the key (Req 2.1), while a missing or wrong-typed key is a `CloudError` naming
+the key (Req 2.2). A float, a bool or 0 as one of the training check's numbers is a `CloudError`
+naming it as `<key> for [cloud.smoke]` (training spec, Req 12.5), and so is −1, 1.5, `true` or
+`"8"` as `depth_normal_start_step`, which may be 0 (depth-priors spec, Req 16.6). So is a float as
+one of the cameras check's whole numbers, or a bool or 0 as any of its seven (cameras spec,
+Req 18.9).
 
 Property 2 (any single corruption of a valid `[cloud]` is refused by name) is the Hypothesis test
 at the end of this file (task 1.5): it builds a valid `[cloud]` mapping, corrupts one key, writes it
@@ -27,7 +37,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from splatpipe.config import PRESETS, REPO_ROOT
+from splatpipe.config import PRESETS, REPO_ROOT, load_config
 from splatpipe.errors import PipelineError
 
 from cloud.config import CloudConfig, MachineSpec, load_cloud_config
@@ -49,7 +59,26 @@ QUALITY_FALLBACK = ("g6e.4xlarge", "g6e.2xlarge")
 # The Q2 minutes as (expected, cap), settled in Q2 (Req 2.5, 2.6).
 PRESET_MINUTES = {"fast": (30, 120), "default": (60, 180), "quality": (120, 360)}
 SMOKE_MINUTES = (10, 30)
-IMAGE_MINUTES = (45, 120)
+IMAGE_MINUTES = (75, 120)
+# The image builder's types, tried in order: the g5.8xlarge first, then the g5.4xlarge when AWS has
+# no capacity for it. Both carry the A10G the jobs' fused-ssim is compiled for on the builder.
+IMAGE_BUILDERS = ("g5.8xlarge", "g5.4xlarge")
+A10G_GPU_MEMORY_GB = 24
+
+# The training check's seven [cloud.smoke] numbers, at their A11 values (training spec, Req 12.4).
+TRAIN_SMOKE = {"train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
+               "train_refine_start_step": 10, "train_refine_every": 10,
+               "train_sh_degree_interval": 5}
+
+# The depth check's Normal_Start in [cloud.smoke] (depth-priors spec, Req 16.6, A5).
+DEPTH_NORMAL_START_STEP = 8
+
+# The cameras check's seven [cloud.smoke] numbers, at their values (cameras spec, Req 18.9): three
+# whole numbers, read with _whole, and four numbers, read with _number and given back as floats.
+CAMERAS_WHOLE = {"cameras_frames": 30, "cameras_width": 320, "cameras_height": 240}
+CAMERAS_NUMBERS = {"cameras_focal_pixels": 260.0, "cameras_placed_share": 0.8,
+                   "cameras_focal_tolerance": 0.02, "cameras_timeout_seconds": 600.0}
+CAMERAS_SMOKE = {**CAMERAS_WHOLE, **CAMERAS_NUMBERS}
 
 
 @pytest.fixture
@@ -98,9 +127,36 @@ def test_the_smoke_and_image_runs_have_their_q2_minutes(cc: CloudConfig) -> None
     assert (cc.image.expected_minutes, cc.image.cap_minutes) == IMAGE_MINUTES
 
 
+def test_the_smoke_machines_settings_load_and_its_video_is_long_enough_for_a_job(
+        cc: CloudConfig) -> None:
+    checks = cc.smoke_checks
+    assert checks.check_timeout_seconds > 0
+    assert type(checks.scene_gaussians) is int and checks.scene_gaussians > 0
+    assert type(checks.image_pixels) is int and checks.image_pixels > 0
+    # The smoke machine makes a fake-step job from its test video, so the video has to be at least
+    # the shortest part of a video a job may use, or make_job refuses it.
+    assert checks.video_seconds >= load_config(REAL_CONFIG).jobs().min_used_seconds
+    # The training check's numbers are whole numbers at their A11 values (training spec, Req 12.4).
+    assert {key: getattr(checks, key) for key in TRAIN_SMOKE} == TRAIN_SMOKE
+    assert all(type(getattr(checks, key)) is int for key in TRAIN_SMOKE)
+    # The depth check's Normal_Start is the whole number 8 (depth-priors spec, Req 16.6, A5).
+    assert checks.depth_normal_start_step == DEPTH_NORMAL_START_STEP
+    assert type(checks.depth_normal_start_step) is int
+    # The cameras check's numbers are at their values, three whole numbers and four floats
+    # (cameras spec, Req 18.9).
+    assert {key: getattr(checks, key) for key in CAMERAS_SMOKE} == CAMERAS_SMOKE
+    assert all(type(getattr(checks, key)) is int for key in CAMERAS_WHOLE)
+    assert all(type(getattr(checks, key)) is float for key in CAMERAS_NUMBERS)
+
+
 def test_the_smoke_and_image_instance_types_are_allowed_types(cc: CloudConfig) -> None:
     assert cc.smoke_instance_type in cc.types
-    assert cc.image_builder_type in cc.types
+    assert cc.image.fallback == IMAGE_BUILDERS
+    for name in cc.image.fallback:
+        assert name in cc.types
+        # A g5 type, with the A10G: fused-ssim compiles for the builder's own GPU only.
+        assert name.startswith("g5.")
+        assert cc.types[name].gpu_memory_gb == A10G_GPU_MEMORY_GB
 
 
 def test_the_real_cloud_section_holds_no_needs_table() -> None:
@@ -150,15 +206,17 @@ def valid_cloud() -> dict[str, Any]:
             "default": {"fallback": ["g5.8xlarge"], "expected_minutes": 60, "cap_minutes": 180},
             "quality": {"fallback": ["g5.8xlarge"], "expected_minutes": 120, "cap_minutes": 360},
         },
-        "smoke": {"expected_minutes": 10, "cap_minutes": 30},
-        "image": {"expected_minutes": 45, "cap_minutes": 120},
+        "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
+                  "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE,
+                  "depth_normal_start_step": DEPTH_NORMAL_START_STEP, **CAMERAS_SMOKE},
+        "image": {"fallback": ["g5.8xlarge", "g5.xlarge"], "expected_minutes": 45,
+                  "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
         "ipv4_usd_per_hour": 0.005,
         "gp3_usd_per_gb_month": 0.08,
         "root_gb": 150,
         "smoke_instance_type": "g5.xlarge",
-        "image_builder_type": "g5.xlarge",
         "base_ami_parameter": "/aws/service/ami/latest",
     }
 
@@ -187,6 +245,58 @@ CORRUPTIONS = [
                  id="a bool as a type's vcpus"),
     pytest.param(lambda c: c["presets"]["fast"].update(fallback="g5.8xlarge"), "fallback",
                  id="a string as a preset fallback"),
+    pytest.param(lambda c: c["image"].pop("fallback"), "fallback for [cloud.image]",
+                 id="an image table with no builder list"),
+    pytest.param(lambda c: c["image"].update(fallback=[]), "fallback for [cloud.image]",
+                 id="an empty builder list"),
+    pytest.param(lambda c: c["image"].update(fallback="g5.8xlarge"), "fallback for [cloud.image]",
+                 id="a string as the builder list"),
+    pytest.param(lambda c: c["image"].update(fallback=["g5.8xlarge", "p5.48xlarge"]),
+                 "fallback for [cloud.image]", id="a builder type that isn't an Allowed_Type"),
+    pytest.param(lambda c: c["smoke"].pop("check_timeout_seconds"), "check_timeout_seconds",
+                 id="a smoke table with no check_timeout_seconds"),
+    pytest.param(lambda c: c["smoke"].update(scene_gaussians=2.5), "scene_gaussians",
+                 id="a float as the smoke scene's Gaussian count"),
+    pytest.param(lambda c: c["smoke"].update(image_pixels=0), "image_pixels",
+                 id="zero smoke image pixels"),
+]
+
+
+def set_smoke(key: str, value: object) -> Callable[[dict[str, Any]], object]:
+    """A corruption that sets `key` in the smoke table to `value`."""
+    return lambda c: c["smoke"].update({key: value})
+
+
+# Each of the training check's seven numbers given a float, here its A11 value as a float, so even
+# a whole one is refused, a bool, or 0. The CloudError names it as "<key> for [cloud.smoke]"
+# (training spec, Req 12.5).
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key, a11 in TRAIN_SMOKE.items()
+    for what, value in (("a float", float(a11)), ("a bool", True), ("0", 0))
+]
+
+# The depth check's depth_normal_start_step given a number below 0, a float, a bool or its value as
+# text. 0 is allowed, so it isn't a corruption here. The CloudError names it as
+# "depth_normal_start_step for [cloud.smoke]" (depth-priors spec, Req 16.6).
+CORRUPTIONS += [
+    pytest.param(set_smoke("depth_normal_start_step", value),
+                 "depth_normal_start_step for [cloud.smoke]",
+                 id=f"{what} as depth_normal_start_step")
+    for what, value in (("-1", -1), ("1.5", 1.5), ("true", True), ('"8"', "8"))
+]
+# Each of the cameras check's three whole numbers given a float, here its value as a float, so
+# even a whole one is refused, a bool, or 0, and each of its four numbers given a bool or 0. The
+# CloudError names it as "<key> for [cloud.smoke]" (cameras spec, Req 18.9).
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key, whole in CAMERAS_WHOLE.items()
+    for what, value in (("a float", float(whole)), ("a bool", True), ("0", 0))
+]
+CORRUPTIONS += [
+    pytest.param(set_smoke(key, value), f"{key} for [cloud.smoke]", id=f"{what} as {key}")
+    for key in CAMERAS_NUMBERS
+    for what, value in (("a bool", True), ("0", 0))
 ]
 
 
@@ -226,8 +336,11 @@ cloud_text = st.text(
 @st.composite
 def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     """A valid `[cloud]` mapping that from_mapping accepts: 1-3 Allowed_Types, the three Presets
-    whose fallbacks and the smoke/image instance types all name those types, and positive times,
-    prices and scalars."""
+    whose fallbacks, the smoke instance type and the image builder list all name those types, and
+    positive times, prices and scalars. The smoke table's whole numbers, the training check's seven
+    and the cameras check's three among them, are integers above 0, the cameras check's other four
+    are numbers, and the depth check's depth_normal_start_step is an integer of 0 or more
+    (depth-priors spec, Req 16.6)."""
     names = draw(st.lists(st.sampled_from(ALLOWED_TYPES), min_size=1, max_size=3, unique=True))
     types = {
         name: {
@@ -251,22 +364,33 @@ def valid_cloud_mappings(draw: st.DrawFn) -> dict[str, Any]:
     return {
         "types": types,
         "presets": presets,
-        "smoke": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
-        "image": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
+        "smoke": {"expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers),
+                  "check_timeout_seconds": draw(cloud_numbers),
+                  "scene_gaussians": draw(st.integers(min_value=1, max_value=4096)),
+                  "image_pixels": draw(st.integers(min_value=1, max_value=4096)),
+                  "video_seconds": draw(cloud_numbers),
+                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in TRAIN_SMOKE},
+                  "depth_normal_start_step": draw(st.integers(min_value=0, max_value=4096)),
+                  **{key: draw(st.integers(min_value=1, max_value=4096)) for key in CAMERAS_WHOLE},
+                  **{key: draw(cloud_numbers) for key in CAMERAS_NUMBERS}},
+        "image": {"fallback": draw(st.lists(st.sampled_from(names), min_size=1,
+                                            max_size=len(names), unique=True)),
+                  "expected_minutes": draw(cloud_numbers), "cap_minutes": draw(cloud_numbers)},
         "upload_margin_minutes": draw(cloud_numbers),
         "poll_seconds": draw(cloud_numbers),
         "ipv4_usd_per_hour": draw(cloud_numbers),
         "gp3_usd_per_gb_month": draw(cloud_numbers),
         "root_gb": draw(cloud_numbers),
         "smoke_instance_type": draw(st.sampled_from(names)),
-        "image_builder_type": draw(st.sampled_from(names)),
         "base_ami_parameter": draw(cloud_text),
     }
 
 
 def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], str]]:
-    """Every single-key corruption target in `mapping`, as (path, category). "whole" is vcpus (a
-    TOML integer); "table" is a sub-table (types, presets, smoke, image)."""
+    """Every single-key corruption target in `mapping`, as (path, category). "whole" is a TOML
+    integer (vcpus, the smoke scene's Gaussian count and image size, the training check's seven
+    numbers, the depth check's depth_normal_start_step and the cameras check's three whole ones);
+    "table" is a sub-table (types, presets, smoke, image)."""
     targets: list[tuple[tuple[str, ...], str]] = [
         (("upload_margin_minutes",), "number"),
         (("poll_seconds",), "number"),
@@ -274,8 +398,8 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
         (("gp3_usd_per_gb_month",), "number"),
         (("root_gb",), "number"),
         (("smoke_instance_type",), "string"),
-        (("image_builder_type",), "string"),
         (("base_ami_parameter",), "string"),
+        (("image", "fallback"), "list"),
         (("types",), "table"),
         (("presets",), "table"),
         (("smoke",), "table"),
@@ -300,6 +424,16 @@ def corruptible_targets(mapping: dict[str, Any]) -> list[tuple[tuple[str, ...], 
             ((which, "expected_minutes"), "number"),
             ((which, "cap_minutes"), "number"),
         ]
+    targets += [
+        (("smoke", "check_timeout_seconds"), "number"),
+        (("smoke", "scene_gaussians"), "whole"),
+        (("smoke", "image_pixels"), "whole"),
+        (("smoke", "video_seconds"), "number"),
+    ]
+    targets += [(("smoke", key), "whole") for key in TRAIN_SMOKE]
+    targets.append((("smoke", "depth_normal_start_step"), "whole"))
+    targets += [(("smoke", key), "whole") for key in CAMERAS_WHOLE]
+    targets += [(("smoke", key), "number") for key in CAMERAS_NUMBERS]
     return targets
 
 

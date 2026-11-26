@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Marks the viewer's .js files as ES modules for Node's test runner. No dependencies, so no lock file: the engine comes from scripts/fetch_viewer_engine.py."
+}

@@ -127,6 +127,7 @@ ABOVE_0 = Range("a number above 0", outside=(0,), ends=())
 
 # The whole-number settings of Req 6.7, then the number settings of Req 6.8, each with its range.
 WHOLE_NUMBERS = {
+    "min_seen_frames": WHOLE_ABOVE_0,
     "min_kept_splats": WHOLE_ABOVE_0,
     "max_source_splats": WHOLE_ABOVE_0,
     "neighbours": WHOLE_ABOVE_0,

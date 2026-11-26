@@ -7,13 +7,16 @@ the way pipeline-core skips a test that needs ffprobe. There is no network and n
 - `uncommitted` lists the given paths that have a change: a dirtied `splatpipe/`, `cloud/` or
   `config.toml` is reported, and a clean repo reports none (Req 7.3).
 - `head_commit` returns HEAD's commit sha, and `archive_head` writes a real `git archive HEAD` tar
-  holding HEAD's files (Req 7.4).
+  holding HEAD's files (Req 7.4), byte for byte as committed even when core.autocrlf is on, so the
+  archived lockfiles match `lock_hashes` (Req 10.9).
 - `lock_hashes` reads HEAD's committed lockfile blobs, so its digest for a lockfile changes once a
   change to that file is committed, while the other lockfile's digest stays put (Req 7.5, 7.6).
 """
 
 from __future__ import annotations
 
+import hashlib
+import io
 import re
 import subprocess
 import tarfile
@@ -21,9 +24,12 @@ from pathlib import Path
 
 import pytest
 
-from cloud.repo import archive_head, head_commit, lock_hashes, uncommitted
+from cloud.repo import archive_head, head_commit, head_file, lock_hashes, uncommitted
 
 from fake_aws import git_repo
+
+# The lockfiles the machine's drift check hashes, in lock_hashes' order.
+LOCK_FILES = ("uv.lock", "package-lock.json")
 
 # The paths the Start_Command passes to `uncommitted`: the pipeline code, the cloud code and the
 # one settings file. `git_repo` commits a file under each, so dirtying one leaves the others clean.
@@ -73,6 +79,33 @@ def test_archive_head_writes_a_tar_of_head(tmp_path: Path) -> None:
             "package-lock.json"} <= names
 
 
+def test_archive_head_keeps_heads_bytes_when_autocrlf_is_on(tmp_path: Path) -> None:
+    """With core.autocrlf on, as Git for Windows sets it by default, a plain git archive turns every
+    LF into CRLF. `archive_head` turns it off for its own command, so the archived lockfiles keep
+    HEAD's bytes and match the hashes `lock_hashes` takes, which the machine's drift check compares
+    (Req 7.4, 10.9)."""
+    root = git_repo(tmp_path)
+    # Lockfiles with LF line endings, committed as they are, like the real ones. They're written as
+    # bytes, because write_text writes CRLF on Windows.
+    (root / "uv.lock").write_bytes(b"version = 1\nrevision = 3\n")
+    (root / "package-lock.json").write_bytes(b'{\n  "lockfileVersion": 3\n}\n')
+    _commit(root, *LOCK_FILES)
+    _git_in(root, "config", "core.autocrlf", "true")  # the repo's own config beats the user's
+    # A plain archive does turn the line endings here, so this test shows the override matters.
+    plain = _git_in(root, "archive", "--format=tar", "HEAD", "uv.lock")
+    assert b"\r\n" in _tar_files(plain, ("uv.lock",))["uv.lock"]
+
+    dest = tmp_path / "code.tar"
+    archive_head(dest, cwd=root)
+
+    archived = _tar_files(dest.read_bytes(), LOCK_FILES)
+    for name in LOCK_FILES:
+        assert archived[name] == head_file(name, cwd=root)
+        assert b"\r\n" not in archived[name]
+    assert lock_hashes(cwd=root) == tuple(
+        hashlib.sha256(archived[name]).hexdigest() for name in LOCK_FILES)
+
+
 def test_lock_hashes_change_when_a_lockfile_changes(tmp_path: Path) -> None:
     """A committed lockfile change moves that file's digest and leaves the other's (Req 7.5, 7.6)."""
     root = git_repo(tmp_path)
@@ -91,6 +124,22 @@ def test_lock_hashes_change_when_a_lockfile_changes(tmp_path: Path) -> None:
     after = lock_hashes(cwd=root)
     assert after[0] != before[0]
     assert after[1] == before[1]
+
+
+def _git_in(root: Path, *args: str) -> bytes:
+    """Run one git command in the test repo and give back its stdout, raising when it fails."""
+    result = subprocess.run(["git", *args], cwd=root, capture_output=True)
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"git {args[0]} failed in the test repo: {detail}")
+    return result.stdout
+
+
+def _tar_files(data: bytes, names: tuple[str, ...]) -> dict[str, bytes]:
+    """The bytes of the named files in a tar held in `data`."""
+    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+        files = {name: tar.extractfile(name) for name in names}
+        return {name: handle.read() for name, handle in files.items() if handle is not None}
 
 
 def _commit(root: Path, *files: str) -> None:

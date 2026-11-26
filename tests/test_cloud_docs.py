@@ -1,9 +1,13 @@
 """Tests for the cloud-jobs dependencies and docs (cloud-jobs tasks 1 and 9).
 
 Each test reads the real file at the repo root. The task-1 part checks what `uv sync` and `npm ci`
-would install and what `docs/third-party-licences.md` records. The task-9 part checks the cloud-run
+would install and what `docs/third-party-licences.md` records, down to a row for each Python package
+the machine image adds on top of uv.lock, and that rules.md's exception for torch's CUDA wheels
+covers torchvision's and triton's. The task-9 part checks the cloud-run
 write-up in `docs/pipeline.md`, the README's "Run your own copy" section, and the quota-based
 admission, one-yes and redaction updates in the Tech_Steering and the aws-jobs skill (Req 15).
+The depth-priors spec's Step_Needs test also reads the real config.toml by path, so the sentence on
+the depth step's need gives the real [depth] and [train] numbers (depth-priors Req 17.6).
 These run on the CPU with no network.
 """
 
@@ -12,8 +16,12 @@ import re
 import tomllib
 from pathlib import Path
 
+from splatpipe.config import PRESETS
+
 ROOT = Path(__file__).resolve().parents[1]  # this file is in tests/, at the repo root
 PYPROJECT = ROOT / "pyproject.toml"
+# Read by path, because tests/conftest.py points splatpipe.config.CONFIG_PATH at a test config.
+REAL_CONFIG = ROOT / "config.toml"
 PACKAGE_JSON = ROOT / "package.json"
 PACKAGE_LOCK = ROOT / "package-lock.json"
 LICENCE_LIST = ROOT / "docs" / "third-party-licences.md"
@@ -140,15 +148,80 @@ def test_the_splat_transform_row_covers_every_npm_licence_in_the_lockfile() -> N
         "add a Licence_List row for any npm package its licence doesn't cover (Req 14.4)")
 
 
+# The Python packages the machine image installs on top of uv.lock, other than the ones its install
+# script names (torch, torchvision, setuptools, wheel, ninja, gsplat and fused-ssim), which have rows
+# of their own. The list is uv pip compile's, for Linux x86_64 and Python 3.11, with torch and
+# torchvision resolved against PyTorch's cu128 index, as the image installs them.
+IMAGE_PACKAGES = (
+    "triton",
+    "nvidia-cublas-cu12", "nvidia-cuda-cupti-cu12", "nvidia-cuda-nvrtc-cu12",
+    "nvidia-cuda-runtime-cu12", "nvidia-cudnn-cu12", "nvidia-cufft-cu12", "nvidia-cufile-cu12",
+    "nvidia-curand-cu12", "nvidia-cusolver-cu12", "nvidia-cusparse-cu12", "nvidia-cusparselt-cu12",
+    "nvidia-nccl-cu12", "nvidia-nvjitlink-cu12", "nvidia-nvtx-cu12",
+    "filelock", "fsspec", "jinja2", "markupsafe", "networkx", "sympy", "mpmath",
+    "typing-extensions", "pillow", "packaging",
+    "jaxtyping", "wadler-lindig", "rich", "markdown-it-py", "mdurl", "pygments",
+)
+RULES_STEERING = ROOT / ".kiro" / "steering" / "rules.md"
+
+
+def image_package_row(package: str) -> dict[str, str]:
+    """The Licence_List's one row for an image package: its Name cell is the package's name, alone
+    or followed by the version the image gets."""
+    header, *rows = table_rows(LICENCE_LIST.read_text(encoding="utf-8"))
+    matches = [dict(zip(header, row, strict=True)) for row in rows
+               if row[0] == package or row[0].startswith(f"{package} ")]
+    assert len(matches) == 1, f"the Licence_List should have one {package!r} row, not {len(matches)}"
+    return matches[0]
+
+
+def test_the_licence_list_has_a_row_for_each_python_package_the_image_adds() -> None:
+    for package in IMAGE_PACKAGES:
+        row = image_package_row(package)
+        assert row["Licence"], f"the {package!r} row should name a licence"
+        assert "Comes in through" in row["How we use it"], (
+            f"the {package!r} row should say which package pulls it in")
+        assert "Cloud image only" in row["How we use it"], (
+            f"the {package!r} row should say it's on the machine image only")
+        assert row["Installed"] == "Not yet"
+
+
+def test_the_nvidia_rows_and_triton_fall_under_the_exception_for_torchs_cuda_wheels() -> None:
+    for package in IMAGE_PACKAGES:
+        if package.startswith("nvidia-") or package == "triton":
+            assert "exception for torch's CUDA wheels" in image_package_row(package)["Licence"]
+    licence = image_package_row("triton")["Licence"]
+    for bundled in ("ptxas", "cuobjdump", "nvdisasm", "CUPTI"):
+        assert bundled in licence, f"the triton row should name the {bundled} its wheel bundles"
+
+
+def test_the_rules_cuda_exception_covers_torchvision_and_triton_on_the_image_only() -> None:
+    exception = next(line for line in RULES_STEERING.read_text(encoding="utf-8").splitlines()
+                     if line.startswith("- torch's CUDA wheels:"))
+    for part in ("torchvision", "nvJPEG", "triton", "ptxas", "CUPTI", "Samarth",
+                 "Only on the cloud machine image"):
+        assert part in exception, f"rules.md's CUDA wheel exception should name {part!r}"
+
+
+def test_the_pillow_row_notes_the_libraries_its_wheels_bundle() -> None:
+    licence = image_package_row("pillow")["Licence"]
+    assert licence.startswith("MIT-CMU")
+    for library in ("FreeType", "HarfBuzz", "libjpeg-turbo", "libpng", "libtiff", "libwebp",
+                    "libavif", "OpenJPEG", "zstd", "zlib"):
+        assert library in licence, f"the pillow row should note its bundled {library}"
+
+
 # --- Task 9: the doc, steering and skill checks (Req 15) ---------------------------------------
 
 # The per-Step Step_Needs plan of Requirement 2's note, as {Step: substrings the row must contain}.
+# The training spec (Req 13.10, 13.15) gave the Training row its needs and renamed the clean
+# step's row Clean. The depth-priors spec (Req 17.6) keeps the Depth priors row's 16 GB.
 STEP_NEEDS_PLAN = {
     "Picking frames": ("16 vCPUs", "16 GB RAM"),
     "Solving cameras": ("16 vCPUs", "16 GB RAM"),
     "Depth priors": ("GPU", "16 GB VRAM"),
-    "Training": ("GPU", "32 GB RAM"),
-    "Clean and export": ("8 vCPUs", "8 GB RAM"),
+    "Training": ("4 vCPUs", "32 GB RAM", "24 GB", "48 GB"),
+    "Clean": ("8 vCPUs", "8 GB RAM"),
 }
 
 
@@ -206,6 +279,30 @@ def test_the_pipeline_doc_records_the_per_step_step_needs_plan() -> None:
                 f"the {step!r} Step_Needs row should say {need!r}, not {rows[step]!r}")
 
 
+# The depth-priors spec's sentence after the Step_Needs table (Req 17.6).
+DEPTH_NEED = ("The depth step's need is `min_gpu_memory_gb` in `[depth]`, 16, which the train "
+              "step's 24 GB already covers.")
+
+
+def test_the_step_needs_paragraph_says_the_depth_steps_need_lives_in_depth() -> None:
+    """Depth-priors spec, Req 17.6: the Depth priors row keeps a GPU with 16 GB VRAM, and the
+    paragraph after the table says that the need is `min_gpu_memory_gb` in `[depth]`. The two
+    numbers in that sentence are the real config's: 16 in `[depth]`, and 24, the smallest
+    `min_gpu_memory_gb` of the real `[train]`'s presets."""
+    assert "16 GB VRAM" in STEP_NEEDS_PLAN["Depth priors"], (
+        "STEP_NEEDS_PLAN's Depth priors row should keep its 16 GB VRAM")
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    rows = {cells[0]: cells[1] for cells in table_rows(section) if len(cells) == 2}
+    assert rows["Depth priors"] == "a GPU with 16 GB VRAM", (
+        f"the Depth priors Step_Needs row should say 'a GPU with 16 GB VRAM', not "
+        f"{rows['Depth priors']!r}")
+    assert DEPTH_NEED in section, (
+        f"the paragraph after the Step_Needs table should say {DEPTH_NEED!r}")
+    config = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))
+    assert config["depth"]["min_gpu_memory_gb"] == 16
+    assert min(config["train"][preset]["min_gpu_memory_gb"] for preset in PRESETS) == 24
+
+
 def test_the_pipeline_doc_says_the_cloud_run_is_not_a_step() -> None:
     """Req 15.7: the cloud run is not a Step and adds no Step_List entry."""
     section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
@@ -220,7 +317,7 @@ def test_the_readme_has_the_run_your_own_copy_section() -> None:
     section = markdown_section(README.read_text(encoding="utf-8"), "Run your own copy")
     assert "GPU quota" in section, (
         "the Run your own copy section should list an AWS account with GPU quota")
-    for figure in ("$1.20", "45 min"):
+    for figure in ("$3", "75 min"):
         assert figure in section, (
             f"the Run your own copy section should give the image-build estimate {figure!r}")
     assert "estimate" in section.lower(), (

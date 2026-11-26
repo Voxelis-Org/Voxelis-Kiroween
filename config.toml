@@ -70,8 +70,6 @@ gp3_usd_per_gb_month = 0.08
 root_gb = 150
 # The instance type the smoke test runs on.
 smoke_instance_type = "g5.xlarge"
-# The instance type the image build runs on.
-image_builder_type = "g5.4xlarge"
 # The public SSM parameter that holds the current Base_AMI id.
 base_ami_parameter = "/aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-24.04/latest/ami-id"
 
@@ -203,9 +201,49 @@ cap_minutes = 360
 expected_minutes = 10
 # The Time_Cap in minutes.
 cap_minutes = 30
+# Longest time each of the smoke machine's command checks (ffmpeg, COLMAP, Node, splat-transform) may take, in seconds.
+check_timeout_seconds = 60
+# Gaussians in the tiny synthetic scene the smoke machine renders with gsplat.
+scene_gaussians = 256
+# Width and height in pixels of the smoke machine's render, its SSIM images and its test video.
+image_pixels = 64
+# Length of the test video the smoke machine makes its fake-step job from, in seconds. At least [jobs].min_used_seconds.
+video_seconds = 4
+# Images in the smoke machine's tiny training scene, each image_pixels square.
+train_images = 4
+# Points the smoke machine's training scene starts from.
+train_points = 200
+# Most splats the smoke machine's training may grow to, its splat budget.
+train_splats = 400
+# Iterations the smoke machine trains for.
+train_steps = 30
+# Iteration after which the smoke training's MCMC starts refining.
+train_refine_start_step = 10
+# Iterations between the smoke training's refines.
+train_refine_every = 10
+# Iterations between each rise of the smoke training's spherical harmonics degree.
+train_sh_degree_interval = 5
+# Iteration at which the depth check's prior normal loss starts, so every prior loss runs within train_steps.
+depth_normal_start_step = 8
+# Made-up picks the smoke machine's cameras check solves with COLMAP.
+cameras_frames = 30
+# Width of the cameras check's made-up picks, in pixels.
+cameras_width = 320
+# Height of the cameras check's made-up picks, in pixels.
+cameras_height = 240
+# True focal length of the cameras check's made-up picks, in pixels.
+cameras_focal_pixels = 260.0
+# Smallest share of the made-up picks the cameras check's solve must place, from 0 to 1.
+cameras_placed_share = 0.8
+# How far the solved focal length may be from cameras_focal_pixels, as a share of it.
+cameras_focal_tolerance = 0.02
+# Longest time each COLMAP command of the cameras check's solve may run, in seconds.
+cameras_timeout_seconds = 600
 [cloud.image]
+# The image builder's types, tried in order like a preset's fallback, each in its zones in turn. Only A10G (g5) types, because fused-ssim compiles for the builder's own GPU.
+fallback = ["g5.8xlarge", "g5.4xlarge"]
 # Expected run time in minutes, for the money quote.
-expected_minutes = 45
+expected_minutes = 75
 # The Time_Cap in minutes.
 cap_minutes = 120
 [frames]
@@ -266,6 +304,568 @@ base_picks = 150
 # Fewest picks the step aims for.
 base_picks = 200
 
+[cameras]
+# The step's own settings.
+# --ImageReader.camera_model: the camera every pick shares, "RADIAL" (one focal length, for square pixels), or "RADIAL_FISHEYE" for very wide lenses.
+camera_model = "RADIAL"
+# Field of view across the long edge, in degrees, that a RADIAL_FISHEYE camera starts from.
+fisheye_fov_degrees = 120.0
+# --SequentialMatching.overlap of the far match run: pick i meets pick i + 2^k for k from 0 to this - 1.
+far_overlap = 10
+# Fewest picks the solved cameras must place.
+min_placed_frames = 20
+# Smallest share of the picks the solved cameras must place, from 0 to 1.
+min_placed_share = 0.5
+# Shortest mean up vector, from 0 to 1, at which the cameras agree on which way is up.
+up_agreement = 0.5
+# The point nearest the view lines counts when its system's smallest eigenvalue is at least this share of the largest.
+axis_point_min_eigen_share = 0.1
+# The point nearest the view lines counts when it's in front of at least this share of the cameras.
+axis_point_min_front_share = 0.5
+# A camera looking within this many degrees of straight up or down has no heading.
+heading_min_degrees = 10.0
+# Longest time colmap feature_extractor may run, in seconds.
+feature_extractor_timeout_seconds = 900
+# Longest time each of the two colmap sequential_matcher runs may take, in seconds.
+sequential_matcher_timeout_seconds = 1800
+# Longest time colmap view_graph_calibrator may run, in seconds.
+view_graph_calibrator_timeout_seconds = 600
+# Longest time colmap global_mapper may run, in seconds.
+global_mapper_timeout_seconds = 1800
+# Longest time colmap mapper, the incremental mapper, may run, in seconds.
+mapper_timeout_seconds = 3600
+# Longest time colmap image_undistorter may run, in seconds.
+image_undistorter_timeout_seconds = 600
+# Longest time colmap image_undistorter_standalone, which warps the mask, may run, in seconds.
+image_undistorter_standalone_timeout_seconds = 120
+# vCPUs the job's cloud machine should have for this step, a soft need. The step never checks it.
+min_vcpus = 16
+# Least memory the job's cloud machine needs for this step, in GB, a hard need. The step never checks it.
+min_memory_gb = 16
+
+# Every COLMAP command.
+# --default_random_seed: the seed each COLMAP thread's random generator starts from.
+default_random_seed = 0
+
+# colmap feature_extractor.
+# --descriptor_normalization: how SIFT descriptors are normalised, "l1_root" or "l2".
+feature_extractor_descriptor_normalization = "l1_root"
+# --ImageReader.existing_camera_id: -1 makes a new camera instead of reusing one in the database.
+image_reader_existing_camera_id = -1
+# --ImageReader.default_focal_length_factor: the starting focal length, as this times the long edge.
+image_reader_default_focal_length_factor = 1.2
+# --FeatureExtraction.num_threads: threads for SIFT, -1 for every core.
+feature_extraction_num_threads = -1
+# --FeatureExtraction.max_image_size: longer picks are scaled down to this before SIFT, in pixels.
+feature_extraction_max_image_size = 3200
+# --SiftExtraction.max_num_features: most SIFT features kept per pick.
+sift_extraction_max_num_features = 8192
+# --SiftExtraction.first_octave: -1 doubles each pick first, which finds more small features.
+sift_extraction_first_octave = -1
+# --SiftExtraction.num_octaves: octaves in SIFT's scale space.
+sift_extraction_num_octaves = 4
+# --SiftExtraction.octave_resolution: levels per octave.
+sift_extraction_octave_resolution = 3
+# --SiftExtraction.peak_threshold: contrast a feature needs, 0.02 / 3. Change it with octave_resolution.
+sift_extraction_peak_threshold = 0.006666666666666667
+# --SiftExtraction.edge_threshold: features more edge-like than this are dropped.
+sift_extraction_edge_threshold = 10.0
+# --SiftExtraction.estimate_affine_shape: fit an affine shape to each feature. Slower, more matches.
+sift_extraction_estimate_affine_shape = false
+# --SiftExtraction.max_num_orientations: most orientations per feature.
+sift_extraction_max_num_orientations = 2
+# --SiftExtraction.upright: give every feature the upright orientation.
+sift_extraction_upright = false
+# --SiftExtraction.domain_size_pooling: DSP-SIFT descriptors. Slower, more matches.
+sift_extraction_domain_size_pooling = false
+# --SiftExtraction.dsp_min_scale: smallest scale DSP-SIFT pools over, 1 / 6.
+sift_extraction_dsp_min_scale = 0.16666666666666666
+# --SiftExtraction.dsp_max_scale: largest scale DSP-SIFT pools over.
+sift_extraction_dsp_max_scale = 3.0
+# --SiftExtraction.dsp_num_scales: scales DSP-SIFT pools over.
+sift_extraction_dsp_num_scales = 10
+
+# colmap sequential_matcher, the same for both runs.
+# --FeatureMatching.num_threads: threads for matching, -1 for every core.
+feature_matching_num_threads = -1
+# --FeatureMatching.guided_matching: a second pass guided by each pair's geometry. Slower, more matches.
+feature_matching_guided_matching = false
+# --FeatureMatching.skip_geometric_verification: keep the raw matches without checking their geometry.
+feature_matching_skip_geometric_verification = false
+# --FeatureMatching.rig_verification: check pairs as camera rigs. Each pick here is its own frame.
+feature_matching_rig_verification = false
+# --FeatureMatching.skip_image_pairs_in_same_frame: don't match the images of one rig frame.
+feature_matching_skip_image_pairs_in_same_frame = false
+# --FeatureMatching.max_num_matches: most matches kept per pair.
+feature_matching_max_num_matches = 32768
+# --SiftMatching.max_ratio: ratio test between the best and the second-best match.
+sift_matching_max_ratio = 0.8
+# --SiftMatching.max_distance: largest descriptor distance a match may have.
+sift_matching_max_distance = 0.7
+# --SiftMatching.cross_check: keep only the matches that agree both ways.
+sift_matching_cross_check = true
+# --SiftMatching.cpu_brute_force_matcher: compare every pair of descriptors instead of using the faiss index.
+sift_matching_cpu_brute_force_matcher = false
+# --TwoViewGeometry.min_num_inliers: pairs with fewer inliers are marked degenerate.
+two_view_geometry_min_num_inliers = 15
+# --TwoViewGeometry.multiple_models: look for more than one geometry per pair.
+two_view_geometry_multiple_models = false
+# --TwoViewGeometry.compute_relative_pose: work out each pair's relative pose while checking it.
+two_view_geometry_compute_relative_pose = false
+# --TwoViewGeometry.detect_watermark: mark the pairs whose matches look like a watermark.
+two_view_geometry_detect_watermark = true
+# --TwoViewGeometry.multiple_ignore_watermark: with multiple_models, leave out watermark geometries.
+two_view_geometry_multiple_ignore_watermark = true
+# --TwoViewGeometry.watermark_detection_max_error: inlier threshold of the watermark test, in pixels.
+two_view_geometry_watermark_detection_max_error = 4.0
+# --TwoViewGeometry.filter_stationary_matches: drop matches that sit at the same pixel in both picks.
+two_view_geometry_filter_stationary_matches = false
+# --TwoViewGeometry.stationary_matches_max_error: how close counts as the same pixel, in pixels.
+two_view_geometry_stationary_matches_max_error = 4.0
+# --TwoViewGeometry.use_degensac: use DEGENSAC for the fundamental matrix.
+two_view_geometry_use_degensac = false
+# --TwoViewGeometry.use_sampson_refinement: refine each geometry on the Sampson error.
+two_view_geometry_use_sampson_refinement = true
+# --TwoViewGeometry.max_error: RANSAC's inlier threshold, in pixels.
+two_view_geometry_max_error = 4.0
+# --TwoViewGeometry.confidence: RANSAC's confidence, above 0 and at most 1.
+two_view_geometry_confidence = 0.999
+# --TwoViewGeometry.max_num_trials: most RANSAC trials per pair.
+two_view_geometry_max_num_trials = 10000
+# --TwoViewGeometry.min_inlier_ratio: pairs with a smaller inlier share are marked degenerate. 0 is off.
+two_view_geometry_min_inlier_ratio = 0.0
+# --TwoViewGeometry.random_seed: RANSAC's seed, so the pair checks repeat. -1 uses the thread generators.
+two_view_geometry_random_seed = 0
+# --SequentialMatching.expand_rig_images: also match each rig frame's other images. Each pick is its own frame.
+sequential_matching_expand_rig_images = true
+
+# colmap view_graph_calibrator.
+# --cross_validate_prior_focal_lengths: check trusted focal lengths against the pairs.
+view_graph_calibrator_cross_validate_prior_focal_lengths = true
+# --min_calibrated_pair_ratio: share of a camera's pairs that must be calibrated already for that check.
+view_graph_calibrator_min_calibrated_pair_ratio = 0.5
+# --reestimate_relative_pose: refit each kept pair's relative pose with the new focal length.
+view_graph_calibrator_reestimate_relative_pose = true
+# --min_focal_length_ratio: estimates below this share of the starting focal length are rejected.
+view_graph_calibrator_min_focal_length_ratio = 0.1
+# --max_focal_length_ratio: estimates above this many times the starting focal length are rejected.
+view_graph_calibrator_max_focal_length_ratio = 10.0
+# --max_calibration_error: pairs with a larger calibration error are marked degenerate.
+view_graph_calibrator_max_calibration_error = 2.0
+# --relpose_max_error: inlier threshold of the relative pose refit, in pixels.
+view_graph_calibrator_relpose_max_error = 1.0
+# --relpose_min_num_inliers: fewest inliers a refitted pair keeps.
+view_graph_calibrator_relpose_min_num_inliers = 30
+# --relpose_min_inlier_ratio: smallest inlier share a refitted pair keeps.
+view_graph_calibrator_relpose_min_inlier_ratio = 0.25
+
+# colmap global_mapper.
+# --GlobalMapper.min_num_matches: pairs with fewer inlier matches are left out.
+global_mapper_min_num_matches = 15
+# --GlobalMapper.ignore_watermarks: leave out the pairs marked as watermarks.
+global_mapper_ignore_watermarks = false
+# --GlobalMapper.num_threads: threads, -1 for every core.
+global_mapper_num_threads = -1
+# --GlobalMapper.random_seed: seed of rotation averaging, positioning and retriangulation. -1 uses the clock.
+global_mapper_random_seed = 0
+# --GlobalMapper.decompose_relative_pose: work out each pair's relative pose from its geometry first.
+global_mapper_decompose_relative_pose = true
+# --GlobalMapper.multiple_models: one model per connected part of the view graph.
+global_mapper_multiple_models = true
+# --GlobalMapper.min_model_size: models with fewer placed frames are dropped.
+global_mapper_min_model_size = 3
+# --GlobalMapper.ba_num_iterations: rounds of bundle adjustment.
+global_mapper_ba_num_iterations = 3
+# --GlobalMapper.skip_rotation_averaging: skip rotation averaging.
+global_mapper_skip_rotation_averaging = false
+# --GlobalMapper.skip_track_establishment: skip building the tracks.
+global_mapper_skip_track_establishment = false
+# --GlobalMapper.skip_global_positioning: skip global positioning.
+global_mapper_skip_global_positioning = false
+# --GlobalMapper.skip_bundle_adjustment: skip bundle adjustment.
+global_mapper_skip_bundle_adjustment = false
+# --GlobalMapper.skip_retriangulation: skip retriangulation.
+global_mapper_skip_retriangulation = false
+# --GlobalMapper.track_intra_image_consistency_threshold: most pixels between a track's points in one picture.
+global_mapper_track_intra_image_consistency_threshold = 10.0
+# --GlobalMapper.track_required_tracks_per_view: tracks per frame that end the track building. 2147483647 is no limit.
+global_mapper_track_required_tracks_per_view = 2147483647
+# --GlobalMapper.track_min_num_views_per_track: fewest frames a track must be seen in.
+global_mapper_track_min_num_views_per_track = 3
+# --GlobalMapper.track_max_num_views_per_track: tracks seen in more frames are dropped.
+global_mapper_track_max_num_views_per_track = 100
+# --GlobalMapper.keep_max_num_tracks: most tracks kept, the longest first. 2147483647 is no limit.
+global_mapper_keep_max_num_tracks = 2147483647
+# --GlobalMapper.gp_optimize_positions: global positioning moves the camera positions.
+global_mapper_gp_optimize_positions = true
+# --GlobalMapper.gp_optimize_points: global positioning moves the points.
+global_mapper_gp_optimize_points = true
+# --GlobalMapper.gp_optimize_scales: global positioning fits the scales.
+global_mapper_gp_optimize_scales = true
+# --GlobalMapper.gp_loss_function_scale: scale of the loss that damps outliers in global positioning.
+global_mapper_gp_loss_function_scale = 0.1
+# --GlobalMapper.gp_max_num_iterations: most solver iterations in global positioning.
+global_mapper_gp_max_num_iterations = 100
+# --GlobalMapper.ba_refine_focal_length: bundle adjustment refines the focal length.
+global_mapper_ba_refine_focal_length = true
+# --GlobalMapper.ba_refine_principal_point: bundle adjustment refines the principal point.
+global_mapper_ba_refine_principal_point = false
+# --GlobalMapper.ba_refine_extra_params: bundle adjustment refines the distortion. Must be true: the undistortion needs it.
+global_mapper_ba_refine_extra_params = true
+# --GlobalMapper.refine_sensor_from_rig: refine each camera's place in its rig. Each pick is its own frame.
+global_mapper_refine_sensor_from_rig = true
+# --GlobalMapper.ba_refine_rig_from_world: bundle adjustment refines the frames' poses.
+global_mapper_ba_refine_rig_from_world = true
+# --GlobalMapper.ba_refine_points3D: bundle adjustment refines the points.
+global_mapper_ba_refine_points3d = true
+# --GlobalMapper.ba_min_track_length: points seen in fewer frames stay out of bundle adjustment.
+global_mapper_ba_min_track_length = 3
+# --GlobalMapper.ba_ceres_loss_function_scale: scale of the loss that damps outliers in bundle adjustment.
+global_mapper_ba_ceres_loss_function_scale = 1.0
+# --GlobalMapper.ba_ceres_max_num_iterations: most solver iterations per bundle adjustment.
+global_mapper_ba_ceres_max_num_iterations = 200
+# --GlobalMapper.ba_skip_fixed_rotation_stage: skip the bundle adjustment stage that holds the rotations fixed.
+global_mapper_ba_skip_fixed_rotation_stage = false
+# --GlobalMapper.ba_skip_joint_optimization_stage: skip the stage that refines everything together.
+global_mapper_ba_skip_joint_optimization_stage = false
+# --GlobalMapper.tri_complete_max_reproj_error: retriangulation's largest error to complete a track, in pixels.
+global_mapper_tri_complete_max_reproj_error = 15.0
+# --GlobalMapper.tri_merge_max_reproj_error: retriangulation's largest error to merge two tracks, in pixels.
+global_mapper_tri_merge_max_reproj_error = 15.0
+# --GlobalMapper.tri_min_angle: retriangulation's smallest triangulation angle, in degrees.
+global_mapper_tri_min_angle = 1.0
+# --GlobalMapper.ra_use_gravity: rotation averaging uses gravity priors. The picks have none.
+global_mapper_ra_use_gravity = false
+# --GlobalMapper.ra_use_stratified: with gravity priors, solve the gravity-only pairs first.
+global_mapper_ra_use_stratified = true
+# --GlobalMapper.ra_max_rotation_error_deg: pairs off the averaged rotations by more are cut, in degrees. 0 keeps all.
+global_mapper_ra_max_rotation_error_deg = 10.0
+# --GlobalMapper.ra_reweighting: how rotation averaging weighs the pairs, "UNIFORM" or "INLIER_MATCH_COUNT".
+global_mapper_ra_reweighting = "UNIFORM"
+# --GlobalMapper.max_angular_reproj_error_deg: global positioning's outlier threshold, in degrees.
+global_mapper_max_angular_reproj_error_deg = 1.0
+# --GlobalMapper.max_normalized_reproj_error: bundle adjustment's outlier threshold, in normalised image units.
+global_mapper_max_normalized_reproj_error = 0.01
+# --GlobalMapper.min_tri_angle_deg: smallest triangulation angle a point keeps, in degrees.
+global_mapper_min_tri_angle_deg = 1.0
+
+# colmap mapper, the incremental mapper.
+# --Mapper.min_num_matches: pairs with fewer inlier matches are left out.
+mapper_min_num_matches = 15
+# --Mapper.ignore_watermarks: leave out the pairs marked as watermarks.
+mapper_ignore_watermarks = false
+# --Mapper.multiple_models: start a new model from the picks the first couldn't place.
+mapper_multiple_models = true
+# --Mapper.max_num_models: most models.
+mapper_max_num_models = 50
+# --Mapper.max_model_overlap: most frames a new model may share with the earlier ones.
+mapper_max_model_overlap = 20
+# --Mapper.min_model_size: later models with fewer placed frames are dropped.
+mapper_min_model_size = 10
+# --Mapper.init_image_id1: image id of the starting pair's first picture, -1 to let the mapper choose.
+mapper_init_image_id1 = -1
+# --Mapper.init_image_id2: image id of the starting pair's second picture, -1 to let the mapper choose.
+mapper_init_image_id2 = -1
+# --Mapper.init_num_trials: most tries to find a starting pair.
+mapper_init_num_trials = 200
+# --Mapper.structure_less_registration_fallback: place a frame from its matches alone when its points can't.
+mapper_structure_less_registration_fallback = true
+# --Mapper.structure_less_registration_only: place frames only from their matches.
+mapper_structure_less_registration_only = false
+# --Mapper.extract_colors: give the points their colours from the colour picks.
+mapper_extract_colors = true
+# --Mapper.num_threads: threads, -1 for every core.
+mapper_num_threads = -1
+# --Mapper.random_seed: the mapper's seed, so runs repeat. -1 uses the thread generators.
+mapper_random_seed = 0
+# --Mapper.min_focal_length_ratio: frames whose focal length falls below this share of the start are filtered out.
+mapper_min_focal_length_ratio = 0.1
+# --Mapper.max_focal_length_ratio: frames whose focal length rises above this many times the start are filtered out.
+mapper_max_focal_length_ratio = 10.0
+# --Mapper.max_extra_param: frames whose distortion goes past this are filtered out.
+mapper_max_extra_param = 1.0
+# --Mapper.ba_refine_focal_length: bundle adjustment refines the focal length.
+mapper_ba_refine_focal_length = true
+# --Mapper.ba_refine_principal_point: bundle adjustment refines the principal point.
+mapper_ba_refine_principal_point = false
+# --Mapper.ba_refine_extra_params: bundle adjustment refines the distortion. Must be true: the undistortion needs it.
+mapper_ba_refine_extra_params = true
+# --Mapper.ba_refine_sensor_from_rig: refine each camera's place in its rig. Each pick is its own frame.
+mapper_ba_refine_sensor_from_rig = true
+# --Mapper.ba_local_function_tolerance: Ceres' function tolerance in local bundle adjustment.
+mapper_ba_local_function_tolerance = 0.0
+# --Mapper.ba_local_max_num_iterations: most solver iterations per local bundle adjustment.
+mapper_ba_local_max_num_iterations = 25
+# --Mapper.ba_global_frames_ratio: growth in frames since the last global bundle adjustment that starts the next.
+mapper_ba_global_frames_ratio = 1.1
+# --Mapper.ba_global_points_ratio: growth in points since the last global bundle adjustment that starts the next.
+mapper_ba_global_points_ratio = 1.1
+# --Mapper.ba_global_frames_freq: frames added since the last global bundle adjustment that start the next.
+mapper_ba_global_frames_freq = 500
+# --Mapper.ba_global_points_freq: points added since the last global bundle adjustment that start the next.
+mapper_ba_global_points_freq = 250000
+# --Mapper.ba_global_function_tolerance: Ceres' function tolerance in global bundle adjustment.
+mapper_ba_global_function_tolerance = 0.0
+# --Mapper.ba_global_max_num_iterations: most solver iterations per global bundle adjustment.
+mapper_ba_global_max_num_iterations = 50
+# --Mapper.ba_global_max_refinements: most rounds of global bundle adjustment and filtering.
+mapper_ba_global_max_refinements = 5
+# --Mapper.ba_global_max_refinement_change: those rounds stop when less than this share of observations change.
+mapper_ba_global_max_refinement_change = 0.0005
+# --Mapper.ba_local_max_refinements: most rounds of local bundle adjustment and filtering.
+mapper_ba_local_max_refinements = 2
+# --Mapper.ba_local_max_refinement_change: those rounds stop when less than this share of observations change.
+mapper_ba_local_max_refinement_change = 0.001
+# --Mapper.ba_min_num_residuals_for_cpu_multi_threading: smaller bundle adjustments run on one thread.
+mapper_ba_min_num_residuals_for_cpu_multi_threading = 50000
+# --Mapper.snapshot_frames_freq: write a snapshot every this many frames, 0 for none.
+mapper_snapshot_frames_freq = 0
+# --Mapper.fix_existing_frames: hold a continued model's frames fixed. The step never continues a model.
+mapper_fix_existing_frames = false
+# --Mapper.init_min_num_inliers: inliers the starting pair needs.
+mapper_init_min_num_inliers = 100
+# --Mapper.init_max_error: RANSAC's inlier threshold for the starting pair, in pixels.
+mapper_init_max_error = 4.0
+# --Mapper.init_max_forward_motion: largest share of the starting pair's motion that may point straight ahead.
+mapper_init_max_forward_motion = 0.95
+# --Mapper.init_min_tri_angle: parallax the starting pair needs, in degrees.
+mapper_init_min_tri_angle = 16.0
+# --Mapper.init_max_reg_trials: most tries to start a model from each picture.
+mapper_init_max_reg_trials = 2
+# --Mapper.abs_pose_max_error: RANSAC's inlier threshold to place the next frame, in pixels.
+mapper_abs_pose_max_error = 12.0
+# --Mapper.abs_pose_min_num_inliers: inliers a frame needs to be placed.
+mapper_abs_pose_min_num_inliers = 30
+# --Mapper.abs_pose_min_inlier_ratio: inlier share a frame needs to be placed.
+mapper_abs_pose_min_inlier_ratio = 0.25
+# --Mapper.filter_max_reproj_error: observations with a larger reprojection error are filtered out, in pixels.
+mapper_filter_max_reproj_error = 4.0
+# --Mapper.filter_min_tri_angle: points with a smaller triangulation angle are filtered out, in degrees.
+mapper_filter_min_tri_angle = 1.5
+# --Mapper.max_reg_trials: most tries to place each frame.
+mapper_max_reg_trials = 3
+# --Mapper.ba_local_num_images: frames in each local bundle adjustment.
+mapper_ba_local_num_images = 6
+# --Mapper.ba_local_min_tri_angle: smallest triangulation angle that ties a frame into local bundle adjustment.
+mapper_ba_local_min_tri_angle = 6.0
+# --Mapper.ba_global_ignore_redundant_points3D: leave redundant points out of global bundle adjustment.
+mapper_ba_global_ignore_redundant_points3d = false
+# --Mapper.ba_global_ignore_redundant_points3D_min_coverage_gain: coverage gain below which a point is redundant.
+mapper_ba_global_ignore_redundant_points3d_min_coverage_gain = 0.05
+# --Mapper.max_runtime_seconds: the mapper stops after this long and keeps what it built. -1 is no limit.
+mapper_max_runtime_seconds = -1
+# --Mapper.tri_max_transitivity: how far triangulation follows chains of matches.
+mapper_tri_max_transitivity = 1
+# --Mapper.tri_create_max_angle_error: largest angle error to create a point, in degrees.
+mapper_tri_create_max_angle_error = 2.0
+# --Mapper.tri_continue_max_angle_error: largest angle error to extend a track, in degrees.
+mapper_tri_continue_max_angle_error = 2.0
+# --Mapper.tri_merge_max_reproj_error: largest reprojection error to merge two tracks, in pixels.
+mapper_tri_merge_max_reproj_error = 4.0
+# --Mapper.tri_complete_max_reproj_error: largest reprojection error to complete a track, in pixels.
+mapper_tri_complete_max_reproj_error = 4.0
+# --Mapper.tri_complete_max_transitivity: how far completing a track follows chains of matches.
+mapper_tri_complete_max_transitivity = 5
+# --Mapper.tri_re_max_angle_error: largest angle error when retriangulating, in degrees.
+mapper_tri_re_max_angle_error = 5.0
+# --Mapper.tri_re_min_ratio: frames with less than this share of their matches triangulated are retriangulated.
+mapper_tri_re_min_ratio = 0.2
+# --Mapper.tri_re_max_trials: most retriangulation rounds per frame.
+mapper_tri_re_max_trials = 1
+# --Mapper.tri_min_angle: smallest triangulation angle, in degrees.
+mapper_tri_min_angle = 1.5
+# --Mapper.tri_ignore_two_view_tracks: don't triangulate points seen in only two frames.
+mapper_tri_ignore_two_view_tracks = true
+
+# colmap image_undistorter and image_undistorter_standalone, the same value for both.
+# --copy_policy: how picks that need no warp are copied, "COPY", "SOFT_LINK" or "HARD_LINK".
+undistortion_copy_policy = "COPY"
+# --blank_pixels: 0 crops so no pixel is blank, 1 keeps the whole view with black edges.
+undistortion_blank_pixels = 0.0
+# --min_scale: smallest rescale the crop may need.
+undistortion_min_scale = 0.2
+# --max_scale: largest rescale the crop may need.
+undistortion_max_scale = 2.0
+# --max_image_size: longest edge of the warped pictures, in pixels, -1 for no cap.
+undistortion_max_image_size = -1
+# --roi_min_x: left edge of the crop, as a share of the width.
+undistortion_roi_min_x = 0.0
+# --roi_min_y: top edge of the crop, as a share of the height.
+undistortion_roi_min_y = 0.0
+# --roi_max_x: right edge of the crop, as a share of the width.
+undistortion_roi_max_x = 1.0
+# --roi_max_y: bottom edge of the crop, as a share of the height.
+undistortion_roi_max_y = 1.0
+# --jpeg_quality: JPEG quality of the warped picks, from 1 to 100, or -1 for 100.
+undistortion_jpeg_quality = 100
+# --num_threads: threads, -1 for every core.
+undistortion_num_threads = -1
+
+[cameras.fast]
+# --SequentialMatching.overlap of the near match run: each pick meets the next this many picks.
+near_overlap = 15
+
+[cameras.default]
+# --SequentialMatching.overlap of the near match run: each pick meets the next this many picks.
+near_overlap = 15
+
+[cameras.quality]
+# --SequentialMatching.overlap of the near match run: each pick meets the next this many picks.
+near_overlap = 25
+
+[depth]
+# Longest edge of the depth priors, in pixels. A smaller camera isn't scaled up.
+long_edge = 512
+# The MoGe-2 ViT-B normal weights on the machine image. A test keeps it equal to MOGE_WEIGHTS in cloud/image.py.
+moge_weights = "/opt/models/moge-2-vitb-normal/model.pt"
+# How much detail MoGe-2 sees, from 0 to 9. 9 is MoGe's default, its most detail.
+resolution_level = 9
+# Whether MoGe-2 runs its network in half precision, as it does by default.
+use_fp16 = true
+# Fewest of the camera solve's points a frame needs in each of its two fits to get a depth prior.
+fit_min_points = 10
+# The second fit leaves out the points that miss the first fit by more than this times the median miss.
+fit_miss_ratio = 3
+# A frame gets no depth prior when its median relative depth error is above this.
+fit_max_median_error = 0.15
+# Least GPU memory the job's machine needs for this step, in GB. The step never checks it.
+min_gpu_memory_gb = 16
+
+# Every [depth] setting is shared, so this preset table is empty.
+[depth.fast]
+
+# Every [depth] setting is shared, so this preset table is empty.
+[depth.default]
+
+# Every [depth] setting is shared, so this preset table is empty.
+[depth.quality]
+
+[train]
+# Longest edge of the images the step trains at, in pixels. A smaller camera isn't scaled up.
+long_edge = 1600
+# A training pixel whose mask value, from 0 to 255, is below this is left out of the loss.
+mask_threshold = 128
+# Seed for the random subset of points, the image order and torch's random numbers.
+seed = 42
+# Iterations between each rise of the spherical harmonics degree, which stops at 3.
+sh_degree_interval = 1000
+# The scene's size is this times the cameras' largest distance from their mean position.
+scene_extent_factor = 1.1
+# The renderer leaves out splats nearer a camera than this times the points' median depth.
+near_plane_factor = 0.03
+# Opacity every splat starts at, above 0 and below 1.
+start_opacity = 0.5
+# A splat's starting size is this times the RMS distance to its nearest other points.
+start_scale_factor = 0.1
+# How many nearest other points set a splat's starting size.
+start_scale_neighbours = 3
+# Most point pairs one chunk of the nearest-point search holds on the GPU (about 400 MB).
+neighbour_chunk_pairs = 100000000
+# Starting learning rate of the splats' positions, times the scene's size.
+means_lr = 0.00016
+# Share of its start the positions' learning rate has fallen to after the last iteration.
+means_lr_final = 0.01
+# Learning rate of the splats' log scales.
+scales_lr = 0.005
+# Learning rate of the splats' rotations.
+quats_lr = 0.001
+# Learning rate of the splats' opacity logits.
+opacities_lr = 0.05
+# Learning rate of the splats' band-0 colours.
+sh_dc_lr = 0.0025
+# Learning rate of the splats' higher spherical harmonics.
+sh_rest_lr = 0.000125
+# Adam's epsilon, for every optimiser.
+adam_eps = 1e-15
+# Learning rate of each image's exposure fix.
+exposure_lr = 0.001
+# Weight of the L1 colour loss. 0 turns it off.
+l1_weight = 0.8
+# Weight of the SSIM loss. 0 turns it off.
+ssim_weight = 0.2
+# Weight of the splats' mean opacity, which fades splats the images don't need. 0 turns it off.
+opacity_reg = 0.01
+# Weight of the splats' mean scale in units of the scene extent, which keeps them small. 0 turns it off.
+scale_reg = 0.01
+# Weight of the effective-rank term against needle-shaped splats. 0 turns it off.
+erank_reg = 0.01
+# Small number inside the effective-rank term's log, so the term stays finite.
+erank_epsilon = 1e-5
+# Share of the iterations after which the effective-rank term is on: the float nearest 7/30.
+erank_start_fraction = 0.23333333333333334
+# Iteration after which MCMC starts moving and adding splats.
+refine_start_step = 500
+# Iterations between MCMC's refines.
+refine_every = 100
+# Iteration at which MCMC stops refining, at the latest.
+refine_stop_step = 25000
+# MCMC also stops refining at this share of the iterations, when that comes first.
+refine_stop_fraction = 0.9
+# Minutes before the job's cap deadline that the splat must be written and checked, for the clean step.
+clean_reserve_minutes = 10
+# Minutes before that time that the last iteration may start, to save and check the splat.
+save_margin_minutes = 5
+# Share of the preset's GPU memory the GPU must report, since a "24 GB" card reports a little less.
+gpu_memory_slack = 0.9
+# A pixel whose brightness gradient, in grey from 0 to 1 per pixel, is below this is plain. Untested on real footage.
+plain_gradient = 0.02
+# On textured pixels the depth loss's weight is times exp(-this x the gradient).
+depth_gradient_falloff = 10
+# Weight of the depth loss at the first iteration.
+depth_weight_start = 1.0
+# Weight of the depth loss after the last planned iteration. It falls exponentially in between.
+depth_weight_end = 0.01
+# Lowest weight of the depth loss on a plain pixel.
+depth_weight_floor = 0.1
+# Largest relative inverse depth error one pixel adds to the depth loss.
+depth_error_cap = 1.0
+# Weight of the loss between the splats' rendered normals and the priors' normals. 0 turns it off.
+normal_weight = 0.05
+# Iteration at which that normal loss starts.
+normal_start_step = 3000
+# From normal_start_step, that normal loss runs on every this many iterations.
+normal_every = 4
+# Weight of the splats' mean smallest scale in units of the scene extent, with depth priors only. 0 turns it off.
+flatten_reg = 1.0
+# Weight of the loss between the rendered depth's normals and the priors' normals. 0 turns it off.
+depth_normal_weight = 0.05
+# Weight of the loss between the splats' rendered normals and the rendered depth's normals. 0 turns it off.
+normal_consistency_weight = 0.015
+# Share of the iterations after which the two rendered-depth normal losses are on: the float nearest 7/30.
+depth_normal_start_fraction = 0.23333333333333334
+# Share of the preset's splat budget that may start from the depth priors: the float nearest 1/3.
+backproject_share = 0.3333333333333333
+# Most splats that may start from the depth priors. 0 turns that off.
+backproject_max = 500000
+# Fewest vCPUs the job's cloud machine needs for this step. The step never checks it.
+min_vcpus = 4
+# Least memory the job's cloud machine needs for this step, in GB. The step never checks it.
+min_memory_gb = 32
+
+[train.fast]
+# Iterations the step trains for.
+steps = 7000
+# Most splats the step trains, MCMC's cap.
+max_splats = 1000000
+# Least GPU memory the job's machine needs for this step, in GB. The step checks it.
+min_gpu_memory_gb = 24
+
+[train.default]
+# Iterations the step trains for.
+steps = 15000
+# Most splats the step trains, MCMC's cap.
+max_splats = 2000000
+# Least GPU memory the job's machine needs for this step, in GB. The step checks it.
+min_gpu_memory_gb = 24
+
+[train.quality]
+# Iterations the step trains for.
+steps = 30000
+# Most splats the step trains, MCMC's cap.
+max_splats = 3000000
+# Least GPU memory the job's machine needs for this step, in GB. The step checks it.
+min_gpu_memory_gb = 48
+
 [clean]
 # File in out/ that the training step writes and the clean step reads.
 train_ply = "train.ply"
@@ -273,6 +873,8 @@ train_ply = "train.ply"
 clean_ply = "clean.ply"
 # File in out/ that the clean step writes: the small copy for the web viewer. Must end in .sog.
 clean_sog = "clean.sog"
+# Fewest training frames that must see a Gaussian's centre, in front of the camera and inside the frame, to keep it.
+min_seen_frames = 2
 # Real opacity, 0 to 1, below which a Gaussian is faint and judged with the rest of its cube.
 min_opacity = 0.005
 # Cube side for the faint filter: the trimmed box's longest side divided by this, a whole number above 0.
@@ -301,19 +903,19 @@ max_workers = 4
 splat_transform_timeout_seconds = 3600
 
 [clean.fast]
-# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
-sog_sh_bands = 3
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3. 0 skips splat-transform's CPU SH compression, which ran past an hour on a 912K-splat job.
+sog_sh_bands = 0
 # Iterations of splat-transform's spherical harmonic compression.
 sh_iterations = 10
 
 [clean.default]
-# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
-sog_sh_bands = 3
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3. 0 skips splat-transform's CPU SH compression, which ran past an hour on a 912K-splat job.
+sog_sh_bands = 0
 # Iterations of splat-transform's spherical harmonic compression.
 sh_iterations = 10
 
 [clean.quality]
-# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3.
-sog_sh_bands = 3
+# Bands of higher spherical harmonics kept in the viewer copy, 0 to 3. 0 skips splat-transform's CPU SH compression, which ran past an hour on a 912K-splat job.
+sog_sh_bands = 0
 # Iterations of splat-transform's spherical harmonic compression.
 sh_iterations = 20

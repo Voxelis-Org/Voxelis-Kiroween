@@ -13,5 +13,7 @@ __pycache__/
 
 # Node (playcanvas splat-transform)
 node_modules/
+# The viewer's PlayCanvas engine, 2.9 MB: scripts/fetch_viewer_engine.py downloads it here.
+/app/viewer/vendor/
 
 # Never ignore .kiro/. The judges need to see it.
