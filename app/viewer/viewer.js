@@ -5,9 +5,12 @@
 // which git ignores. Everything here is plain JavaScript with no build step.
 
 import * as pc from './vendor/playcanvas.min.mjs';
-import { CamerasError, fallbackView, parseCameras, startView } from './cameras.js';
+import { CamerasError, fallbackView, parseCameras, startView, viewerPoses } from './cameras.js';
 import { WALK_KEYS, dolly, pinchLengths, turn, walk, wheelLengths } from './controls.js';
+import { createHaunt, tapCounter } from './haunt.js';
+import { loadingProgress } from './loading.js';
 import { JOB_SPLATS, ViewerError, splatKind } from './params.js';
+import { buildTourPath, createTour } from './tour.js';
 
 // Drawing at the screen's full pixel ratio costs a phone a lot for little gain on a splat, so a
 // touch screen draws at most 1.5 pixels per CSS pixel, and a mouse screen at most 2.
@@ -20,6 +23,10 @@ const BACKGROUND = new pc.Color(0.06, 0.06, 0.07);
 
 const HINT_TOUCH = 'Drag to turn, pinch to zoom.';
 const HINT_MOUSE = 'Drag to turn, scroll to zoom, WASD or the arrow keys to walk.';
+const HINT_TOUR_TOUCH = ' Tap Tour to walk the filmed path.';
+const HINT_TOUR_MOUSE = ' Space or Tour walks the filmed path.';
+// How long a short message, like haunted mode's, stays up, in milliseconds.
+const TOAST_MS = 2200;
 
 function element(tag, className, text) {
     const node = document.createElement(tag);
@@ -85,14 +92,39 @@ function loadSplat(app, url, onProgress) {
 export function mountViewer(container, sources) {
     const touch = window.matchMedia('(pointer: coarse)').matches;
     const canvas = element('canvas', 'splat-viewer-canvas');
-    const status = element('p', 'splat-viewer-status', 'Loading the 3D viewer…');
+    const status = element('p', 'splat-viewer-status');
     const hint = element('p', 'splat-viewer-hint', touch ? HINT_TOUCH : HINT_MOUSE);
-    status.setAttribute('role', 'status');
+    status.setAttribute('role', 'alert');
+    status.hidden = true;
     hint.hidden = true;
+
+    // The loading screen: what's loading, a bar, and the megabytes so far.
+    const loading = element('div', 'splat-viewer-loading');
+    const loadingTitle = element('p', 'splat-viewer-loading-title', 'Loading the 3D viewer…');
+    const bar = element('div', 'splat-viewer-bar is-waiting');
+    const fill = element('div', 'splat-viewer-bar-fill');
+    const loadingDetail = element('p', 'splat-viewer-loading-detail');
+    loading.setAttribute('role', 'status');
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-label', 'Loading the splat');
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    bar.append(fill);
+    loading.append(loadingTitle, bar, loadingDetail);
+
+    const logo = element('button', 'splat-viewer-logo', 'Voxelis');
+    logo.type = 'button';
+    const play = element('button', 'splat-viewer-play');
+    play.type = 'button';
+    play.hidden = true;
+    const toast = element('p', 'splat-viewer-toast');
+    toast.setAttribute('aria-live', 'polite');
+    toast.hidden = true;
+
     container.classList.add('splat-viewer');
     container.tabIndex = 0;
     container.setAttribute('aria-label', `3D view. ${touch ? HINT_TOUCH : HINT_MOUSE}`);
-    container.replaceChildren(canvas, status, hint);
+    container.replaceChildren(canvas);
 
     const cleanups = [];
     const listen = (target, type, handler, options) => {
@@ -101,11 +133,82 @@ export function mountViewer(container, sources) {
     };
     let app = null;
     let destroyed = false;
+    let view = null;
+    let tour = null;
+
+    let toastTimer = 0;
+    const announce = (text) => {
+        toast.textContent = text;
+        toast.hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toast.hidden = true;
+        }, TOAST_MS);
+    };
+    cleanups.push(() => clearTimeout(toastTimer));
+    const haunt = createHaunt(container, announce);
+    container.append(loading, status, hint, logo, play, toast);
 
     const show = (text) => {
         status.textContent = text;
         status.hidden = text === '';
     };
+
+    const setProgress = (received, total) => {
+        const progress = loadingProgress(received, total);
+        bar.classList.toggle('is-waiting', progress.fraction === null);
+        if (progress.fraction === null) {
+            bar.removeAttribute('aria-valuenow');
+            fill.style.width = '';
+        } else {
+            bar.setAttribute('aria-valuenow', String(Math.floor(progress.fraction * 100)));
+            fill.style.width = `${progress.fraction * 100}%`;
+        }
+        loadingDetail.textContent = progress.percent ? `${progress.percent} · ${progress.detail}` : progress.detail;
+        return progress;
+    };
+
+    // Haunted mode works from the start, even on the loading screen.
+    const taps = tapCounter();
+    const toggleHaunt = () => haunt.toggle(view);
+    listen(logo, 'click', () => {
+        if (taps(performance.now())) {
+            toggleHaunt();
+        }
+    });
+    listen(container, 'keydown', (event) => {
+        if (event.key.toLowerCase() === 'h' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.repeat) {
+            toggleHaunt();
+        }
+    });
+
+    const updatePlay = () => {
+        const on = tour !== null && tour.playing;
+        play.textContent = on ? '❚❚ Pause' : '▶ Tour';
+        play.setAttribute('aria-label', on ? 'Pause the tour' : 'Play the tour of the filmed path');
+        play.setAttribute('aria-pressed', String(on));
+    };
+    const togglePlay = () => {
+        if (tour === null || view === null) {
+            return;
+        }
+        if (tour.playing) {
+            tour.pause();
+        } else {
+            tour.play(view);
+            hint.hidden = true;
+        }
+        updatePlay();
+    };
+    // Moving with the controls takes the camera back from the tour. Turning doesn't: that looks
+    // around while the tour walks on.
+    const takeOver = () => {
+        if (tour !== null && tour.playing) {
+            tour.pause();
+            updatePlay();
+        }
+    };
+    listen(play, 'click', togglePlay);
 
     async function start() {
         const camerasPromise = loadCameras(sources.camerasUrl);
@@ -156,12 +259,13 @@ export function mountViewer(container, sources) {
 
         const splatUrl = await pickSplat(sources.splatUrls);
         const kind = splatKind(splatUrl) === 'ply' ? 'trained splat (out/train.ply)' : 'splat';
-        show(`Loading the ${kind}…`);
+        loadingTitle.textContent = `Loading the ${kind}…`;
+        setProgress(0, 0);
         const [cameras, asset] = await Promise.all([
             camerasPromise,
             loadSplat(app, splatUrl, (received, total) => {
-                if (total > 0) {
-                    show(`Loading the ${kind}… ${Math.min(100, Math.floor((received / total) * 100))}%`);
+                if (setProgress(received, total).fraction === 1) {
+                    loadingTitle.textContent = `Unpacking the ${kind}…`;
                 }
             }),
         ]);
@@ -169,9 +273,10 @@ export function mountViewer(container, sources) {
             return;
         }
 
-        let view;
+        let path = null;
         if (cameras !== null) {
             view = startView(cameras);
+            path = buildTourPath(viewerPoses(cameras).poses, view.sceneLength);
         } else {
             const box = asset.resource?.aabb;
             const centre = box ? [box.center.x, box.center.y, box.center.z] : [0, 0, 0];
@@ -196,12 +301,19 @@ export function mountViewer(container, sources) {
             app.renderNextFrame = true;
         };
         place();
-        bindInput(view, place);
-        show('');
+        if (path !== null) {
+            tour = createTour(path);
+            haunt.setPath(path, view);
+            updatePlay();
+            play.hidden = false;
+            hint.textContent += touch ? HINT_TOUR_TOUCH : HINT_TOUR_MOUSE;
+        }
+        bindInput(place);
+        loading.hidden = true;
         hint.hidden = false;
     }
 
-    function bindInput(view, place) {
+    function bindInput(place) {
         const pointers = new Map();
         let spread = 0;
         const spreadOf = () => {
@@ -219,6 +331,7 @@ export function mountViewer(container, sources) {
             pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
             if (pointers.size === 2) {
                 spread = spreadOf();
+                takeOver();
             }
             container.focus({ preventScroll: true });
             firstInput();
@@ -233,7 +346,11 @@ export function mountViewer(container, sources) {
             last.x = event.clientX;
             last.y = event.clientY;
             if (pointers.size === 1) {
-                turn(view, dx, dy, canvas.clientHeight);
+                if (tour !== null && tour.playing) {
+                    tour.look(dx, dy, canvas.clientHeight, view.fov);
+                } else {
+                    turn(view, dx, dy, canvas.clientHeight);
+                }
             } else if (pointers.size === 2) {
                 const now = spreadOf();
                 dolly(view, pinchLengths(now - spread, canvas.clientHeight));
@@ -251,6 +368,7 @@ export function mountViewer(container, sources) {
         listen(canvas, 'pointercancel', lift);
         listen(canvas, 'wheel', (event) => {
             event.preventDefault();
+            takeOver();
             dolly(view, wheelLengths(event.deltaY, event.deltaMode, canvas.clientHeight));
             place();
             firstInput();
@@ -258,9 +376,21 @@ export function mountViewer(container, sources) {
 
         const held = new Set();
         listen(container, 'keydown', (event) => {
-            const direction = WALK_KEYS[event.code];
-            if (direction && !event.altKey && !event.ctrlKey && !event.metaKey) {
+            if (event.altKey || event.ctrlKey || event.metaKey) {
+                return;
+            }
+            // A focused button handles its own Space.
+            if (event.code === 'Space' && !(event.target instanceof HTMLButtonElement)) {
                 event.preventDefault();
+                if (!event.repeat) {
+                    togglePlay();
+                }
+                return;
+            }
+            const direction = WALK_KEYS[event.code];
+            if (direction) {
+                event.preventDefault();
+                takeOver();
                 held.add(direction);
                 firstInput();
             }
@@ -273,14 +403,22 @@ export function mountViewer(container, sources) {
         });
         listen(container, 'blur', () => held.clear());
         app.on('update', (dt) => {
-            if (walk(view, held, Math.min(dt, 0.1))) {
+            const step = Math.min(dt, 0.1);
+            if (tour !== null && tour.playing) {
+                if (tour.step(step, view)) {
+                    updatePlay();
+                }
+                place();
+            } else if (walk(view, held, step)) {
                 place();
             }
+            haunt.update(step, view, canvas.clientWidth, canvas.clientHeight);
         });
     }
 
     start().catch((error) => {
         console.error(error);
+        loading.hidden = true;
         show(error instanceof ViewerError ? error.message : "The 3D viewer stopped because of an error. Try reloading the page.");
     });
 

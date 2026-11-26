@@ -15,7 +15,11 @@ function fail(text) {
 try {
     const sources = readViewerParams(location.search, location.href);
     import('./viewer.js')
-        .then(({ mountViewer }) => mountViewer(container, sources))
+        .then(({ mountViewer }) => {
+            mountViewer(container, sources);
+            // The page is only the viewer, so its keys (Space, H, WASD) work without a click first.
+            container.focus({ preventScroll: true });
+        })
         .catch((error) => {
             console.error(error);
             fail("The viewer's engine didn't load. Run uv run python scripts/fetch_viewer_engine.py, then reload.");

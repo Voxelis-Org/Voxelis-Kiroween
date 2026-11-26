@@ -2,8 +2,24 @@
 
 A web viewer for one finished job's splat. It opens `out/clean.sog`, or `out/train.ply` when the job has no clean copy, and starts at the job's first camera in `out/cameras.json`, with up pointing up.
 
-- **Laptop:** drag to turn, scroll (or pinch on a trackpad) to zoom, and WASD or the arrow keys to walk.
-- **Phone:** drag with one finger to turn, and pinch to zoom.
+- **Laptop:** drag to turn, scroll (or pinch on a trackpad) to zoom, and WASD or the arrow keys to walk. Space or the **Tour** button plays and pauses the tour.
+- **Phone:** drag with one finger to turn, and pinch to zoom. The **Tour** button plays and pauses the tour.
+
+Until the splat is on screen, a loading screen shows how much of the file has arrived, as a bar, a percentage and megabytes. With no `Content-Length` from the host, it shows only the megabytes and a sliding bar. Once the download is complete, it says the splat is unpacking while the engine decodes it.
+
+## The tour
+
+When the job has a usable `out/cameras.json` with at least two cameras, the **Tour** button walks the filmed path: the camera centres in pick order, looking where the phone looked, with no roll.
+
+- **Smooth:** the centres and view directions are smoothed over their neighbouring picks, which takes out the hand's shake. The path is then smoothed again over half a second of the tour's clock, so speed and turning change gently. The tour speeds up over its first 0.8 s and slows into its end.
+- **Walking speed:** COLMAP's scale is arbitrary, so the viewer has no metres. The tour covers about one scene length (the diagonal of the camera centres' box) every 8 s, which is about 0.6 m/s for a room 5 m across. The whole walk takes between 20 s and 90 s, and it never turns faster than 30° a second, so a pan on the spot still takes time. These numbers are at the top of `tour.js`.
+- **Looking around:** a one-finger or mouse drag while the tour plays turns the view without stopping the walk. 1.5 s after the last drag, the view eases back to the path's heading.
+- **Taking over:** walking (WASD or the arrows), the wheel, a trackpad scroll or a pinch stops the tour and leaves the camera where it is.
+- **Picking up again:** play starts from the path's point nearest the camera and glides onto the path from wherever the camera is, over 0.6 s to 3 s depending on the distance. Within the last 0.5 s of the path, play starts again from the beginning.
+
+## Haunted mode
+
+A Halloween easter egg, off by default and never saved. Press H while the viewer has focus, or tap the Voxelis logo in the top left three times within a second, to turn it on or off. It dims the room, with a cold vignette at the edges, and sends a faint ghost along the tour's path at the tour's pace, looping. The ghost starts at the point of the path nearest the middle of the view that's at least 0.3 scene lengths in front of the camera. It's an SVG over the canvas, placed each frame where its point shows on screen, so the splat never hides it. With `prefers-reduced-motion`, it glides without bobbing. A job with no tour has no ghost, but the room still dims.
 
 It's plain HTML, CSS and JavaScript with no build step and no iframe. It runs on the PlayCanvas engine 2.24.3 (MIT), drawn with WebGL 2. Engine 2.11.0 was the first to read the SOG version 2 that splat-transform 3.8.0 writes, 2.11.1 to 2.11.7 fixed it, and 2.24.0 added reading each file's anti-aliasing flag. The engine also reads SOG version 3, but not the old version 3 layout of splat-transform 3.11.0 and 3.11.1, so if splat-transform ever moves past 3.8.0, skip those two.
 
@@ -13,8 +29,11 @@ It's plain HTML, CSS and JavaScript with no build step and no iframe. It runs on
 |---|---|
 | `viewer.js` | `mountViewer(container, sources)`: the engine, the canvas, loading and the controls |
 | `params.js` | Which files to load, from a URL parameter or from data attributes |
-| `cameras.js` | Reads `out/cameras.json` and works out the starting camera |
+| `cameras.js` | Reads `out/cameras.json` and works out the starting camera and every camera in the viewer's frame |
 | `controls.js` | How a drag, a pinch, the wheel and the keys move the camera |
+| `tour.js` | The tour's path from the cameras, and the player that walks it |
+| `haunt.js` | Haunted mode: the dimming, the ghost and the logo's three taps |
+| `loading.js` | The loading screen's percentage and megabytes |
 | `embed.js` | Starts a viewer in every element with a `data-splat-url`, for the website |
 | `page.js`, `index.html` | The standalone page, for testing on a laptop |
 | `viewer.css` | Styles only `.splat-viewer`, what's inside it and the standalone page |
@@ -44,7 +63,7 @@ The website serves these from the bundle, read into `Deps.static` like `app.js`:
 |---|---|---|
 | `GET /viewer/viewer.css` | `app/viewer/viewer.css` | `text/css; charset=utf-8` |
 | `GET /viewer/embed.js` | `app/viewer/embed.js` | `text/javascript; charset=utf-8` |
-| `GET /viewer/viewer.js`, `/viewer/params.js`, `/viewer/cameras.js`, `/viewer/controls.js` | the same names in `app/viewer/` | `text/javascript; charset=utf-8` |
+| `GET /viewer/viewer.js`, `/viewer/params.js`, `/viewer/cameras.js`, `/viewer/controls.js`, `/viewer/tour.js`, `/viewer/haunt.js`, `/viewer/loading.js` | the same names in `app/viewer/` | `text/javascript; charset=utf-8` |
 | `GET /viewer/vendor/playcanvas.min.mjs` | the engine, 2,895,086 bytes | `text/javascript; charset=utf-8` |
 | `GET /viewer/vendor/PLAYCANVAS-LICENSE.txt` | the engine's MIT licence, which its terms ask us to keep with it | `text/plain; charset=utf-8` |
 
@@ -65,7 +84,7 @@ default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; w
 - `worker-src blob:`: the engine sorts the splats in a Web Worker that it starts from a `blob:` URL. Without `worker-src`, browsers fall back to `script-src 'self'`, which blocks it. Tested in Chrome: the worker is refused and nothing is drawn.
 - `img-src blob:`: Safari on WebGL decodes the `.sog`'s WebP images through a `blob:` URL in an `<img>`. Chrome and Firefox use `createImageBitmap` and don't need it. This comes from the engine's source and hasn't been tested in Safari yet.
 - `connect-src 'self' <s3_origin>` is already the website's. The viewer fetches the splat and `cameras.json` from the job bucket with `fetch()`, and nothing else.
-- There's no inline script or style, no `eval` and no WebAssembly, so nothing else is needed. The engine sets the canvas's size through `element.style`, which the policy doesn't block.
+- There's no inline script or style, no `eval` and no WebAssembly, so nothing else is needed. The engine sets the canvas's size through `element.style`, and the viewer moves the loading bar and the ghost the same way, which the policy doesn't block. The ghost's SVG is built with `createElementNS`, with no `style` attributes.
 
 ### The job bucket's CORS
 

@@ -198,6 +198,28 @@ function sceneMatrix(cameras, poses) {
     return mulMat(FLIP_Z, rotationBetween(up, LEVELLED_UP));
 }
 
+// Every frame's camera in the viewer's frame, in the file's order, from parseCameras' result.
+//
+// Returns:
+//   sceneMatrix  S, the splat's turn, as a 3 by 3 matrix of rows
+//   poses        [{ centre: [x, y, z], forward: unit [x, y, z] }, ...]
+//   sceneLength  a length that fits the scene, from the camera centres
+export function viewerPoses(cameras) {
+    const filePoses = cameras.frames.map(framePose);
+    const s = sceneMatrix(cameras, filePoses);
+    const poses = filePoses.map((pose) => {
+        let forward = mulVec(s, pose.forward);
+        // A camera looking straight up or down has no heading. Lean it a little towards its own
+        // picture's top, so the yaw is still well defined.
+        if (Math.hypot(forward[0], forward[2]) < 1e-6) {
+            const up = mulVec(s, pose.up);
+            forward = normalise([forward[0] + up[0] * 1e-3, forward[1], forward[2] + up[2] * 1e-3]);
+        }
+        return { centre: mulVec(s, pose.centre), forward };
+    });
+    return { sceneMatrix: s, poses, sceneLength: sceneLength(poses.map((pose) => pose.centre)) };
+}
+
 // Where the viewer starts, from parseCameras' result: at the first frame's camera centre, looking
 // its way with no roll, with its picture's vertical field of view.
 //
@@ -208,26 +230,16 @@ function sceneMatrix(cameras, poses) {
 //   sceneRotation  the splat entity's rotation, a quaternion [x, y, z, w]
 //   sceneLength    a length that fits the scene, from the camera centres
 export function startView(cameras) {
-    const poses = cameras.frames.map(framePose);
-    const s = sceneMatrix(cameras, poses);
-    const first = poses[0];
-    const position = mulVec(s, first.centre);
-    let forward = mulVec(s, first.forward);
-    // A camera looking straight up or down has no heading. Lean it a little towards its own
-    // picture's top, so the yaw is still well defined.
-    if (Math.hypot(forward[0], forward[2]) < 1e-6) {
-        const up = mulVec(s, first.up);
-        forward = normalise([forward[0] + up[0] * 1e-3, forward[1], forward[2] + up[2] * 1e-3]);
-    }
-    const { yaw, pitch } = yawPitchOf(forward);
+    const { sceneMatrix: s, poses, sceneLength: fit } = viewerPoses(cameras);
+    const { yaw, pitch } = yawPitchOf(poses[0].forward);
     const vertical = (2 * Math.atan(cameras.camera.height / 2 / cameras.camera.fy) * 180) / Math.PI;
     return {
-        position,
+        position: poses[0].centre,
         yaw,
         pitch,
         fov: Math.max(MIN_FOV, Math.min(MAX_FOV, vertical)),
         sceneRotation: matrixToQuaternion(s),
-        sceneLength: sceneLength(poses.map((pose) => mulVec(s, pose.centre))),
+        sceneLength: fit,
     };
 }
 
