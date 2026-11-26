@@ -262,10 +262,13 @@ class FakeAws:
         self._need_table()
         return [copy.deepcopy(self.items.get((key.pk, key.sk))) for key in wanted]
 
-    def table_query(self, pk: str, sk: KeyRange) -> list[dict[str, Scalar]]:
+    def table_query(self, pk: str, sk: KeyRange | None = None) -> list[dict[str, Scalar]]:
         self._record("table_query", pk)
         self._need_table()
-        if isinstance(sk, Prefix):
+        if sk is None:
+            def inside(value: str) -> bool:
+                return True
+        elif isinstance(sk, Prefix):
             def inside(value: str) -> bool:
                 return value.startswith(sk.value)
         else:

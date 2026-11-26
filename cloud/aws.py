@@ -117,7 +117,7 @@ class Aws(Protocol):
     # DynamoDB, the Website_Table
     def table_get(self, key: Key) -> dict[str, Scalar] | None: ...
     def table_get_many(self, keys: Sequence[Key]) -> list[dict[str, Scalar] | None]: ...
-    def table_query(self, pk: str, sk: KeyRange) -> list[dict[str, Scalar]]: ...
+    def table_query(self, pk: str, sk: KeyRange | None = None) -> list[dict[str, Scalar]]: ...
     def table_put(self, item: Mapping[str, Scalar], condition: Condition | None = None) -> None: ...
     def table_update(self, key: Key, updates: Sequence[Update],
                      condition: Condition | None = None) -> None: ...
@@ -417,10 +417,13 @@ class BotoAws:
         responses = result.get("Responses") or [{} for _ in wanted]
         return [_from_item(r["Item"]) if r.get("Item") else None for r in responses]
 
-    def table_query(self, pk: str, sk: KeyRange) -> list[dict[str, Scalar]]:
+    def table_query(self, pk: str, sk: KeyRange | None = None) -> list[dict[str, Scalar]]:
         names = {"#pk": "pk", "#sk": "sk"}
         values: dict[str, Any] = {":pk": {"S": pk}}
-        if isinstance(sk, Prefix):
+        if sk is None:  # the whole partition
+            expression = "#pk = :pk"
+            del names["#sk"]
+        elif isinstance(sk, Prefix):
             expression = "#pk = :pk AND begins_with(#sk, :p)"
             values[":p"] = {"S": sk.value}
         else:

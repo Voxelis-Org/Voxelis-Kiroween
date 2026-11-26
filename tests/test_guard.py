@@ -178,6 +178,48 @@ def test_main_blocks_every_aws_call_when_config_toml_has_merge_markers(tmp_path,
     assert err.startswith("guard: blocked an aws call because config.toml can't be read (TOMLDecodeError: ")
 
 
+# The CloudShell commands' modules (website spec, Req 1.11)
+
+@pytest.mark.parametrize("command", [
+    "python -m app.deploy",
+    "APPROVED_SPEND=1 python3.11 -m app.deploy",
+    "uv run python -m app.account_command judges",
+    "python3.11 -m app.showcase_command list",
+    "python app/deploy.py",
+    "uv run app/account_command.py judges --new-password",
+    "python3 -u ./app/showcase_command.py list",
+    'bash -c "python3.11 -m app.deploy"',
+    "cd /tmp/voxelis-website/repo && python3.11 -m app.deploy",
+])
+def test_blocks_the_cloudshell_commands(command: str) -> None:
+    assert reason(command).startswith("guard: blocked `app.")
+    assert "CloudShell" in reason(command)
+
+
+@pytest.mark.parametrize("command", [
+    "git add app/deploy.py app/account_command.py",
+    "uv run pytest tests/test_website_deploy.py",
+    "grep -m 1 deploy app/deploy.py",
+    "python -m app.lockfile app/uv.lock",
+    "uv run python -m cloud.status 20261201-120000-abcdef",
+])
+def test_lets_other_module_runs_and_paths_through(command: str) -> None:
+    assert reason(command) is None
+
+
+def test_the_cloudshell_modules_come_from_config() -> None:
+    config = {**CONFIG, "website": {"cloudshell_modules": ["app.other"]}}
+    assert guard.reason("python -m app.other", config, str(ROOT)).startswith("guard: blocked `app.other`")
+    assert guard.reason("python -m app.deploy", config, str(ROOT)) is None
+
+
+def test_main_blocks_a_cloudshell_command_when_config_toml_has_merge_markers(tmp_path, monkeypatch,
+                                                                           capsys) -> None:
+    root = conflicted_repo(tmp_path, monkeypatch)
+    code, err = run_main(monkeypatch, capsys, hook_input("python3.11 -m app.deploy", root))
+    assert code == 2 and err == guard.CLOUDSHELL.format("app.deploy") + "\n"
+
+
 # Property tests
 
 SAFE = string.ascii_letters + string.digits + "-._/=:,@%+"

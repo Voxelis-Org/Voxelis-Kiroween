@@ -1,10 +1,12 @@
 """Kiro hook, before every shell command: block the commands our rules forbid.
 
 It blocks raw aws commands that start paid things (the list is `[paid].aws` in
-config.toml), force pushes, pushes to main, and `git add -A` or `git add .`.
-When config.toml can't be read, as when a merge leaves git's conflict markers
-in it, it still judges git calls, with `main` as the main branch, and blocks
-every aws call.
+config.toml), force pushes, pushes to main, `git add -A` or `git add .`, and
+any run of a CloudShell command's module (`[website].cloudshell_modules`),
+which only the account owner runs, in AWS CloudShell. When config.toml can't
+be read, as when a merge leaves git's conflict markers in it, it still judges
+git calls, with `main` as the main branch, blocks the CloudShell modules in
+FALLBACK_CLOUDSHELL_MODULES, and blocks every aws call.
 
 Kiro sends the tool call as JSON on stdin. Exit 2 with one line on stderr
 blocks the call and tells Kiro what to do instead. Exit 0 lets it run.
@@ -41,6 +43,9 @@ FORCE = ("guard: blocked a force push. Push without --force, -f or a + refspec, 
 MAIN = "guard: blocked a push to {}. Push your feature branch instead and open a pull request."
 ADD = ("guard: blocked `git add -A` or `git add .`. Stage the files by name instead, for example "
        "`git add path/to/file`.")
+CLOUDSHELL = ("guard: blocked `{}`, a CloudShell command. Only the account owner runs the deploy, "
+              "account and showcase commands, in AWS CloudShell signed in as the account owner, and "
+              "Kiro never runs them. See docs/aws-setup.md.")
 UNREADABLE = ("guard: blocked an aws call because config.toml can't be read ({}), so aws calls stay "
               "blocked until it's fixed. Fix config.toml, for example by resolving the merge conflict "
               "in it, then run the command again.")
@@ -104,8 +109,28 @@ def program(word: str) -> str:
     return name
 
 
+def module_runs(words: list[str]) -> list[str]:
+    """The Python modules a command's words run: the dotted name after each `-m`, and the
+    `.py` or `.pyw` script a Python interpreter or `uv run` is given, as a module
+    (`app/deploy.py` is `app.deploy`). A `.py` path given to any other program, like
+    `git add app/deploy.py`, runs nothing, and neither does a heredoc's text."""
+    found = [words[i + 1] for i, word in enumerate(words[:-1]) if word == "-m"]
+    for i, word in enumerate(words):
+        name = program(word)
+        runner = name.startswith("python") or name == "py" or (
+            word == "run" and i > 0 and program(words[i - 1]) == "uv")
+        if not runner:
+            continue
+        rest = [arg for arg in words[i + 1:] if not arg.startswith("-")]
+        if rest and rest[0].lower().endswith((".py", ".pyw")):
+            stem = rest[0].rsplit(".", 1)[0].replace("\\", "/")
+            found.append(".".join(part for part in stem.split("/") if part not in ("", ".")))
+    return found
+
+
 def calls(text: str) -> list[tuple[str, list[str]]]:
-    """Every aws and git call in shell text, as (program, the words after it).
+    """Every aws and git call in shell text, as (program, the words after it), and every
+    Python module run, as ("module", [its dotted name]).
 
     The text is read both as PowerShell and as a POSIX shell. A shell such as
     `bash -c "..."` has the rest of its command read again as a command line.
@@ -123,10 +148,12 @@ def calls(text: str) -> list[tuple[str, list[str]]]:
                 for target in ("aws", "git"):
                     if target in names:
                         found.append((target, words[names.index(target) + 1:]))
+                found.extend(("module", [name]) for name in module_runs(words))
                 shell = next((i for i, name in enumerate(names) if name in SHELLS), None)
                 if shell is not None:
                     rest = " ".join(words[shell + 1:])
-                    if "aws" in rest.lower() or "git" in rest.lower():
+                    lowered = rest.lower()
+                    if any(mark in lowered for mark in ("aws", "git", "-m", ".py")):
                         todo.append(rest)
     return found
 
@@ -242,10 +269,21 @@ def judge_add(args: list[str]) -> str | None:
     return None
 
 
+def judge_module(names: list[str], modules: list[str] | tuple[str, ...]) -> str | None:
+    """Block a run of one of the CloudShell commands' modules."""
+    for name in names:
+        if any(name == module or name.endswith("." + module) for module in modules):
+            return CLOUDSHELL.format(name)
+    return None
+
+
 def judge(name: str, args: list[str], config: dict, cwd: str) -> str | None:
-    """Why the guard blocks one aws or git call, or None when it may run."""
+    """Why the guard blocks one aws or git call or module run, or None when it may run."""
     if name == "aws":
         return judge_aws(args, config["paid"]["aws"])
+    if name == "module":
+        modules = config.get("website", {}).get("cloudshell_modules", FALLBACK_CLOUDSHELL_MODULES)
+        return judge_module(args, modules)
     return judge_git(args, config["git"]["main_branch"], cwd)
 
 
@@ -261,6 +299,9 @@ def reason(command: str, config: dict, cwd: str) -> str | None:
 # The main branch's name, used only when config.toml can't be read, as when a merge
 # leaves git's conflict markers in it. It matches `[git] main_branch` in config.toml.
 FALLBACK_MAIN_BRANCH = "main"
+# The CloudShell commands' modules, used only when config.toml can't be read. They match
+# `[website] cloudshell_modules` in config.toml.
+FALLBACK_CLOUDSHELL_MODULES = ("app.deploy", "app.account_command", "app.showcase_command")
 
 
 def load_config() -> dict:
@@ -285,6 +326,8 @@ def judge_unreadable(name: str, args: list[str], error: str, cwd: str) -> str | 
     paid list is in config.toml, and judge git calls with FALLBACK_MAIN_BRANCH."""
     if name == "aws":
         return UNREADABLE.format(error)
+    if name == "module":
+        return judge_module(args, FALLBACK_CLOUDSHELL_MODULES)
     return judge_git(args, FALLBACK_MAIN_BRANCH, cwd)
 
 

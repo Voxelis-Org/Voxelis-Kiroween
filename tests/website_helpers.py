@@ -97,6 +97,54 @@ def event(method: str, path: str, *, cookies: Mapping[str, str] | None = None,
     return result
 
 
+def make_deps(fake: Any, **overrides: Any) -> Any:
+    """`Deps` over a FakeAws, the repo's real configs, a seeded Random and a TestClock.
+
+    `website=` replaces the whole WebsiteConfig, and `wc_overrides=` changes some of its keys."""
+    from app.web import Deps
+    from cloud.config import load_cloud_config
+
+    wc_overrides = overrides.pop("wc_overrides", {})
+    values: dict[str, Any] = {
+        "aws": fake, "config": real_config(), "cloud": load_cloud_config(REAL_CONFIG),
+        "website": website_config(**wc_overrides), "baked": None, "static": {},
+        "random": SeededRandom(), "clock": TestClock(), "log": quiet_logger(),
+    }
+    values.update(overrides)
+    return Deps(**values)
+
+
+def make_account_item(deps: Any, name: str, password: str, uid: str = "u" * 32) -> None:
+    """Seed an Account's profile item with `password`."""
+    import base64 as b64
+
+    from app.accounts import hash_password, profile_key
+
+    salt = b"salt-for-" + name.encode()
+    made = hash_password(password, salt, deps.website.scrypt)
+    scrypt = deps.website.scrypt
+    deps.aws.items[(profile_key(name).pk, "profile")] = {
+        "pk": profile_key(name).pk, "sk": "profile", "hash": b64.b64encode(made).decode(),
+        "salt": b64.b64encode(salt).decode(), "n": scrypt.n, "r": scrypt.r, "p": scrypt.p,
+        "dklen": scrypt.dklen, "uid": uid, "created_at": 0}
+
+
+def sign_in_as(deps: Any, name: str, now: datetime | None = None) -> tuple[dict[str, str], str]:
+    """Seed an Account and a Session for it. Gives the cookies and the CSRF_Token."""
+    from app.sessions import SESSION_COOKIE, new_token, session_key
+
+    now = now or deps.clock()
+    if (f"account#{name}", "profile") not in deps.aws.items:
+        make_account_item(deps, name, "password-" + name)
+    uid = deps.aws.items[(f"account#{name}", "profile")]["uid"]
+    session_id, csrf = new_token(deps), new_token(deps)
+    key = session_key(name, session_id)
+    deps.aws.items[(key.pk, key.sk)] = {
+        "pk": key.pk, "sk": key.sk, "csrf": csrf, "uid": uid, "created_at": int(now.timestamp()),
+        "expires_at": int((now + timedelta(days=deps.website.session_days)).timestamp())}
+    return {SESSION_COOKIE: f"{name}.{session_id}"}, csrf
+
+
 def json_body(response: Mapping[str, Any]) -> Any:
     """The JSON a handler answer holds."""
     text = response.get("body", "")
