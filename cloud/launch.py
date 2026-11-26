@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
-from cloud.errors import CapacityUnavailable, CloudError
+from cloud.errors import CapacityExhausted, CapacityUnavailable, CloudError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -107,7 +107,10 @@ def launch_with_fallback(aws: Aws, plan: Sequence[tuple[str, str, str]],
             tried.append((instance_type, zone, error.code))
             continue  # no On-Demand capacity here; try the next zone or type
         return instance, instance_type, zone
-    raise CloudError(_exhausted_message(tried))
+    if tried:  # every attempt had no capacity: a busy moment
+        raise CapacityExhausted(_exhausted_message(tried),
+                                tuple((instance_type, zone) for instance_type, zone, _ in tried))
+    raise CloudError(_exhausted_message(tried))  # an empty plan is a setup problem
 
 
 def _tag(project_tag: tuple[str, str]) -> dict[str, str]:

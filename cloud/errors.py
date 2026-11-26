@@ -26,6 +26,29 @@ class CloudError(Exception):
     """A refusal or failure whose message is a Readable_Error, already Account_Redacted."""
 
 
+class NoGpuQuota(CloudError):
+    """`admit`: the G_Quota is 0, so no GPU machine can start."""
+
+
+class QuotaFull(CloudError):
+    """`admit`: no candidate type fits the room left in the G_Quota."""
+
+
+class CapacityExhausted(CloudError):
+    """`launch_with_fallback`: every attempt was refused for capacity. `tried` holds each
+    (instance_type, zone), in order."""
+
+    tried: tuple[tuple[str, str], ...]
+
+    def __init__(self, message: str, tried: tuple[tuple[str, str], ...] = ()) -> None:
+        super().__init__(message)
+        self.tried = tried
+
+
+class QuotaRefused(CloudError):
+    """`run_instances`: EC2 refused the launch for the vCPU limit or the instance limit."""
+
+
 class CapacityUnavailable(Exception):
     """AWS has no On-Demand capacity for a type in a zone.
 
