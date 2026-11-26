@@ -256,6 +256,16 @@ def _spend_quote(admitted: Sequence[str], candidates: Sequence[str], plan: Prese
     return machine, expected_time, cost
 
 
+def worst_case_cost(preset: str, cc: CloudConfig, extra_minutes: float = 0.0) -> float:
+    """`rough_cost` of the dearest type on the Preset's whole Fallback_List, run for its Time_Cap
+    plus `extra_minutes`, in dollars. For the website's Reservations; `start_job` doesn't call it.
+    The website passes `[website].boot_margin_minutes`, because a hung machine runs its boot minutes
+    before the Time_Cap's shutdown is scheduled."""
+    plan = cc.preset_plan(preset)
+    dearest = max(plan.fallback, key=lambda name: cc.spec(name).price_per_hour_usd)
+    return rough_cost(plan.cap_minutes + extra_minutes, cc.spec(dearest), cc)
+
+
 # Reading [aws], which is not a Pipeline_Section and has no accessor on splatpipe.config.Config
 
 def _aws_setting(config: Config, key: str) -> str:
