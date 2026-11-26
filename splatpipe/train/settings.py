@@ -60,6 +60,22 @@ class TrainSettings:
     clean_reserve_minutes: float
     save_margin_minutes: float
     gpu_memory_slack: float
+    # The depth priors' settings (depth-priors spec, Req 14.1).
+    plain_gradient: float
+    depth_gradient_falloff: float
+    depth_weight_start: float
+    depth_weight_end: float
+    depth_weight_floor: float
+    depth_error_cap: float
+    normal_weight: float
+    normal_start_step: int
+    normal_every: int
+    flatten_reg: float
+    depth_normal_weight: float
+    normal_consistency_weight: float
+    depth_normal_start_fraction: float
+    backproject_share: float
+    backproject_max: int
     # The cloud-only Step_Needs, checked and kept. The step never uses them (Req 2.11).
     min_vcpus: int
     min_memory_gb: int
@@ -128,6 +144,23 @@ _SHARED: dict[str, _Kind] = {
     "clean_reserve_minutes": _ZERO_OR_MORE,
     "save_margin_minutes": _ZERO_OR_MORE,
     "gpu_memory_slack": _ABOVE_ZERO_AT_MOST_ONE,
+    # The depth priors' settings, with the kinds of the depth-priors spec's Req 14.2. A weight of
+    # 0 turns its Prior_Term off, and a backproject_max of 0 the Back_Projected_Splats.
+    "plain_gradient": _ABOVE_ZERO,
+    "depth_gradient_falloff": _ZERO_OR_MORE,
+    "depth_weight_start": _ABOVE_ZERO,
+    "depth_weight_end": _ABOVE_ZERO,
+    "depth_weight_floor": _ZERO_OR_MORE,
+    "depth_error_cap": _ABOVE_ZERO,
+    "normal_weight": _ZERO_OR_MORE,
+    "normal_start_step": _WHOLE_ZERO_OR_MORE,
+    "normal_every": _WHOLE_ABOVE_ZERO,
+    "flatten_reg": _ZERO_OR_MORE,
+    "depth_normal_weight": _ZERO_OR_MORE,
+    "normal_consistency_weight": _ZERO_OR_MORE,
+    "depth_normal_start_fraction": _ZERO_TO_ONE,
+    "backproject_share": _ZERO_TO_ONE,
+    "backproject_max": _WHOLE_ZERO_OR_MORE,
     "min_vcpus": _WHOLE_ABOVE_ZERO,
     "min_memory_gb": _WHOLE_ABOVE_ZERO,
 }

@@ -6,6 +6,8 @@ the machine image adds on top of uv.lock, and that rules.md's exception for torc
 covers torchvision's and triton's. The task-9 part checks the cloud-run
 write-up in `docs/pipeline.md`, the README's "Run your own copy" section, and the quota-based
 admission, one-yes and redaction updates in the Tech_Steering and the aws-jobs skill (Req 15).
+The depth-priors spec's Step_Needs test also reads the real config.toml by path, so the sentence on
+the depth step's need gives the real [depth] and [train] numbers (depth-priors Req 17.6).
 These run on the CPU with no network.
 """
 
@@ -14,8 +16,12 @@ import re
 import tomllib
 from pathlib import Path
 
+from splatpipe.config import PRESETS
+
 ROOT = Path(__file__).resolve().parents[1]  # this file is in tests/, at the repo root
 PYPROJECT = ROOT / "pyproject.toml"
+# Read by path, because tests/conftest.py points splatpipe.config.CONFIG_PATH at a test config.
+REAL_CONFIG = ROOT / "config.toml"
 PACKAGE_JSON = ROOT / "package.json"
 PACKAGE_LOCK = ROOT / "package-lock.json"
 LICENCE_LIST = ROOT / "docs" / "third-party-licences.md"
@@ -209,7 +215,7 @@ def test_the_pillow_row_notes_the_libraries_its_wheels_bundle() -> None:
 
 # The per-Step Step_Needs plan of Requirement 2's note, as {Step: substrings the row must contain}.
 # The training spec (Req 13.10, 13.15) gave the Training row its needs and renamed the clean
-# step's row Clean.
+# step's row Clean. The depth-priors spec (Req 17.6) keeps the Depth priors row's 16 GB.
 STEP_NEEDS_PLAN = {
     "Picking frames": ("16 vCPUs", "16 GB RAM"),
     "Solving cameras": ("16 vCPUs", "16 GB RAM"),
@@ -273,6 +279,30 @@ def test_the_pipeline_doc_records_the_per_step_step_needs_plan() -> None:
                 f"the {step!r} Step_Needs row should say {need!r}, not {rows[step]!r}")
 
 
+# The depth-priors spec's sentence after the Step_Needs table (Req 17.6).
+DEPTH_NEED = ("The depth step's need is `min_gpu_memory_gb` in `[depth]`, 16, which the train "
+              "step's 24 GB already covers.")
+
+
+def test_the_step_needs_paragraph_says_the_depth_steps_need_lives_in_depth() -> None:
+    """Depth-priors spec, Req 17.6: the Depth priors row keeps a GPU with 16 GB VRAM, and the
+    paragraph after the table says that the need is `min_gpu_memory_gb` in `[depth]`. The two
+    numbers in that sentence are the real config's: 16 in `[depth]`, and 24, the smallest
+    `min_gpu_memory_gb` of the real `[train]`'s presets."""
+    assert "16 GB VRAM" in STEP_NEEDS_PLAN["Depth priors"], (
+        "STEP_NEEDS_PLAN's Depth priors row should keep its 16 GB VRAM")
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    rows = {cells[0]: cells[1] for cells in table_rows(section) if len(cells) == 2}
+    assert rows["Depth priors"] == "a GPU with 16 GB VRAM", (
+        f"the Depth priors Step_Needs row should say 'a GPU with 16 GB VRAM', not "
+        f"{rows['Depth priors']!r}")
+    assert DEPTH_NEED in section, (
+        f"the paragraph after the Step_Needs table should say {DEPTH_NEED!r}")
+    config = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))
+    assert config["depth"]["min_gpu_memory_gb"] == 16
+    assert min(config["train"][preset]["min_gpu_memory_gb"] for preset in PRESETS) == 24
+
+
 def test_the_pipeline_doc_says_the_cloud_run_is_not_a_step() -> None:
     """Req 15.7: the cloud run is not a Step and adds no Step_List entry."""
     section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
@@ -287,7 +317,7 @@ def test_the_readme_has_the_run_your_own_copy_section() -> None:
     section = markdown_section(README.read_text(encoding="utf-8"), "Run your own copy")
     assert "GPU quota" in section, (
         "the Run your own copy section should list an AWS account with GPU quota")
-    for figure in ("$2", "75 min"):
+    for figure in ("$3", "75 min"):
         assert figure in section, (
             f"the Run your own copy section should give the image-build estimate {figure!r}")
     assert "estimate" in section.lower(), (

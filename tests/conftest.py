@@ -1,24 +1,27 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, cameras_job, which makes a Job with a tiny valid
 work/frames/ for the Cameras_Step, set_fail, which sets `fail` in the test config, set_frames,
-set_cameras and set_train, which change its [frames], [cameras] and [train] settings, set_clean,
-which sets its [clean] settings, colmap_options, which gives the COLMAP options of the camera
-solve's options.md, work_calls, which records whose Fake_Step work runs, fake_tools, which puts a
-FakeTools in place of the Frames_Step's ffprobe and ffmpeg, fake_colmap, which gives FakeColmap,
-a stand-in for the colmap program, and puts each one it builds in place of the Cameras_Step's
-tools, fake_gpu, which puts a FakeGpu in place of the Train_Step's GPU_Module, and
-no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out of every test.
+set_cameras, set_depth and set_train, which change its [frames], [cameras], [depth] and [train]
+settings, set_clean, which sets its [clean] settings, colmap_options, which gives the COLMAP
+options of the camera solve's options.md, work_calls, which records whose Fake_Step work runs,
+fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg, fake_colmap,
+which gives FakeColmap, a stand-in for the colmap program, and puts each one it builds in place
+of the Cameras_Step's tools, fake_gpu, which puts a FakeGpu in place of the Train_Step's
+GPU_Module, fake_depth_gpu, which puts a FakeDepthGpu in place of the Depth_Step's
+Depth_GPU_Module, and no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out of every test.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
-a Job in the real data/ folder (Req 14.2). The test config also has [frames], [cameras] and
-[train], each with its three Preset tables, so a test that runs the Frames_Step, the Cameras_Step
-or the Train_Step without a Config of its own gets settings (frames spec, Req 9.11; cameras spec,
-Req 12.15; training spec, Req 9.15). Its [cameras] is the real config's, read once, with
-min_placed_frames at 1 and every *_timeout_seconds at 60 on top (cameras spec, C5). set_cameras
-changes any of its keys, or leaves one out when given MISSING. It has [clean] and its three
-Preset tables too, from CLEAN_SHARED and CLEAN_PRESETS.
+a Job in the real data/ folder (Req 14.2). The test config also has [frames], [cameras], [depth]
+and [train], each with its three Preset tables, so a test that runs the Frames_Step, the
+Cameras_Step, the Depth_Step or the Train_Step without a Config of its own gets settings (frames
+spec, Req 9.11; cameras spec, Req 12.15; depth-priors spec, Req 8.8; training spec, Req 9.15).
+Its [cameras] is the real config's, read once, with min_placed_frames at 1 and every
+*_timeout_seconds at 60 on top (cameras spec, C5). set_cameras changes any of its keys, or leaves
+one out when given MISSING. [depth] holds DEPTH, the 8 real settings, and depth_text writes it
+with its three empty Preset tables. It has [clean] and its three Preset tables too, from
+CLEAN_SHARED and CLEAN_PRESETS.
 
 The autouse fixture no_cap_deadline removes SPLATPIPE_CAP_DEADLINE from the environment before
 every test, so a Cap_Deadline left in the shell or by another test can't change one. A test that
@@ -65,6 +68,12 @@ points by brute force and fakes the training, giving back the Start_Splats it wa
 records what the step asked for. It can also raise from either GPU call, or give back one splat
 or every splat with a NaN opacity. So the step's tests run it through splatpipe.train.run on a
 machine with no GPU and no torch (training spec, Req 11.6, 14.4).
+
+FakeDepthGpu, the Depth_Stand_In, says whether CUDA is there, gives each Frame the MoGe_Output
+the test handed it, or by default plane_moge_output of tests/camera_files.py's plane scene, and
+records every call in order. It can also raise from import_moge, from load_model or from the
+n-th infer. So the Depth_Step's tests run it through splatpipe.depth.run on a machine with no
+GPU, no torch and no MoGe (depth-priors spec, Req 1.8, 18.4).
 """
 
 from __future__ import annotations
@@ -78,6 +87,7 @@ import shlex
 import sqlite3
 import struct
 import sys
+import tempfile
 import time
 import tomllib
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
@@ -100,15 +110,18 @@ from splatpipe.make import CONTAINER_FAMILY, make_job
 from splatpipe.probe import ProbeResult
 from splatpipe.step import StepContext
 
-# Named in FakeTools', FakeColmap's and FakeGpu's type hints only, so only the tests that run a
-# FakeTools import splatpipe.frames.ffmpeg, only those that use a FakeColmap import
-# splatpipe.cameras, and only those that use a FakeGpu import splatpipe.train.
+# Named in FakeTools', FakeColmap's, FakeGpu's and FakeDepthGpu's type hints only, so only the
+# tests that run a FakeTools import splatpipe.frames.ffmpeg, only those that use a FakeColmap
+# import splatpipe.cameras, only those that use a FakeGpu import splatpipe.train, and only those
+# that use a FakeDepthGpu import splatpipe.depth.
 if TYPE_CHECKING:
     from datetime import datetime
 
     from splatpipe.cameras.colmap import ColmapRun, RunResult
     from splatpipe.cameras.model import Camera, Model
+    from splatpipe.depth.gpu_api import MoGeOutput
     from splatpipe.frames.ffmpeg import DecodePlan, VideoInfo
+    from splatpipe.train.colmap import SparseModel
     from splatpipe.train.gpu_api import GpuInfo, TrainResult
     from splatpipe.train.scene import Scene
     from splatpipe.train.settings import TrainSettings
@@ -203,8 +216,22 @@ class Missing(enum.Enum):
 # What set_cameras takes in place of a value to leave that key out of the test config.
 MISSING: Final = Missing.MISSING
 
-# The test config's 35 [train] Shared_Settings: the real values (training spec, Req 9.2). Each
-# value has the TOML type it has in the real config.
+# The test config's 8 [depth] Shared_Settings: the real values (depth-priors spec, Req 8.2). Each
+# value has the TOML type it has in the real config, so fit_miss_ratio is the whole number 3.
+# Every [depth] setting is shared, so its three Preset tables are empty.
+DEPTH = {
+    "long_edge": 512,
+    "moge_weights": "/opt/models/moge-2-vitb-normal/model.pt",
+    "resolution_level": 9,
+    "use_fp16": True,
+    "fit_min_points": 10,
+    "fit_miss_ratio": 3,
+    "fit_max_median_error": 0.15,
+    "min_gpu_memory_gb": 16,
+}
+
+# The test config's 50 [train] Shared_Settings: the real values (training spec, Req 9.2, and
+# depth-priors spec, Req 14.1 and 14.10). Each value has the TOML type it has in the real config.
 TRAIN = {
     "long_edge": 1600,
     "mask_threshold": 128,
@@ -239,6 +266,21 @@ TRAIN = {
     "clean_reserve_minutes": 10,
     "save_margin_minutes": 5,
     "gpu_memory_slack": 0.9,
+    "plain_gradient": 0.02,
+    "depth_gradient_falloff": 10,
+    "depth_weight_start": 1.0,
+    "depth_weight_end": 0.01,
+    "depth_weight_floor": 0.1,
+    "depth_error_cap": 1.0,
+    "normal_weight": 0.05,
+    "normal_start_step": 3000,
+    "normal_every": 4,
+    "flatten_reg": 1.0,
+    "depth_normal_weight": 0.05,
+    "normal_consistency_weight": 0.015,
+    "depth_normal_start_fraction": 0.23333333333333334,
+    "backproject_share": 0.3333333333333333,
+    "backproject_max": 500000,
     "min_vcpus": 4,
     "min_memory_gb": 32,
 }
@@ -259,6 +301,7 @@ CLEAN_SHARED: dict[str, object] = {
     "train_ply": "train.ply",
     "clean_ply": "clean.ply",
     "clean_sog": "clean.sog",
+    "min_seen_frames": 2,
     "min_opacity": 0.005,
     "faint_cube_divisions": 128,
     "faint_min_per_cube": 8,
@@ -335,6 +378,19 @@ def cameras_text(cameras: Mapping[str, Any]) -> str:
         for preset, value in near_overlap.items())
 
 
+def depth_text(depth: Mapping[str, Any]) -> str:
+    """[depth] and its three empty Preset tables as TOML, with each key in `depth` set to its
+    value, like {"fit_min_points": 3}, and every other key at its value in DEPTH.
+
+    Every [depth] setting is a Shared_Setting, so each Preset table holds no key (depth-priors
+    spec, Req 8.1).
+    """
+    shared = {**DEPTH, **depth}
+    return ("\n[depth]\n"
+            + "".join(f"{key} = {toml_value(value)}\n" for key, value in shared.items())
+            + "".join(f"\n[depth.{preset}]\n" for preset in BASE_PICKS))  # the three Presets
+
+
 def train_text(train: Mapping[str, Any]) -> str:
     """[train] and its three Preset tables as TOML, with each key in `train` set to its value
     and every other key at its value in TRAIN or TRAIN_PRESETS.
@@ -377,20 +433,21 @@ def clean_toml(changes: Mapping[str, object]) -> str:
 def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
                 frames: Mapping[str, Any] | None = None,
                 cameras: Mapping[str, Any] | None = None,
+                depth: Mapping[str, Any] | None = None,
                 train: Mapping[str, Any] | None = None,
                 clean: Mapping[str, object] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [frames], [cameras] and then [train] come next, with the
-    keys in `frames`, `cameras` and `train` changed as frames_text, cameras_text and train_text
-    say. [clean] and its Preset tables come last, with the changes in `clean` made, as clean_toml
-    reads them. The Jobs_Folder is
-    written with forward slashes, so a Windows backslash can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames], [cameras], [depth] and then [train] come next,
+    in step order, with the keys in `frames`, `cameras`, `depth` and `train` changed as
+    frames_text, cameras_text, depth_text and train_text say. [clean] and its Preset tables come
+    last, with the changes in `clean` made, as clean_toml reads them. The Jobs_Folder is written
+    with forward slashes, so a Windows backslash can't become a TOML escape."""
     modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
     fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
     return (jobs + fakes + frames_text(frames or {}) + cameras_text(cameras or {})
-            + train_text(train or {}) + clean_toml(clean or {}))
+            + depth_text(depth or {}) + train_text(train or {}) + clean_toml(clean or {}))
 
 
 @pytest.fixture(autouse=True)
@@ -426,8 +483,8 @@ def set_fail(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     for each Step_Name it names, like set_fail(fake_b="expected").
 
     Each call writes the whole file again, so every section it doesn't name is back to
-    fail = "none", and set_fail() sets them all back. [frames], [cameras], [train] and [clean] are
-    back to the test config's values too. load_config() reads the file each time it's called, so
+    fail = "none", and set_fail() sets them all back. [frames], [cameras], [depth], [train] and
+    [clean] are back to the test config's values too. load_config() reads the file each time it's called, so
     the next run that loads the config sees the change.
     """
     def rewrite(**modes: str) -> None:
@@ -443,9 +500,9 @@ def set_frames(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     its own of, takes a dict of the Presets to change, like set_frames(base_picks={"fast": 50}).
 
     Like set_fail, each call writes the whole file again from config_text, so every key it doesn't
-    name is back to the test config's value, in [cameras], [train] and [clean] too, and every fail
-    is back to "none". The next run that loads the config sees the change. Each test gets a new
-    test config, so the next test sees the test config's values again.
+    name is back to the test config's value, in [cameras], [depth], [train] and [clean] too, and
+    every fail is back to "none". The next run that loads the config sees the change. Each test
+    gets a new test config, so the next test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", frames=values), encoding="utf-8")
@@ -462,12 +519,29 @@ def set_cameras(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     leaves it out of every Preset table.
 
     Like set_frames, each call writes the whole file again from config_text, so every key it
-    doesn't name is back to the test config's value, [frames], [train] and [clean] are too, and
-    every fail is back to "none". The next run that loads the config sees the change. Each test
-    gets a new test config, so the next test sees the test config's values again.
+    doesn't name is back to the test config's value, [frames], [depth], [train] and [clean] are
+    too, and every fail is back to "none". The next run that loads the config sees the change.
+    Each test gets a new test config, so the next test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", cameras=values), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_depth(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_depth(**values), which rewrites the test config with each [depth] key it names
+    set to the given value, like set_depth(fit_min_points=3) (depth-priors spec, Req 8.8). Every
+    [depth] setting is shared, so each value goes in [depth] and the Preset tables stay empty.
+
+    Like set_fail and set_frames, each call writes the whole file again from config_text, so
+    every key it doesn't name is back to its value in DEPTH, in [frames], [cameras] and [train]
+    too, and every fail is back to "none". The next run that loads the config sees the change.
+    Each test gets a new test config, so the next test sees the test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", depth=values), encoding="utf-8")
 
     return rewrite
 
@@ -480,9 +554,9 @@ def set_train(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     set_train(max_splats={"fast": 4}).
 
     Like set_fail and set_frames, each call writes the whole file again from config_text, so
-    every key it doesn't name is back to the test config's value, in [frames] too, and every fail
-    is back to "none". The next run that loads the config sees the change. Each test gets a new
-    test config, so the next test sees the test config's values again.
+    every key it doesn't name is back to the test config's value, in [frames] and [depth] too,
+    and every fail is back to "none". The next run that loads the config sees the change. Each
+    test gets a new test config, so the next test sees the test config's values again.
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", train=values), encoding="utf-8")
@@ -499,8 +573,8 @@ def set_clean(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
 
     Each call writes the whole file again, the way set_fail does, so every setting it doesn't
     name is back to its value in CLEAN_SHARED or CLEAN_PRESETS, every fail is back to "none",
-    [frames] is back to the test config's values, and set_clean() sets them all back. A set_fail
-    or set_frames call after it puts [clean] back the same way.
+    [frames], [depth] and [train] are back to the test config's values, and set_clean() sets them
+    all back. A set_fail or set_frames call after it puts [clean] back the same way.
     """
     def rewrite(**values: object) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", clean=values), encoding="utf-8")
@@ -1532,5 +1606,171 @@ def fake_gpu(monkeypatch: pytest.MonkeyPatch) -> type[FakeGpu]:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             monkeypatch.setattr("splatpipe.train.GPU", lambda: self)
+
+    return Installed
+
+
+# The Metres_Per_Unit of FakeDepthGpu's default MoGe_Output: MoGe's metres per unit of the camera
+# solve, so each Frame of the plane scene fits with this scale and an offset of 0. It isn't 1, so
+# a test can tell a Prior scaled by it from one that isn't.
+FAKE_METRES_PER_UNIT = 2.0
+
+
+class FakeMoGe:
+    """The handle FakeDepthGpu's load_model gives back in place of MoGe-2 on the GPU. It keeps
+    the path of the Weights_File it was loaded from. Each load makes a new one, so a test can
+    check that release got the very handle that load_model gave."""
+
+    def __init__(self, weights: Path) -> None:
+        self.weights = weights
+
+    def __repr__(self) -> str:
+        return f"FakeMoGe({str(self.weights)!r})"
+
+
+class FakeDepthGpu:
+    """A stand-in for the Depth_Step's Depth_GPU_Module, the Depth_Stand_In, so the step's tests
+    run its whole flow on a CPU with no torch, MoGe or huggingface_hub (depth-priors spec,
+    Req 1.8, 18.4). The fake_depth_gpu fixture installs one as the step's DEPTH_GPU hook.
+
+    FakeDepthGpu(cuda) is built with whether probe finds CUDA, True by default. Its six methods
+    take the same arguments as the DepthGpu protocol's in splatpipe.depth.gpu_api. It records
+    each call in `calls`, in order, as the method's name and a tuple of the arguments it was
+    given: ("probe", ()), ("import_moge", ()), ("load_model", (weights,)), ("infer", (model, rgb,
+    fov_x, resolution_level, use_fp16, frame)), ("release", (model,)) and
+    ("peak_memory_bytes", ()).
+
+    - probe gives back `cuda`.
+    - import_moge does nothing.
+    - load_model gives back a new FakeMoGe of `weights` and keeps it in `handle`, which stays
+      None until a load works.
+    - infer gives the MoGe_Output for the Frame `frame`: outputs[frame] when the test handed
+      one, and otherwise plane_moge_output of tests/camera_files.py's plane scene at the size of
+      `rgb`, with `metres_per_unit` and the pixels no_geometry[frame], (x, y) column then row,
+      left with no geometry. The plane scene's SparseModel is written by write_model into a
+      temporary folder and read back with read_model, once per FakeDepthGpu, so it's the model
+      the step reads from a Job that holds the plane scene. A test whose Job holds another scene
+      hands that scene's outputs. A Frame that's neither in `outputs` nor in the plane scene is
+      a mistake in the test, and infer raises LookupError naming it.
+    - release does nothing. It takes None, which the step gives it when the load failed.
+    - peak_memory_bytes gives back `peak_bytes`.
+
+    With `import_moge_error` or `load_model_error` set, that call raises it once the call is
+    recorded, like MissingPackage("moge") or OfflineModeOff() from import_moge, and
+    WrongCheckpoint("...") or DepthOutOfMemory(None) from load_model. With `out_of_memory_at`
+    set to n, the n-th infer call, counting from 1, raises DepthOutOfMemory(frame) once it's
+    recorded, and the calls before it give their outputs.
+    """
+
+    def __init__(self, cuda: bool = True, *, outputs: Mapping[str, MoGeOutput] | None = None,
+                 metres_per_unit: float = FAKE_METRES_PER_UNIT,
+                 no_geometry: Mapping[str, Collection[tuple[int, int]]] | None = None,
+                 peak_bytes: int = 0, import_moge_error: Exception | None = None,
+                 load_model_error: Exception | None = None,
+                 out_of_memory_at: int | None = None) -> None:
+        self.cuda = cuda
+        self.outputs = dict(outputs or {})
+        self.metres_per_unit = metres_per_unit
+        self.no_geometry = dict(no_geometry or {})
+        self.peak_bytes = peak_bytes
+        self.import_moge_error = import_moge_error
+        self.load_model_error = load_model_error
+        self.out_of_memory_at = out_of_memory_at
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.handle: FakeMoGe | None = None
+        self._plane: SparseModel | None = None
+
+    def probe(self) -> bool:
+        """Record the call and give back `cuda`."""
+        self.calls.append(("probe", ()))
+        return self.cuda
+
+    def import_moge(self) -> None:
+        """Record the call, then raise import_moge_error when it's set."""
+        self.calls.append(("import_moge", ()))
+        if self.import_moge_error is not None:
+            raise self.import_moge_error
+
+    def load_model(self, weights: Path) -> object:
+        """Record the call, raise load_model_error when it's set, then give back a new FakeMoGe
+        of `weights`, kept in `handle`."""
+        self.calls.append(("load_model", (weights,)))
+        if self.load_model_error is not None:
+            raise self.load_model_error
+        self.handle = FakeMoGe(weights)
+        return self.handle
+
+    def infer(self, model: object, rgb: np.ndarray, fov_x: float, resolution_level: int,
+              use_fp16: bool, frame: str) -> MoGeOutput:
+        """Record the call, raise DepthOutOfMemory(frame) when it's the out_of_memory_at-th
+        infer, then give back the Frame's MoGe_Output, as the class says."""
+        from splatpipe.depth.gpu_api import DepthOutOfMemory
+
+        self.calls.append(("infer", (model, rgb, fov_x, resolution_level, use_fp16, frame)))
+        if sum(name == "infer" for name, _ in self.calls) == self.out_of_memory_at:
+            raise DepthOutOfMemory(frame)
+        if frame in self.outputs:
+            return self.outputs[frame]
+        height, width = rgb.shape[:2]
+        return self._plane_output(frame, width, height)
+
+    def release(self, model: object | None) -> None:
+        """Record the call. `model` is the handle load_model gave, or None."""
+        self.calls.append(("release", (model,)))
+
+    def peak_memory_bytes(self) -> int:
+        """Record the call and give back peak_bytes."""
+        self.calls.append(("peak_memory_bytes", ()))
+        return self.peak_bytes
+
+    def _plane_output(self, frame: str, width: int, height: int) -> MoGeOutput:
+        """plane_moge_output for the plane scene's image named `frame`, at width x height, with
+        metres_per_unit and no_geometry[frame]. Raises LookupError for a name not in the scene."""
+        from camera_files import plane_moge_output
+
+        model = self._plane_model()
+        images = {image.name: image for image in model.images}
+        if frame not in images:
+            raise LookupError(f"FakeDepthGpu has no MoGe output for the frame {frame!r}: the "
+                              "plane scene has no image of that name, and the test handed it "
+                              "none in `outputs`.")
+        return plane_moge_output(model, images[frame], width, height, self.metres_per_unit,
+                                 no_geometry=self.no_geometry.get(frame, ()))
+
+    def _plane_model(self) -> SparseModel:
+        """The plane scene's SparseModel, written by write_model into a temporary folder and read
+        back with read_model the first time it's needed. read_model reads each file whole, so
+        the model holds nothing of the folder once it's gone."""
+        if self._plane is None:
+            from splatpipe.train.colmap import read_model
+
+            from camera_files import PLANE_CAMERA, PLANE_IMAGES, PLANE_POINTS, write_model
+
+            with tempfile.TemporaryDirectory() as folder:
+                write_model(Path(folder), PLANE_CAMERA, PLANE_IMAGES, PLANE_POINTS)
+                self._plane = read_model(Path(folder))
+        return self._plane
+
+
+@pytest.fixture
+def fake_depth_gpu(monkeypatch: pytest.MonkeyPatch) -> type[FakeDepthGpu]:
+    """Give fake_depth_gpu, which builds a FakeDepthGpu as the class does, with
+    fake_depth_gpu(cuda, ...), and installs it as the Depth_Step's Depth_GPU_Module for this
+    test. Building another one installs that one instead.
+
+    Installing is monkeypatch.setattr("splatpipe.depth.DEPTH_GPU", lambda: gpu), with gpu the
+    FakeDepthGpu just built. The step reads DEPTH_GPU each time it runs, so a run through
+    splatpipe.depth.run, run_step, the step's CLI or run_job in this process uses the stand-in,
+    and the test reads what it recorded afterwards. monkeypatch imports splatpipe.depth to set
+    DEPTH_GPU, and FakeDepthGpu's methods import what they need from it when they're called, so
+    only the tests that use this fixture import splatpipe.depth.
+    """
+
+    class Installed(FakeDepthGpu):
+        """A FakeDepthGpu that installs itself once it's built."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            monkeypatch.setattr("splatpipe.depth.DEPTH_GPU", lambda: self)
 
     return Installed

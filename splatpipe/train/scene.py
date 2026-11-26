@@ -16,10 +16,12 @@ the Mask_Files, and this module only works on the arrays and numbers it's given.
   the mask pixel under its centre, as True where it isn't a Masked_Pixel.
 - build_scene (Req 1.19, 1.20, 5.10): one TrainingView per image of images.bin, in its order,
   with none held out and the model's poses kept as they are, then the Scene_Extent, the
-  Median_Scene_Depth and the Near_Plane.
+  Median_Scene_Depth and the Near_Plane. With a Prior_Set (depth-priors spec, Req 10.8), each
+  Prior_View's record holds its Prior and Brightness_Gradient, every other record an empty
+  prior, None, and the Scene holds the taps from the Prior_Size to the Training_Size.
 
-From splatpipe, this module imports only splatpipe.errors, and colmap.py and settings.py for
-their types.
+From splatpipe, this module imports only splatpipe.errors, prior_views.py, and colmap.py,
+priors.py and settings.py for their types.
 """
 
 from __future__ import annotations
@@ -31,6 +33,8 @@ import numpy as np
 
 from splatpipe.errors import ExpectedFailure
 from splatpipe.train.colmap import Camera, SparseModel
+from splatpipe.train.prior_views import PriorTaps, ViewPrior, prior_taps, view_prior
+from splatpipe.train.priors import Prior, PriorSet
 from splatpipe.train.settings import TrainSettings
 
 
@@ -51,6 +55,7 @@ class TrainingView:
     keep: np.ndarray | None  # (h, w) bool, or None when the image has no Mask_File
     intrinsics: np.ndarray  # (3, 3) float64, K scaled to the Training_Size
     world_to_camera: np.ndarray  # (4, 4) float64
+    prior: ViewPrior | None = None  # the view's Prior (Req 10.8), None for an empty prior
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,7 @@ class Scene:
     extent: float  # the Scene_Extent
     median_depth: float  # the Median_Scene_Depth
     near_plane: float  # the Near_Plane
+    taps: PriorTaps | None = None  # Prior_Size to Training_Size, None with no Prior_Set
 
 
 def training_size(width: int, height: int, long_edge: int) -> tuple[int, int]:
@@ -179,23 +185,41 @@ def keep_mask(grey: np.ndarray, width: int, height: int, threshold: int) -> np.n
 
 
 def build_scene(model: SparseModel, pixels: Sequence[ImagePixels], width: int, height: int,
-                settings: TrainSettings) -> Scene:
+                settings: TrainSettings, priors: PriorSet | None = None) -> Scene:
     """The Scene at the Training_Size `width` × `height`, from the Sparse_Model and `pixels`,
-    each image's ImagePixels in images.bin's order.
+    each image's ImagePixels in images.bin's order, and the checked Prior_Set `priors`, or None.
 
     It gives one TrainingView per image, in images.bin's order, holding none out (Req 1.19, 5.10).
     Each view holds its own copy of the one scaled K and the world-to-camera matrix of the
-    model's pose, kept as it is with no change to the world frame (Req 1.20). Then come the
-    Scene_Extent (Req 3.6), the Median_Scene_Depth and the Near_Plane, near_plane_factor × the
-    Median_Scene_Depth (Req 3.8).
+    model's pose, kept as it is with no change to the world frame (Req 1.20). Each image named in
+    the Prior_Set holds view_prior's Prior and Brightness_Gradient, and every other image None,
+    an empty prior (depth-priors spec, Req 10.8). Then come the Scene_Extent (Req 3.6), the
+    Median_Scene_Depth and the Near_Plane, near_plane_factor × the Median_Scene_Depth (Req 3.8),
+    and with a Prior_Set the taps from its Prior_Size to the Training_Size, worked out once.
     """
     intrinsics = scaled_intrinsics(model.camera, width, height)
+    named = {} if priors is None else priors.priors
     views = tuple(TrainingView(image.name, image_pixels.pixels, image_pixels.keep,
                                intrinsics.copy(),
-                               world_to_camera(image.quaternion, image.translation))
+                               world_to_camera(image.quaternion, image.translation),
+                               _view_prior(image_pixels, named.get(image.name)))
                   for image, image_pixels in zip(model.images, pixels, strict=True))
     matrices = np.stack([view.world_to_camera for view in views])
     extent = scene_extent(camera_centres(matrices), settings.scene_extent_factor)
     median_depth = median_scene_depth(matrices, model.points)
     return Scene(views, width, height, extent, median_depth,
-                 settings.near_plane_factor * median_depth)
+                 settings.near_plane_factor * median_depth, _taps(priors, width, height))
+
+
+def _view_prior(image_pixels: ImagePixels, prior: Prior | None) -> ViewPrior | None:
+    """The View_Record's prior of an image whose Prior is `prior`: None, an empty prior, for an
+    image with no Prior (Req 10.8)."""
+    return None if prior is None else view_prior(image_pixels.pixels, prior)
+
+
+def _taps(priors: PriorSet | None, width: int, height: int) -> PriorTaps | None:
+    """The taps from the Prior_Set's Prior_Size to the Training_Size `width` × `height`, or None
+    with no Prior_Set."""
+    if priors is None:
+        return None
+    return prior_taps(priors.index.prior_width, priors.index.prior_height, width, height)

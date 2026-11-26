@@ -59,7 +59,7 @@ The plan, from the rules and the setup guide:
 4. The shutdown terminates the machine, which deletes its root volume. Billing for the machine stops when it enters `shutting-down`.
 5. The start command, or a person with the read profile, fetches `out/` from the bucket.
 
-The smoke test runs on a g5.xlarge and the image build on a g5.4xlarge (Step 8 of the setup guide). They're paid runs under the same rules.
+The smoke test runs on a g5.xlarge. The image build tries a g5.8xlarge, then a g5.4xlarge, the way a job tries its fallback list: `fallback` in `[cloud.image]` (Step 8 of the setup guide). Both are A10G types, because fused-ssim compiles for the builder's own GPU. They're paid runs under the same rules.
 
 ### The launch request
 
@@ -123,7 +123,7 @@ The stop-all command terminates every machine with our tag that isn't terminated
 
 From AWS's pages:
 
-1. Launch a builder machine (g5.4xlarge) from the base AMI, with the same launch settings as a job and a time cap in its user data that leaves room for the install. Set its root volume's size in the launch's `BlockDeviceMappings`, because CreateImage can't change volume sizes ([CreateImage API](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)) and the runner role can't resize a volume.
+1. Launch a builder machine (a g5.8xlarge, else a g5.4xlarge) from the base AMI, with the same launch settings as a job and a time cap in its user data that leaves room for the install. Set its root volume's size in the launch's `BlockDeviceMappings`, because CreateImage can't change volume sizes ([CreateImage API](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)) and the runner role can't resize a volume.
 2. Install everything.
 3. Remove what a job machine mustn't inherit. AWS says to delete the builder's user data script from `/var/lib/cloud/instances/<instance-id>/` before making an image ([user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html)). `cloud-init clean --logs --machine-id` does that and more: it removes cloud-init's files under `/var/lib/cloud` and its logs, and resets `/etc/machine-id`, as cloud-init advises before cloning an image ([cloud-init CLI](https://docs.cloud-init.io/en/latest/reference/cli.html)). Leave no AWS keys and no `~/.aws` files: boto3 tries the instance role last, after environment variables and those files ([boto3 credentials](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html)), so they would win over the job role.
 4. Stop the builder with `StopInstances`, then call `CreateImage` on the stopped machine, with the project tag on the image and on its snapshots in that same call. The runner role refuses it without both tags. CreateImage takes a running machine too, but then it reboots it by default for consistent snapshots, and `NoReboot` skips the reboot at the price of snapshots that miss whatever was still in memory ([CreateImage API](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html)). AWS's pages don't say whether that reboot counts as a shutdown from inside the machine, which would terminate our builder. An API stop never triggers the terminate behaviour ([shutdown behaviour](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_ChangingInstanceInitiatedShutdownBehavior.html)), so stopping first avoids the question.

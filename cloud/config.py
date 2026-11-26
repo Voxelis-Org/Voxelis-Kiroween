@@ -41,8 +41,18 @@ class MachineSpec:
 
 @dataclass(frozen=True)
 class RunPlan:
-    """The Expected_Time and Time_Cap for the Smoke_Test or the Image_Build, in minutes."""
+    """The Expected_Time and Time_Cap for the Smoke_Test, in minutes."""
 
+    expected_minutes: float          # for the money quote
+    cap_minutes: float               # the Time_Cap
+
+
+@dataclass(frozen=True)
+class ImagePlan:
+    """The Image_Build's builder types, tried in order like a Preset's Fallback_List, and its
+    Expected_Time and Time_Cap, in minutes."""
+
+    fallback: tuple[str, ...]        # ordered Allowed_Type names, never empty, first tried first
     expected_minutes: float          # for the money quote
     cap_minutes: float               # the Time_Cap
 
@@ -62,6 +72,7 @@ class SmokeChecks:
     train_refine_start_step: int     # Iteration after which the training check's MCMC refines
     train_refine_every: int          # Iterations between the training check's refines
     train_sh_degree_interval: int    # Iterations between rises of the training check's SH degree
+    depth_normal_start_step: int     # Iteration at which the depth check's prior normal loss starts
     cameras_frames: int              # made-up picks the cameras check solves with COLMAP
     cameras_width: int               # width of the cameras check's picks, in pixels
     cameras_height: int              # height of the cameras check's picks, in pixels
@@ -88,14 +99,13 @@ class CloudConfig:
     presets: dict[str, PresetPlan]           # "fast", "default", "quality"
     smoke: RunPlan                           # expected/cap for the smoke test
     smoke_checks: SmokeChecks                # the smoke machine's own settings
-    image: RunPlan                           # expected/cap for the image build
+    image: ImagePlan                         # builder types and expected/cap for the image build
     upload_margin_minutes: float
     poll_seconds: float
     ipv4_usd_per_hour: float
     gp3_usd_per_gb_month: float
     root_gb: float                           # root-volume size in GB for every machine (150)
     smoke_instance_type: str
-    image_builder_type: str
     base_ami_parameter: str
 
     def spec(self, instance_type: str) -> MachineSpec:
@@ -129,14 +139,13 @@ class CloudConfig:
             presets=_read_presets(data, types),
             smoke=_read_run_plan(data, "smoke"),
             smoke_checks=_read_smoke_checks(data),
-            image=_read_run_plan(data, "image"),
+            image=_read_image_plan(data, types),
             upload_margin_minutes=_number(data, "upload_margin_minutes", "upload_margin_minutes"),
             poll_seconds=_number(data, "poll_seconds", "poll_seconds"),
             ipv4_usd_per_hour=_number(data, "ipv4_usd_per_hour", "ipv4_usd_per_hour"),
             gp3_usd_per_gb_month=_number(data, "gp3_usd_per_gb_month", "gp3_usd_per_gb_month"),
             root_gb=_number(data, "root_gb", "root_gb"),
             smoke_instance_type=_type_key(data, "smoke_instance_type", types),
-            image_builder_type=_type_key(data, "image_builder_type", types),
             base_ami_parameter=_text(data, "base_ami_parameter", "base_ami_parameter"),
         )
 
@@ -208,29 +217,55 @@ def _read_presets(cloud: Mapping[str, object],
 def _read_fallback(table: Mapping[str, object], preset: str,
                    types: Mapping[str, MachineSpec]) -> tuple[str, ...]:
     """A Preset's ordered Fallback_List: a list of strings, each a key of `types`."""
-    label = f'fallback for the "{preset}" preset'
+    return _type_list(table, f'fallback for the "{preset}" preset', f"[cloud.presets.{preset}]",
+                      types)
+
+
+def _type_list(table: Mapping[str, object], label: str, where: str,
+               types: Mapping[str, MachineSpec]) -> tuple[str, ...]:
+    """The `fallback` list in `table`: strings, each a key of `types`, in their order.
+
+    `label` names the list in a refusal and `where` is the table to fix it under.
+    """
     value = _get(table, "fallback", label)
     if not isinstance(value, list) or not all(isinstance(entry, str) for entry in value):
         raise CloudError(
             f"In the [cloud] config, {label} is {_shown(value)}, but it must be a list of "
-            f"Allowed_Type names in quotes. Fix it under [cloud.presets.{preset}] in config.toml, "
-            "then run the command again.")
+            f"Allowed_Type names in quotes. Fix it under {where} in config.toml, then run the "
+            "command again.")
     for entry in value:
         if entry not in types:
             raise CloudError(
                 f'In the [cloud] config, {label} lists "{entry}", which has no [cloud.types] '
                 f"table. Every fallback entry must name an Allowed_Type ({_listed(sorted(types))}). "
-                f"Fix it under [cloud.presets.{preset}] in config.toml, then run the command again.")
+                f"Fix it under {where} in config.toml, then run the command again.")
     return tuple(value)
 
 
 def _read_run_plan(cloud: Mapping[str, object], which: str) -> RunPlan:
-    """The `[cloud.smoke]` or `[cloud.image]` table as a RunPlan."""
+    """The `[cloud.smoke]` table's Expected_Time and Time_Cap, or the `[cloud.image]` table's."""
     table = _table(cloud, which, f"the [cloud.{which}] table")
     return RunPlan(
         expected_minutes=_number(table, "expected_minutes", f"expected_minutes for [cloud.{which}]"),
         cap_minutes=_number(table, "cap_minutes", f"cap_minutes for [cloud.{which}]"),
     )
+
+
+def _read_image_plan(cloud: Mapping[str, object],
+                     types: Mapping[str, MachineSpec]) -> ImagePlan:
+    """The `[cloud.image]` table as an ImagePlan: its builder types, which may not be empty, and
+    its Expected_Time and Time_Cap."""
+    times = _read_run_plan(cloud, "image")
+    label = "fallback for [cloud.image]"
+    fallback = _type_list(_table(cloud, "image", "the [cloud.image] table"), label,
+                          "[cloud.image]", types)
+    if not fallback:
+        raise CloudError(
+            f"In the [cloud] config, {label} is empty, but it must name at least one Allowed_Type "
+            "for the image builder, the first one tried first. Fix it under [cloud.image] in "
+            "config.toml, then run the command again.")
+    return ImagePlan(fallback=fallback, expected_minutes=times.expected_minutes,
+                     cap_minutes=times.cap_minutes)
 
 
 def _read_smoke_checks(cloud: Mapping[str, object]) -> SmokeChecks:
@@ -252,6 +287,8 @@ def _read_smoke_checks(cloud: Mapping[str, object]) -> SmokeChecks:
         train_refine_start_step=_whole(table, "train_refine_start_step", label("train_refine_start_step")),
         train_refine_every=_whole(table, "train_refine_every", label("train_refine_every")),
         train_sh_degree_interval=_whole(table, "train_sh_degree_interval", label("train_sh_degree_interval")),
+        depth_normal_start_step=_whole_or_zero(table, "depth_normal_start_step",
+                                               label("depth_normal_start_step")),
         cameras_frames=_whole(table, "cameras_frames", label("cameras_frames")),
         cameras_width=_whole(table, "cameras_width", label("cameras_width")),
         cameras_height=_whole(table, "cameras_height", label("cameras_height")),
@@ -313,6 +350,16 @@ def _whole(table: Mapping[str, object], key: str, label: str) -> int:
         raise CloudError(
             f"In the [cloud] config, {label} is {_shown(value)}, but it must be a whole number "
             "above 0. Fix it in config.toml, then run the command again.")
+    return value
+
+
+def _whole_or_zero(table: Mapping[str, object], key: str, label: str) -> int:
+    """A whole number of 0 or more for `key`. A bool or a float is refused."""
+    value = _get(table, key, label)
+    if type(value) is not int or value < 0:
+        raise CloudError(
+            f"In the [cloud] config, {label} is {_shown(value)}, but it must be a whole number "
+            "of 0 or more. Fix it in config.toml, then run the command again.")
     return value
 
 

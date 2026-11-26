@@ -80,6 +80,7 @@ from splatpipe.clean.settings import CleanSettings, check_settings
 from splatpipe.config import StepSettings, load_config
 from splatpipe.jobs import open_job
 
+from camera_files import CameraRecord, ImageRecord, PointRecord, write_model
 from conftest import CLEAN_PRESETS, CLEAN_SHARED
 
 # The Preset whose table clean_settings reads: the test config's default_preset.
@@ -931,9 +932,10 @@ def float32_at_least(value: float) -> float:
 
 # Source splats in a Job, for tests/test_clean_step.py
 
-def put_source(job_id: str, data: np.ndarray) -> Path:
+def put_source(job_id: str, data: np.ndarray, *, cameras: bool = True) -> Path:
     """Write `data` as out/train.ply, the Source_Splat, in the Job `job_id`, which the new_job
-    fixture made. Gives the path written, so a test can hash the file or check it's untouched.
+    fixture made, and with `cameras`, put_cameras's default Sparse_Model, whose frames see every
+    centre. Gives the path written, so a test can hash the file or check it's untouched.
 
     `data` is Splat_Data as gaussians and the Splats strategies give it: a structured array with
     a float32 field for each property. Each field is written as a float property of the vertex
@@ -946,6 +948,34 @@ def put_source(job_id: str, data: np.ndarray) -> Path:
     file lands in the test's own Jobs_Folder, inside tmp_path, and never in the real data/
     (Req 10.3).
     """
-    path = open_job(job_id, load_config()).folder / "out" / "train.ply"
+    folder = open_job(job_id, load_config()).folder
+    path = folder / "out" / "train.ply"
     path.write_bytes(ply_bytes([(name, "float") for name in data.dtype.names], data))
+    if cameras:
+        put_cameras(job_id)
     return path
+
+
+# The cameras put_cameras writes by default: two frames 10**12 behind the scene along z, each
+# looking along +z through a 2 x 2 PINHOLE camera with a focal length of 1. A centre (x, y, z) is
+# at (x, y, z + 10**12) in each camera, so every centre with |x|, |y| and |z| well below 10**12
+# is in front of both and lands inside both frames. So the tests' splats pass the Unseen_Filter
+# at the test config's min_seen_frames of 2, and every other filter test counts as before.
+FAR_BEHIND = 1e12
+SEE_ALL_CAMERA = CameraRecord(camera_id=1, width=2, height=2, fx=1.0, fy=1.0, cx=1.0, cy=1.0)
+SEE_ALL_IMAGES = tuple(ImageRecord(image_id=k + 1, quaternion=(1.0, 0.0, 0.0, 0.0),
+                                   translation=(0.0, 0.0, FAR_BEHIND), camera_id=1,
+                                   name=f"{k:06d}.jpg")
+                       for k in range(2))
+# One point, with no track, because a model needs no points for the clean step.
+ONE_POINT = (PointRecord(point_id=1, position=(0.0, 0.0, 0.0), colour=(0, 0, 0)),)
+
+
+def put_cameras(job_id: str, camera: CameraRecord = SEE_ALL_CAMERA,
+                images: Sequence[ImageRecord] = SEE_ALL_IMAGES) -> Path:
+    """Write a Sparse_Model with `camera` and `images` into work/cameras/sparse/ of the Job
+    `job_id`, with tests/camera_files.py's own writer, and give the folder. By default its two
+    frames see every centre of the tests' splats."""
+    sparse = open_job(job_id, load_config()).folder / "work" / "cameras" / "sparse"
+    write_model(sparse, camera, images, ONE_POINT)
+    return sparse

@@ -8,7 +8,8 @@ first `s3_upload` or `run_instances`. A launch fails with `CapacityUnavailable` 
 only for the `(type, zone)` pairs the test seeds, and otherwise mints a fresh instance.
 
 `cloud_config(**overrides)` builds a valid `CloudConfig` from the real `[cloud]` shape: the 8
-machine types, the 3 Presets, the smoke and image plans and the scalars. It seeds no `[cloud.needs]`
+machine types, the 3 Presets, the smoke plan, the image plan with its builder types (g5.8xlarge,
+then g5.4xlarge) and the scalars. It seeds no `[cloud.needs]`
 table, because a Step's needs live in that Step's own section. Each top-level override replaces its
 key, so a test can swap the types, a Preset's fallback, a price or a scalar.
 
@@ -245,18 +246,18 @@ def _base_cloud_mapping() -> dict[str, Any]:
                   "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4,
                   "train_images": 4, "train_points": 200, "train_splats": 400, "train_steps": 30,
                   "train_refine_start_step": 10, "train_refine_every": 10,
-                  "train_sh_degree_interval": 5,
+                  "train_sh_degree_interval": 5, "depth_normal_start_step": 8,
                   "cameras_frames": 30, "cameras_width": 320, "cameras_height": 240,
                   "cameras_focal_pixels": 260.0, "cameras_placed_share": 0.8,
                   "cameras_focal_tolerance": 0.02, "cameras_timeout_seconds": 600},
-        "image": {"expected_minutes": 75, "cap_minutes": 120},
+        "image": {"fallback": ["g5.8xlarge", "g5.4xlarge"], "expected_minutes": 75,
+                  "cap_minutes": 120},
         "upload_margin_minutes": 10,
         "poll_seconds": 20,
         "ipv4_usd_per_hour": 0.005,
         "gp3_usd_per_gb_month": 0.08,
         "root_gb": 150,
         "smoke_instance_type": "g5.xlarge",
-        "image_builder_type": "g5.4xlarge",
         "base_ami_parameter":
             "/aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-24.04/latest/ami-id",
     }

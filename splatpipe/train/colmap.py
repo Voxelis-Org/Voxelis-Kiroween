@@ -13,13 +13,27 @@ runs no COLMAP program, imports no pycolmap and holds no code copied from COLMAP
                    length, then 8 bytes per track entry (<ii: image id, keypoint index).
 
 Each reader reads its file with Path.read_bytes() and walks it with struct.unpack_from through a
-_Cursor, whose take() checks that the bytes are there before it unpacks. The keypoints, the
-points' ids and errors, and the tracks are read past by moving the offset, once the cursor has
-checked that their bytes are there, and none of their values is kept (Req 1.5). Each count is
-checked against its smallest record before the loop, 73 bytes per image and 51 per point, so a
-huge count is refused at once instead of looping or allocating. A record cut short, bytes after
-the last record, a count the file can't hold and a name with no NUL are each refused as "<file>
-is cut short or isn't a COLMAP binary model (<what>)" (Req 1.8).
+_Cursor, whose take() checks that the bytes are there before it unpacks. Each point's id is kept,
+in one (P,) uint64 array. Each image's keypoints are read as one numpy structured array once the
+cursor has checked that their 24 bytes each are there, and only their point ids are kept. The
+keypoints' x and y, the points' errors and the tracks are read past, and none of those values is
+kept (depth-priors spec, Req 2.6). This changes the splat-training spec's Req 1.5, which read past
+the point ids and the keypoints too, and that spec's requirements file stays as it is (depth-priors
+spec, Req 14.8).
+
+Each image's Observed_Points are the distinct point ids among its keypoints that are ids of points
+in points3D.bin, in the order of their first keypoint (depth-priors spec, Req 2.4). _read_image
+keeps the ids of 0 or more, distinct, and read_model turns them into uint64 and keeps the ones
+that are ids of points. Both arrays are uint64 when they're compared, because numpy compares
+int64 with uint64 as float64, which can't tell apart two ids above 2⁵³. A keypoint whose point id
+is −1 or names no point is no observation, and no model is refused for it, so the reader refuses
+exactly the models it refused before (depth-priors spec, Req 2.5). observed_rows maps an image's
+Observed_Points to rows of the points, each id to the first point with that id.
+
+Each count is checked against its smallest record before the loop, 73 bytes per image and 51 per
+point, so a huge count is refused at once instead of looping or allocating. A record cut short,
+bytes after the last record, a count the file can't hold and a name with no NUL are each refused
+as "<file> is cut short or isn't a COLMAP binary model (<what>)" (Req 1.8).
 
 cameras.bin must hold one camera, the Shared_Camera, of the PINHOLE model (Req 1.7). Values are
 checked as they're read: width, height, fx and fy above 0, every camera parameter, quaternion,
@@ -45,7 +59,7 @@ import math
 import re
 import struct
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -58,13 +72,13 @@ PINHOLE_PARAMS = 4
 IMAGE_NAME = re.compile(r"[^/\\:\x00]+\.jpg")  # Req 1.11, checked with fullmatch
 
 # COLMAP's binary layout, little-endian with no padding (Fixed_Constants). In a format, x is a
-# byte read past: _POINT reads past the point's id and its error, keeping neither.
+# byte read past: _POINT keeps the point's id and reads past its error.
 _COUNT = "<Q"
 _CAMERA = "<iiQQ"  # camera id, model id, width, height
 _PARAMS = f"<{PINHOLE_PARAMS}d"  # fx, fy, cx, cy
 _IMAGE = "<idddddddi"  # image id, qw, qx, qy, qz, tx, ty, tz, camera id
-_KEYPOINT_BYTES = 24  # <ddq: x, y, point id
-_POINT = "<8xdddBBB8xQ"  # <QdddBBBd (point id, x, y, z, r, g, b, error), then the track length
+_KEYPOINT = np.dtype([("x", "<f8"), ("y", "<f8"), ("id", "<i8")])  # 24 bytes, <ddq
+_POINT = "<QdddBBB8xQ"  # <QdddBBBd (point id, x, y, z, r, g, b, error), then the track length
 _TRACK_ENTRY_BYTES = 8  # <ii: image id, keypoint index
 _SMALLEST_IMAGE = struct.calcsize(_IMAGE) + 1 + struct.calcsize(_COUNT)  # 73: an empty name's NUL
 _SMALLEST_POINT = struct.calcsize(_POINT)  # 51: a track with no entry
@@ -87,13 +101,15 @@ class Camera:
 
 @dataclass(frozen=True)
 class ModelImage:
-    """One image of images.bin: its id, its Image_Pose, its camera's id and its name."""
+    """One image of images.bin: its id, its Image_Pose, its camera's id, its name and the ids of
+    its Observed_Points."""
 
     image_id: int
     quaternion: np.ndarray  # (4,) float64, w x y z, as stored (not yet normalised)
     translation: np.ndarray  # (3,) float64
     camera_id: int
     name: str
+    observed_ids: np.ndarray  # (K,) uint64: Observed_Points' ids, distinct, first-keypoint order
 
 
 @dataclass(frozen=True)
@@ -104,18 +120,35 @@ class SparseModel:
     images: tuple[ModelImage, ...]  # in images.bin's order
     points: np.ndarray  # (P, 3) float64
     colours: np.ndarray  # (P, 3) uint8, RGB
+    point_ids: np.ndarray  # (P,) uint64, in the file's order
 
 
 def read_model(sparse: Path) -> SparseModel:
     """The Sparse_Model in `sparse`, read from cameras.bin, images.bin and points3D.bin by name.
 
     Nothing else in `sparse` is read, so rigs.bin and frames.bin are ignored (Req 1.6), and the
-    poses, the camera and the points are kept as the files give them (Req 1.20).
+    poses, the camera and the points are kept as the files give them (Req 1.20). Each image's
+    kept keypoint ids are narrowed to the ids of points, its Observed_Points (depth-priors spec,
+    Req 2.4, 2.5).
     """
     camera = read_cameras(sparse / "cameras.bin")
     images = read_images(sparse / "images.bin", camera.camera_id)
-    points, colours = read_points(sparse / "points3D.bin")
-    return SparseModel(camera, images, points, colours)
+    points, colours, point_ids = read_points(sparse / "points3D.bin")
+    images = tuple(replace(image, observed_ids=_point_ids_only(image.observed_ids, point_ids))
+                   for image in images)
+    return SparseModel(camera, images, points, colours, point_ids)
+
+
+def observed_rows(model: SparseModel, image: ModelImage) -> np.ndarray:
+    """The rows of `model.points` that `image`'s Observed_Points are, (K,) int64, in the order of
+    `image.observed_ids`. Each id maps to the row of the first point with that id.
+
+    Every id in `image.observed_ids` must be the id of a point of `model`, as read_model gives
+    them. The ids are looked up in a stably sorted copy of `model.point_ids`, both uint64.
+    """
+    order = np.argsort(model.point_ids, kind="stable")
+    places = np.searchsorted(model.point_ids[order], image.observed_ids, side="left")
+    return order[places].astype(np.int64)
 
 
 def read_cameras(path: Path) -> Camera:
@@ -139,10 +172,13 @@ def read_cameras(path: Path) -> Camera:
 def read_images(path: Path, camera_id: int) -> tuple[ModelImage, ...]:
     """The images of images.bin in the file's order, each of the Shared_Camera `camera_id`.
 
-    It keeps each image's id, Image_Pose, camera id and name and reads past its keypoints
-    (Req 1.4, 1.5). It refuses a file with no image, an image of another camera and two images
-    with one name (Req 1.10), a name that isn't UTF-8 or doesn't fullmatch IMAGE_NAME (Req 1.11),
-    and a pose that isn't finite or a quaternion of four zeros (Req 1.9).
+    It keeps each image's id, Image_Pose, camera id and name (Req 1.4). Of its keypoints it keeps
+    only the point ids of 0 or more, distinct, in the order of their first keypoint, as int64 in
+    `observed_ids`, which read_model narrows to the ids of points. The keypoints' x and y are
+    never kept (depth-priors spec, Req 2.4, 2.6). It refuses a file with no image, an image of
+    another camera and two images with one name (Req 1.10), a name that isn't UTF-8 or doesn't
+    fullmatch IMAGE_NAME (Req 1.11), and a pose that isn't finite or a quaternion of four zeros
+    (Req 1.9).
     """
     cursor = _Cursor(path)
     (count,) = cursor.take(_COUNT, "the image count")
@@ -164,28 +200,31 @@ def read_images(path: Path, camera_id: int) -> tuple[ModelImage, ...]:
     return tuple(images)
 
 
-def read_points(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def read_points(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The Sparse_Points of points3D.bin in the file's order: their positions, (P, 3) float64,
-    and their RGB colours, (P, 3) uint8.
+    their RGB colours, (P, 3) uint8, and their ids, (P,) uint64.
 
-    Each point's id, error and track are read past (Req 1.5). A position that isn't finite is
-    refused, naming the point's place in the file (Req 1.9).
+    Each point's error and track are read past (depth-priors spec, Req 2.6). A position that
+    isn't finite is refused, naming the point's place in the file (Req 1.9).
     """
     cursor = _Cursor(path)
     (count,) = cursor.take(_COUNT, "the point count")
     cursor.check_count(count, _SMALLEST_POINT, "point")
+    ids: list[int] = []
     positions: list[tuple[float, float, float]] = []
     colours: list[tuple[int, int, int]] = []
     for place in range(1, count + 1):
         where = f"point {place} of {count}"
-        x, y, z, red, green, blue, track = cursor.take(_POINT, where)
+        point_id, x, y, z, red, green, blue, track = cursor.take(_POINT, where)
         _check_finite(path, where, "position", (x, y, z))
         cursor.skip(track, _TRACK_ENTRY_BYTES, f"the track of {where}")
+        ids.append(point_id)
         positions.append((x, y, z))
         colours.append((red, green, blue))
     cursor.end()
     return (np.array(positions, dtype=np.float64).reshape(-1, 3),
-            np.array(colours, dtype=np.uint8).reshape(-1, 3))
+            np.array(colours, dtype=np.uint8).reshape(-1, 3),
+            np.array(ids, dtype=np.uint64))
 
 
 class _Cursor:
@@ -217,6 +256,15 @@ class _Cursor:
         """Move past `count` entries of `size` bytes each, once they're there, keeping no value."""
         self._need(count * size, what)
         self.offset += count * size
+
+    def records(self, dtype: np.dtype, count: int, what: str) -> np.ndarray:
+        """`count` records of the structured `dtype` at the offset, once they're there, as one
+        read-only array over the file's bytes. The offset moves past them."""
+        size = count * dtype.itemsize
+        self._need(size, what)
+        values = np.frombuffer(self.data, dtype=dtype, count=count, offset=self.offset)
+        self.offset += size
+        return values
 
     def name(self, what: str) -> bytes:
         """The bytes from the offset up to the next NUL. The offset moves past the NUL."""
@@ -252,8 +300,9 @@ class _Cursor:
 
 
 def _read_image(cursor: _Cursor, where: str, camera_id: int) -> ModelImage:
-    """The image record at the cursor, checked, with its keypoints read past. `where` is its
-    place in the file, like "image 2 of 5", for the Req 1.8 messages."""
+    """The image record at the cursor, checked, with only its keypoints' point ids of 0 or more
+    kept, distinct, in the order of their first keypoint, as int64. `where` is its place in the
+    file, like "image 2 of 5", for the Req 1.8 messages."""
     image_id, *pose, image_camera = cursor.take(_IMAGE, where)
     name = _image_name(cursor, where, image_id)
     who = f"image {image_id} ({name!r})"
@@ -268,9 +317,25 @@ def _read_image(cursor: _Cursor, where: str, camera_id: int) -> ModelImage:
                               f"every image must be of the shared camera, camera {camera_id} in "
                               f"cameras.bin. {_AGAIN}")
     (keypoints,) = cursor.take(_COUNT, f"the keypoint count of {where}")
-    cursor.skip(keypoints, _KEYPOINT_BYTES, f"the keypoints of {where}")
+    ids = cursor.records(_KEYPOINT, keypoints, f"the keypoints of {where}")["id"]
     return ModelImage(image_id, np.array(quaternion, dtype=np.float64),
-                      np.array(translation, dtype=np.float64), image_camera, name)
+                      np.array(translation, dtype=np.float64), image_camera, name,
+                      _first_of_each(ids[ids >= 0]))
+
+
+def _first_of_each(ids: np.ndarray) -> np.ndarray:
+    """The distinct values of `ids`, in the order each one first appears."""
+    return ids[np.sort(np.unique(ids, return_index=True)[1])]
+
+
+def _point_ids_only(kept: np.ndarray, point_ids: np.ndarray) -> np.ndarray:
+    """The ids in `kept`, all 0 or more, that are in `point_ids`, as uint64 and in their order.
+
+    `kept` is turned into uint64 before the comparison, so both arrays are uint64 and no id is
+    compared as a float64 (depth-priors spec, Req 2.4, 2.5).
+    """
+    ids = kept.astype(np.uint64)
+    return ids[np.isin(ids, point_ids)]
 
 
 def _image_name(cursor: _Cursor, where: str, image_id: int) -> str:

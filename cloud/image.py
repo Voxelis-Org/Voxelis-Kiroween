@@ -3,17 +3,23 @@
 `install_script` is the builder's whole User_Data: the install, as bash, with every tool, weight and
 package pinned. It is asserted structurally and never run in the Test_Suite (Req 9.2, 9.3, 9.4). It
 never bakes in the Pipeline's own code; the Start_Command ships that per Job as the Code_Archive
-(Req 9.5). The dependency manifests it installs from come from HEAD through the Job_Bucket, because
-uv.lock alone is over the 16 KB User_Data limit: `build_image` uploads them under
-`jobs/_image/<image name>/` before the launch, and the script fetches them with the AWS CLI. When the
-install is done the script prints a done marker, which the Image_Build_Command waits for on the
+(Req 9.5). Its step 7 adds what the Depth_Step's MoGe-2 path needs: MoGe's code and utils3d-moge at
+their pinned commits, then huggingface-hub and its packages at the versions in MoGe's uv.lock, all
+with `--no-deps` so hf-xet and MoGe's other declared packages stay off, then an offline import of
+MoGe-2's model class that fails the build if anything on its path is missing (depth-priors Req 15).
+The dependency manifests it installs from come from HEAD through the Job_Bucket, because uv.lock
+alone is over the 16 KB User_Data limit: `build_image` uploads them under
+`jobs/_image/<image name>/` before the launch, and the script fetches them with the AWS CLI. When
+the install is done the script prints a done marker, which the Image_Build_Command waits for on the
 console. On success it never powers the machine off, because the launch sets terminate-on-shutdown
 and an OS shutdown would terminate the builder before it could be imaged. On a failure it prints a
 failure marker and powers off, so the builder ends at once and the command stops waiting.
 
 `build_image` drives the build and is a Paid_Entry_Point: it passes the Spend_Guard first (Req 9.10),
-then reads the Base_AMI id from the Base_AMI_Parameter, admits the `image_builder_type` against the
-G_Quota, uploads the manifests, launches the builder from the Base_AMI with the Requirement 8 launch
+then reads the Base_AMI id from the Base_AMI_Parameter, admits the builder types in
+`[cloud.image].fallback` against the G_Quota, uploads the manifests, launches the builder, trying
+each admitted type in its zones in turn the way a Job tries its Fallback_List, from the Base_AMI with
+the Requirement 8 launch
 request plus a root-volume `BlockDeviceMappings` entry (CreateImage can't resize a volume later) and
 `install_script` as the User_Data, waits for the install, stops the builder through the EC2 API
 (never triggering terminate-on-shutdown, the skill's stop-first rule), makes the Machine_Image from
@@ -57,13 +63,13 @@ from cloud.stack import resolve_stack
 from cloud.userdata import JOB_ROOT, VENV_PYTHON, _BUCKET, _MAX_BYTES, _REGION, _pattern
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from typing import Any
 
     from splatpipe.config import Config
 
     from cloud.aws import Aws
-    from cloud.config import CloudConfig, MachineSpec
+    from cloud.config import CloudConfig
     from cloud.stack import StackOutputs
 
 # The line install_script prints on the console when the install is done, which build_image waits
@@ -80,8 +86,8 @@ MANIFESTS = ("pyproject.toml", "uv.lock", ".python-version", "package.json", "pa
 # Smoke_Markers under jobs/_smoke/.
 IMAGE_PREFIX = "jobs/_image/"
 # Where the image keeps the MoGe-2 weights, and their pinned sha256, which the install checks after
-# the download and the smoke machine checks again. The depth-priors spec decides how its step finds
-# the file.
+# the download and the smoke machine checks again. The Depth_Step finds the file through
+# moge_weights in [depth] of config.toml, which a test keeps equal to MOGE_WEIGHTS.
 MOGE_WEIGHTS = "/opt/models/moge-2-vitb-normal/model.pt"
 MOGE_SHA256 = "16b8110e86d5dc5a849db120ca96ef3a223fd30b0c9146d1d81db504073da5f6"
 # Where npm ci, run in JOB_ROOT, puts the splat-transform command.
@@ -110,9 +116,13 @@ def install_script(cc: CloudConfig, *, bucket: str, region: str, prefix: str) ->
     in `bucket`; ffmpeg with the zscale filter (zimg); COLMAP 4.2.1 from source with SiftGPU, CGAL,
     LSD and the ONNX learned features left out; torch 2.7.1 for CUDA 12.8, then gsplat 1.5.3 and
     fused-ssim compiled with NVIDIA's CUDA Toolkit 12.8 for the A10G (8.6) and the L4 and L40S
-    (8.9); the MoGe-2 weights, checked against their sha256; Node and splat-transform from
-    `package-lock.json` with `npm ci`. It then removes what a Job machine must not inherit and
-    prints the done marker. It never bakes in the Pipeline's own code (Req 9.5).
+    (8.9); in step 7, MoGe's code and utils3d-moge at the commits MoGe pins and huggingface-hub
+    1.26.0 with the 13 packages it needs at the versions in MoGe's `uv.lock`, all `--no-deps` and
+    with hf-xet left off, then an offline import of `moge.model.v2.MoGeModel` that fails the build
+    unless everything on MoGe-2's path is there (depth-priors Req 15.1, 15.2, 15.3, 15.12); the
+    MoGe-2 weights, checked against their sha256; Node and splat-transform from `package-lock.json`
+    with `npm ci`. It then removes what a Job machine must not inherit and prints the done marker.
+    It never bakes in the Pipeline's own code (Req 9.5).
 
     On success it leaves the builder running for the Image_Build_Command to stop through the EC2
     API. A failing step prints the failure marker and powers off, which terminate-on-shutdown turns
@@ -249,20 +259,35 @@ CUDA_HOME=/usr/local/cuda-12.8 TORCH_CUDA_ARCH_LIST="8.6;8.9" \\
 # The build fails here unless both compiled modules import.
 "$VENV_PY" -c "from gsplat import csrc; import fused_ssim"
 
-# 7. The MoGe-2 ViT-B normal weights, pinned to one revision and checked against their sha256.
+# 7. MoGe's code and utils3d-moge at the commits MoGe pins, both --no-deps, so moderngl, trimesh,
+#    gradio, pipeline and FlexGEMM stay off. Then huggingface-hub, which MoGe-2 imports, and the
+#    packages it needs, each at the version in MoGe's uv.lock, also --no-deps. The hf-xet it
+#    declares stays off: huggingface-hub imports it only inside functions and downloads over
+#    plain HTTP without it, and the depth step downloads nothing.
+uv pip install --python "$VENV_PY" --no-deps \\
+  "moge @ git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a" \\
+  "utils3d-moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37"
+uv pip install --python "$VENV_PY" --no-deps huggingface-hub==1.26.0 click==8.4.2 \\
+  filelock==3.32.2 fsspec==2026.7.0 httpx==0.28.1 httpcore==1.0.9 h11==0.16.0 anyio==4.14.2 \\
+  idna==3.18 certifi==2026.7.22 packaging==25.0 pyyaml==6.0.3 tqdm==4.70.0 typing-extensions==4.16.0
+# The build fails here unless MoGe-2's model class imports, offline, which proves that nothing on
+# its import path is missing.
+HF_HUB_OFFLINE=1 "$VENV_PY" -c "from moge.model.v2 import MoGeModel"
+
+# 8. The MoGe-2 ViT-B normal weights, pinned to one revision and checked against their sha256.
 mkdir -p {moge_dir}
 curl -fsSL --retry 3 -o {MOGE_WEIGHTS} \\
   https://huggingface.co/Ruicheng/moge-2-vitb-normal/resolve/ca5f0e07ff01d3e5a364c1d954ed12ee1814b368/model.pt
 echo "{MOGE_SHA256}  {MOGE_WEIGHTS}" | sha256sum -c -
 
-# 8. Node 22 and splat-transform, installed with npm ci from the committed package-lock.json, so the
+# 9. Node 22 and splat-transform, installed with npm ci from the committed package-lock.json, so the
 #    version is reproducible.
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt_get install -y nodejs
 cd {JOB_ROOT}
 npm ci
 
-# 9. Remove what a Job machine must not inherit, then signal the install finished. cloud-init clean
+# 10. Remove what a Job machine must not inherit, then signal the install finished. cloud-init clean
 #    clears the builder's user data, logs and machine id so the image boots as a fresh first boot;
 #    removing ~/.aws leaves no credentials that could beat the instance role.
 rm -rf /root/.aws
@@ -285,33 +310,38 @@ def build_image(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs:
 
     In order: build the money quote from Config and pass the Spend_Guard, so nothing paid starts
     before the yes (Req 9.10); read the Base_AMI id from the Base_AMI_Parameter (Req 9.1); admit the
-    `image_builder_type` against the real G_Quota; name the image and upload HEAD's MANIFESTS under
-    its `jobs/_image/<name>/` prefix, which the builder downloads; launch the builder from the
-    Base_AMI with the Requirement 8 request, a root-volume `BlockDeviceMappings` entry sized from
-    `root_gb` and `install_script` as the User_Data (Req 9.9); wait for the install to finish on
+    builder types in `[cloud.image].fallback` against the real G_Quota, in their order; name the
+    image and upload HEAD's MANIFESTS under its `jobs/_image/<name>/` prefix, which the builder
+    downloads; launch the builder from the Base_AMI, trying each admitted type in each of its zones
+    in turn, so a type AWS has no capacity for moves on to the next (Req 5.1), with the Requirement 8
+    request, a root-volume `BlockDeviceMappings` entry sized from `root_gb`, `install_script` as the
+    User_Data and a client token made from the image's name and the attempt, so each build sends
+    its own (Req 9.9); wait for the install to finish on
     the console, terminating the builder and stopping with a Readable_Error if it fails or runs past
     the Time_Cap; stop the builder through the EC2 API and wait for it to stop (never triggering
     terminate-on-shutdown, the skill's stop-first rule); make the Machine_Image from the stopped
     builder, under the name from before the launch, tagging the image and its snapshots with the
     Project_Tag and the two lock-file hashes in the one call (Req 9.7, 9.8); wait until it is
     `available`; terminate the builder; and append a `LABEL_IMAGE` Spend_Line for the builder's
-    measured time to `data/spend.jsonl` (Req 12.2). The Runner_Profile is used throughout (Req 1.5).
+    measured time, at the price of the type that launched, to `data/spend.jsonl` (Req 12.2). The
+    Runner_Profile is used throughout (Req 1.5).
     """
     cc = cloud_config
-    builder_type = cc.image_builder_type
-    spec = cc.spec(builder_type)
+    builders = cc.image.fallback
 
     # 1. The money quote, then the Spend_Guard, before anything paid or any AWS read (Req 9.10).
-    machine, expected_time, cost = _spend_quote(builder_type, spec, cc)
+    machine, expected_time, cost = _spend_quote(builders, cc)
     check_spend(machine=machine, expected_time=expected_time, rough_cost=cost, environ=environ)
 
     # 2. The current Base_AMI id, from the public SSM parameter the Read_Policy may read (Req 9.1).
     base_ami = aws.ssm_parameter(cc.base_ami_parameter)
 
-    # 3. Admit the builder type against the real G_Quota, counting our running machines (Req 4).
+    # 3. Admit the builder types against the real G_Quota, counting our running machines, and lay
+    #    out the launch attempts: each admitted type's zones in turn, in the list's order (Req 4,
+    #    5.1). A quota under the first type's vCPUs admits only the smaller types after it.
     quota = aws.gpu_quota()
     running = running_vcpus(aws.tagged_instances(_LIVE_STATES), cc)
-    admitted = admit([builder_type], running, quota, cc)
+    admitted = admit(builders, running, quota, cc)
     plan = launch_plan(admitted, aws, outputs, cc)
 
     # 4. The lock-file hashes to tag on the image, so the Start_Command's pre-check can compare them
@@ -328,18 +358,24 @@ def build_image(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs:
     _upload_manifests(aws, repo_root, prefix)
 
     # 6. Launch the builder from the Base_AMI with the Requirement 8 request plus the root-volume
-    #    size, trying each admitted zone in turn (Req 9.9).
+    #    size, trying each admitted type in each of its zones in turn, the way a Job tries its
+    #    Fallback_List: no capacity moves on to the next attempt, and any other error stops the
+    #    loop with nothing more started (Req 5.1, 5.5, 9.9). Each attempt's client token comes from
+    #    this build's image name and the attempt, so a repeat of one attempt sends the same token,
+    #    while each build sends its own. EC2 remembers a token after its machine has ended and
+    #    refuses it with other parameters (IdempotentParameterMismatch), and every build's User_Data
+    #    differs, so a token shared by all builds fails every build after the first at the launch.
     def build(attempt: int, instance_type: str, subnet_id: str) -> dict[str, Any]:
         request = build_run_instances_request(
             image_id=base_ami, instance_type=instance_type, subnet_id=subnet_id,
             instance_profile_arn=outputs.job_instance_profile_arn,
             security_group_id=outputs.security_group_id, user_data=user_data,
-            client_token=client_token(LABEL_IMAGE, attempt), project_tag=project_tag, job_id=None)
+            client_token=client_token(name, attempt), project_tag=project_tag, job_id=None)
         request["BlockDeviceMappings"] = [_root_device_mapping(cc.root_gb)]
         return request
 
     started = _utc_now()
-    builder, _type, _zone = launch_with_fallback(aws, plan, build)
+    builder, builder_type, _zone = launch_with_fallback(aws, plan, build)
 
     # 7. Wait for the install to finish. A failed install powers itself off; a failed or timed-out
     #    one is terminated here too, so no builder outlives the error. Then stop the builder through
@@ -364,10 +400,12 @@ def build_image(*, aws: Aws, config: Config, cloud_config: CloudConfig, outputs:
     aws.wait_image_available(image_id, poll_seconds=cc.poll_seconds,
                              max_minutes=cc.image.cap_minutes)
 
-    # 9. Terminate the builder and record what it cost, as an estimate, under data/ (Req 9.9, 12.2).
+    # 9. Terminate the builder and record what it cost, as an estimate at the price of the type
+    #    that launched, under data/ (Req 9.9, 12.2).
     aws.terminate_instances([builder.id])
     seconds = max(0.0, (_utc_now() - started).total_seconds())
-    _append_image_spend_line(repo_root, image_id, builder_type, seconds, spec.price_per_hour_usd)
+    _append_image_spend_line(repo_root, image_id, builder_type, seconds,
+                             cc.spec(builder_type).price_per_hour_usd)
     return image_id
 
 
@@ -457,19 +495,33 @@ def _root_device_mapping(root_gb: float) -> dict[str, Any]:
 
 # The money quote (step 1)
 
-def _spend_quote(builder_type: str, spec: MachineSpec, cc: CloudConfig) -> tuple[str, str, str]:
+def _spend_quote(builders: Sequence[str], cc: CloudConfig) -> tuple[str, str, str]:
     """The machine, expected-time and rough-cost strings `check_spend` shows for approval (Req 6.3).
 
-    The expected cost is the builder's price over the Image_Build's Expected_Time; the worst case is
-    the same type run to its Time_Cap, the only backstop that bills.
+    `builders` is `[cloud.image].fallback`, tried in its order. The quote is made before the quota
+    is read, so it covers every builder type: the expected cost is the first type's price over the
+    Image_Build's Expected_Time, and the worst case is the dearest type run to the Time_Cap, the only
+    backstop that bills, since a capacity fallback can land on a dearer type than the first. One yes
+    covers the whole list, since only one builder ever launches, as with a Job's Fallback_List.
     """
-    expected = rough_cost(cc.image.expected_minutes, spec, cc)
-    worst = rough_cost(cc.image.cap_minutes, spec, cc)
-    machine = f"a {builder_type} image builder"
+    first = builders[0]
+    dearest = max(builders, key=lambda name: cc.spec(name).price_per_hour_usd)
+    expected = rough_cost(cc.image.expected_minutes, cc.spec(first), cc)
+    worst = rough_cost(cc.image.cap_minutes, cc.spec(dearest), cc)
+    others = [name for name in builders if name != first]
+    machine = (f"a {first} image builder" if not others
+               else f"a {first} image builder, or on fallback a {_or_list(others)}")
     expected_time = (f"about {cc.image.expected_minutes:g} min, up to the "
                      f"{cc.image.cap_minutes:g} min time cap")
     cost = f"about ${expected:.2f}, worst case about ${worst:.2f}"
     return machine, expected_time, cost
+
+
+def _or_list(names: Sequence[str]) -> str:
+    """Names joined for a sentence with "or": `a`, `a or b`, `a, b or c`."""
+    if len(names) < 2:
+        return "".join(names)
+    return f"{', '.join(names[:-1])} or {names[-1]}"
 
 
 # The Spend_Line (step 8)

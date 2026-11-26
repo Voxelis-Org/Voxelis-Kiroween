@@ -143,7 +143,8 @@ import pytest
 
 # The stand-ins for COLMAP and for the Frames_Step's tools, the options of options.md as the
 # oracle sorts them, and the fake mappers' points.
-from conftest import WALK_POINTS, ColmapOption, FakeColmap, FakeTools
+from conftest import (WALK_POINTS, ColmapOption, FakeColmap, FakeDepthGpu, FakeTools,
+                      config_text)
 # The splat-transform stand-in, which the run_job test gives the Clean_Step's export.
 from test_clean_export import find_stand_in, use_stand_in
 from splatpipe import cameras, clean
@@ -159,6 +160,7 @@ from splatpipe.frames.ffmpeg import VideoInfo
 from splatpipe.jobs import open_job
 from splatpipe.jsonio import check_json_value, read_json, write_json
 from splatpipe.run import run_job
+from splatpipe.train.colmap import read_model as read_sparse_model
 from splatpipe.train.deadline import CAP_DEADLINE_ENV, read_cap_deadline
 
 # The runs of a done run, by their names, which are also the names of their timings and of their
@@ -1147,25 +1149,44 @@ def video_frames() -> list[tuple[float, np.ndarray]]:
 
 
 def test_run_job_runs_the_frames_step_then_the_cameras_step_and_the_job_is_done(
-        new_job: Callable[..., str], set_frames: Callable[..., None],
+        new_job: Callable[..., str], tmp_path: Path, temp_config: Path,
         fake_tools: type[FakeTools], fake_colmap: type[FakeColmap],
-        fake_gpu: Callable[..., Any], monkeypatch: pytest.MonkeyPatch) -> None:
+        fake_depth_gpu: type[FakeDepthGpu], fake_gpu: Callable[..., Any],
+        monkeypatch: pytest.MonkeyPatch) -> None:
     job_id = new_job()  # with no work/frames/, which the Frames_Step makes
-    set_frames(**TINY_FRAMES)
+    # The tiny [frames] settings, a stand-in Weights_File at [depth]'s moge_weights, outside the
+    # Jobs_Folder, which the Depth_Step wants to be a file before the stand-in loads it, and
+    # fit_min_points at 3, because each Frame sees only the 4 WALK_POINTS. set_frames and
+    # set_depth each rewrite the whole test config, so it's written once here.
+    weights = tmp_path / "weights" / "model.pt"
+    weights.parent.mkdir()
+    weights.write_bytes(b"stand-in MoGe-2 weights")
+    depth = {"moge_weights": weights.as_posix(), "fit_min_points": 3}
+    temp_config.write_text(config_text(tmp_path / "jobs", frames=TINY_FRAMES, depth=depth),
+                           encoding="utf-8")
     fake_tools(VIDEO, video_frames())
     # The global mapper's one Model places every Pick, so the Placed_Check passes.
     fake_colmap(global_models=(VIDEO_PICKS,))
+    # The Depth_Step's stand-in, with MoGe's output made from the model this Job's Cameras_Step
+    # writes in place of the plane scene's, so every Frame fits (depth-priors spec, Req 1.8).
+    gpu = fake_depth_gpu()
+    sparse = folder_of(job_id) / "work" / "cameras" / "sparse"
+    monkeypatch.setattr(gpu, "_plane_model", lambda: read_sparse_model(sparse))
     # The Train_Step's and the Clean_Step's stand-ins, as their own tests install them.
     fake_gpu()
     use_stand_in(monkeypatch, "ok")
     monkeypatch.setattr(clean, "export_sog", partial(export_sog, find=find_stand_in))
-    # The Job_Runner with the real Step_List: the Frames_Step, the Cameras_Step, the Train_Step
-    # and the Clean_Step. The Job is done once all four are (Req 14.4).
+    # The Job_Runner with the real Step_List: the Frames_Step, the Cameras_Step, the Depth_Step,
+    # the Train_Step and the Clean_Step. The Job is done once all five are (Req 14.4).
     summary = run_job(job_id)
     assert summary["status"] == "done", summary["readable_error"]
     assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
-        ("frames", "done"), ("cameras", "done"), ("train", "done"), ("clean", "done")]
+        ("frames", "done"), ("cameras", "done"), ("depth", "done"), ("train", "done"),
+        ("clean", "done")]
     folder = folder_of(job_id)
+    # The Depth_Step read the Cameras_Step's model and fitted a prior to every Placed_Frame.
+    depth_report = read_json(folder / "out" / "reports" / "depth.json")
+    assert depth_report["counts"]["fitted_images"] == VIDEO_PICKS
     names = pick_names(range(VIDEO_PICKS))
     # work/frames/ as the frames spec lays it out: each Pick in images/ and its Grey_Copy in grey/
     # under the same name, frames.json, and mask.png, because the stuck corner makes the

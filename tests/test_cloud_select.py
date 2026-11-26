@@ -184,8 +184,8 @@ def test_property_3_selection_keeps_the_right_types_in_order(
         "quality": {"fallback": fallback[:1], "expected_minutes": 120, "cap_minutes": 360},
     }
     primary = fallback[0]
-    cc = cloud_config(types=types, presets=presets,
-                      smoke_instance_type=primary, image_builder_type=primary)
+    cc = cloud_config(types=types, presets=presets, smoke_instance_type=primary,
+                      image={"fallback": [primary], "expected_minutes": 75, "cap_minutes": 120})
 
     # The rule, stated once and directly over the Fallback_List in order: a type belongs exactly
     # when it clears the hard memory and GPU-memory needs and still fits the quota once the running

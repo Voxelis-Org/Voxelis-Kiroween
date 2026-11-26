@@ -31,8 +31,27 @@ PRESET_NAMES = ("fast", "default", "quality")
 # The Preset_Settings, which each Preset table [train.<preset>] holds (Req 9.3).
 PRESET_KEYS = ("steps", "max_splats", "min_gpu_memory_gb")
 
-# The 35 Shared_Settings of the real [train] with the values of Req 9.2, each an int or a float
-# as Req 9.2 writes it.
+# The 15 Shared_Settings that the depth-priors spec adds to [train], with the values of its
+# Req 14.1 and in that criterion's order, each an int or a float as it writes it.
+NEW_SHARED = {
+    "plain_gradient": 0.02,
+    "depth_gradient_falloff": 10,
+    "depth_weight_start": 1.0,
+    "depth_weight_end": 0.01,
+    "depth_weight_floor": 0.1,
+    "depth_error_cap": 1.0,
+    "normal_weight": 0.05,
+    "normal_start_step": 3000,
+    "normal_every": 4,
+    "flatten_reg": 1.0,
+    "depth_normal_weight": 0.05,
+    "normal_consistency_weight": 0.015,
+    "depth_normal_start_fraction": 0.23333333333333334,
+    "backproject_share": 0.3333333333333333,
+    "backproject_max": 500000,
+}
+# The 50 Shared_Settings of the real [train] with the values of Req 9.2 and the depth-priors
+# spec's Req 14.1, each an int or a float as those criteria write it.
 REAL_SHARED = {
     "long_edge": 1600,
     "mask_threshold": 128,
@@ -67,6 +86,7 @@ REAL_SHARED = {
     "clean_reserve_minutes": 10,
     "save_margin_minutes": 5,
     "gpu_memory_slack": 0.9,
+    **NEW_SHARED,
     "min_vcpus": 4,
     "min_memory_gb": 32,
 }
@@ -95,7 +115,8 @@ ZERO_TO_1 = "a number from 0 to 1"
 # The kinds whose values are kept as ints. The values of every other kind are kept as floats.
 WHOLE_KINDS = (WHOLE_ABOVE_0, WHOLE_0_OR_MORE, WHOLE_1_TO_255)
 
-# Every key of [train] and its Preset tables, with what its value must be (Req 9.7).
+# Every key of [train] and its Preset tables, with what its value must be (Req 9.7, and the
+# depth-priors spec's Req 14.2).
 KINDS = {
     "long_edge": WHOLE_ABOVE_0,
     "mask_threshold": WHOLE_1_TO_255,
@@ -130,6 +151,21 @@ KINDS = {
     "clean_reserve_minutes": ZERO_OR_MORE,
     "save_margin_minutes": ZERO_OR_MORE,
     "gpu_memory_slack": ABOVE_0_AT_MOST_1,
+    "plain_gradient": ABOVE_0,
+    "depth_gradient_falloff": ZERO_OR_MORE,
+    "depth_weight_start": ABOVE_0,
+    "depth_weight_end": ABOVE_0,
+    "depth_weight_floor": ZERO_OR_MORE,
+    "depth_error_cap": ABOVE_0,
+    "normal_weight": ZERO_OR_MORE,
+    "normal_start_step": WHOLE_0_OR_MORE,
+    "normal_every": WHOLE_ABOVE_0,
+    "flatten_reg": ZERO_OR_MORE,
+    "depth_normal_weight": ZERO_OR_MORE,
+    "normal_consistency_weight": ZERO_OR_MORE,
+    "depth_normal_start_fraction": ZERO_TO_1,
+    "backproject_share": ZERO_TO_1,
+    "backproject_max": WHOLE_0_OR_MORE,
     "min_vcpus": WHOLE_ABOVE_0,
     "min_memory_gb": WHOLE_ABOVE_0,
     "steps": WHOLE_ABOVE_0,
@@ -185,20 +221,33 @@ def refusal(settings: StepSettings) -> str:
 
 # The real config.toml
 
-def test_the_real_train_section_has_exactly_the_35_shared_settings_and_the_preset_tables() -> None:
+def test_the_real_train_section_has_exactly_the_50_shared_settings_and_the_preset_tables() -> None:
     section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["train"]
     tables = {key: value for key, value in section.items() if isinstance(value, dict)}
     shared = {key: value for key, value in section.items() if key not in tables}
     # No shared key is in a Preset table and no Preset key is in [train], so each key is in one
     # place (Req 9.4).
-    assert typed(shared) == typed(REAL_SHARED)  # Req 9.2
+    assert len(shared) == 50
+    assert typed(shared) == typed(REAL_SHARED)  # Req 9.2, and the depth-priors spec's Req 14.1
     assert {name: typed(table) for name, table in tables.items()} == {
         preset: typed(table) for preset, table in REAL_PRESETS.items()}  # Req 9.1, 9.3
 
 
+def test_the_real_train_section_has_the_15_new_settings_at_their_values_in_their_place() -> None:
+    """The depth-priors spec's Req 14.1: the 15 new keys at that criterion's values, written in
+    its order right after gpu_memory_slack and right before min_vcpus."""
+    section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["train"]
+    assert len(NEW_SHARED) == 15
+    assert typed({key: section[key] for key in NEW_SHARED}) == typed(NEW_SHARED)
+    keys = list(section)
+    after = keys.index("gpu_memory_slack") + 1
+    assert keys[after:after + len(NEW_SHARED) + 1] == [*NEW_SHARED, "min_vcpus"]
+
+
 @pytest.mark.parametrize("preset", PRESET_NAMES)
-def test_the_real_train_section_loads_exactly_the_38_keys_for_each_preset(preset: str) -> None:
+def test_the_real_train_section_loads_exactly_the_53_keys_for_each_preset(preset: str) -> None:
     settings = load_config(REAL_CONFIG).step_settings("train", preset)
+    assert len(settings) == 53
     assert typed(settings) == typed({**REAL_SHARED, **REAL_PRESETS[preset]})
     assert asdict(read(settings)) == settings  # and the real values pass the step's checks
 
@@ -263,9 +312,27 @@ EDGE_VALUES = [
     ("scale_reg", 0),
     ("erank_reg", 0),
 ]
+# The new keys' values at the ends of their ranges, which pass (the depth-priors spec's Req 14.2):
+# 0 for each of the four Prior_Term weights, which turns its term off, for depth_gradient_falloff,
+# depth_weight_floor and normal_start_step, and for backproject_max, which turns the
+# Back_Projected_Splats off; and both ends of the two fractions.
+NEW_EDGE_VALUES = [
+    ("normal_weight", 0),
+    ("flatten_reg", 0),
+    ("depth_normal_weight", 0),
+    ("normal_consistency_weight", 0),
+    ("depth_gradient_falloff", 0),
+    ("depth_weight_floor", 0),
+    ("normal_start_step", 0),
+    ("backproject_max", 0),
+    ("depth_normal_start_fraction", 0),
+    ("depth_normal_start_fraction", 1),
+    ("backproject_share", 0),
+    ("backproject_share", 1),
+]
 
 
-@pytest.mark.parametrize(("key", "value"), EDGE_VALUES)
+@pytest.mark.parametrize(("key", "value"), EDGE_VALUES + NEW_EDGE_VALUES)
 def test_the_values_at_the_ends_of_their_ranges_pass(key: str, value: int) -> None:
     assert getattr(read(train_settings(**{key: value})), key) == value
 

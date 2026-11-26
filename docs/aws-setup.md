@@ -180,8 +180,8 @@ The instance types that job machines use:
 | Instance type | vCPUs | GPU | What it's for |
 |---|---|---|---|
 | g5.xlarge | 4 | 1 NVIDIA A10G | The smoke test |
-| g5.8xlarge | 32 | 1 NVIDIA A10G | Fast and default jobs |
-| g5.4xlarge | 16 | 1 NVIDIA A10G | Making the machine image, and fast and default jobs where the quota is under 32 vCPUs |
+| g5.8xlarge | 32 | 1 NVIDIA A10G | Fast and default jobs, and making the machine image |
+| g5.4xlarge | 16 | 1 NVIDIA A10G | Fast and default jobs and making the machine image, when the quota is under 32 vCPUs or AWS has no g5.8xlarge to give |
 | g6e.4xlarge | 16 | 1 NVIDIA L40S | Quality jobs |
 | g6.4xlarge | 16 | 1 NVIDIA L4 | Fallback |
 | g5.2xlarge | 8 | 1 NVIDIA A10G | Fallback |

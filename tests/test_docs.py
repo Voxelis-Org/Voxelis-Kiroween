@@ -7,7 +7,16 @@ The tests of its ## Step: cameras section do the same with the real [cameras], a
 Solve_Record's top-level fields and the Viewer_Cameras' fields from what
 splatpipe.cameras.outputs.solve_record and viewer_cameras give for a small example.
 The ## Step: train section's Config section test reads the real [train] the same way, so that part
-has to name every key the real [train] and its preset tables hold.
+has to name every key the real [train] and its preset tables hold, and the whole section has to
+name the depth-priors spec's 15 [train] keys, each of which the real [train] must hold, and its
+five Prior_Terms. The
+## Step: depth section's Config section test reads the real [depth] the same way. The step list
+test takes its entries from the real STEP_LIST, and the skill tests read the gsplat-training and
+moge-depth skills by path.
+
+The Step_Reports' counts and timings are written out here, as the step tests write them out:
+tests/test_frames_step.py, tests/test_train_step.py and tests/test_depth_step.py check that a real
+run's report holds exactly those names.
 """
 
 import re
@@ -58,13 +67,16 @@ def test_the_ffmpeg_row_says_what_ffprobe_reads_and_that_the_tools_are_never_ven
 
 def test_numpy_and_headless_opencv_say_yes_and_opencv_never_reads_or_writes_video() -> None:
     """Frames spec, Req 12.6. Training spec, Req 13.16: the opencv-python-headless row also names
-    the train step's JPEG frames and PNG masks."""
+    the train step's JPEG frames and PNG masks. Depth-priors spec, Req 17.7: it also names the
+    depth step's JPEG frames, and still says it never reads or writes video."""
     for name in ("numpy", "opencv-python-headless"):
         assert licence_row(name)["Installed"] == "Yes", f"The {name} row should say Yes"
     how = licence_row("opencv-python-headless")["How we use it"]
     train = ("The train step decodes the camera solve's JPEG frames and PNG masks and scales "
              "them down")
-    assert train in how, f"The opencv-python-headless row should say {train!r}"
+    depth = "The depth step decodes the camera solve's JPEG frames and scales them down"
+    for words in (train, depth):
+        assert words in how, f"The opencv-python-headless row should say {words!r}"
     assert "never reads or writes video" in how, (
         "The opencv-python-headless row should say it never reads or writes video")
 
@@ -103,8 +115,12 @@ def test_the_colmap_row_names_the_cameras_step_commands_and_homebrews_colmap_on_
                "the integration test's whole solve included", "as Samarth OKed")
     missing = [words for words in (*commands, *phrases) if words not in how]
     assert not missing, f"The COLMAP 4.2.1 row should say {missing}"
-    old = "is used only for `-h` and small CPU tests"
-    assert old not in how, f"The COLMAP 4.2.1 row should no longer say {old!r}"
+    for old in ("is used only for `-h` and small CPU tests", "the next image build adds it"):
+        assert old not in how, f"The COLMAP 4.2.1 row should no longer say {old!r}"
+    # The image built on 24 November has every flag, -DDOWNLOAD_ENABLED=OFF included.
+    flags = ("the image built on 2026-11-24 (`ami-0300759bb382305d7`) has all seven "
+             "`_ENABLED=OFF` flags")
+    assert flags in how, f"The COLMAP 4.2.1 row should say {flags!r}"
     assert row["Installed"] == COLMAP_INSTALLED, (
         f"The COLMAP 4.2.1 row's Installed cell should say {COLMAP_INSTALLED!r}")
 
@@ -169,20 +185,35 @@ def test_the_pipeline_doc_has_a_step_section_for_the_fake_step_and_every_listed_
         doc_part(parts, 2, f"Step: {name}")
 
 
-def test_the_step_list_part_names_the_frames_cameras_train_and_clean_entries() -> None:
-    """Frames spec, Req 12.5. Training spec, Req 13.8, 13.14. Cameras spec, Req 14.8, 15.7: the
-    list holds the frames, cameras and train steps, all three required, then the clean step,
-    optional. The frames spec's three sentences, the old one on a later spec adding the clean
-    step's entry, and both sides' words on the camera solve spec or the training spec still to
-    add its entry are gone."""
+def test_the_step_list_part_names_the_frames_cameras_depth_train_and_clean_entries_in_order() -> None:
+    """Frames spec, Req 12.5. Training spec, Req 13.8, 13.14. Cameras spec, Req 14.8, 15.7.
+    Depth-priors spec, Req 17.4, 17.9: the list holds the frames step and the cameras step, both
+    required, the depth step, optional, the train step, required, and then the clean step,
+    optional, each written as the real Step_List's entry. The frames spec's three sentences, the
+    old one on a later spec adding the clean step's entry, and every side's words on the camera
+    solve spec or the training spec still to add its entry are gone."""
     step_list = doc_part(pipeline_parts(), 2, "The step list")
-    phrases = ("The list holds the frames step, the cameras step and the train step, all three "
-               "required, and then the clean step, optional",
-               "A job is done once all four steps are done, and done with warnings when the three "
-               "required steps are done and the clean step fails")
+    phrases = ("The list holds the frames step and the cameras step, both required, the depth "
+               "step, optional, the train step, required, and then the clean step, optional",
+               "A job is done once all five steps are done, and done with warnings when the three "
+               "required steps are done and the depth step or the clean step fails")
     missing = [words for words in phrases if words not in step_list]
     assert not missing, f"The part headed The step list should say {missing}"
-    gone = ("The list holds the frames step as its first, required entry",
+    # Each entry as the code writes it, in the real Step_List's order, with frames first.
+    entries = [f'`StepEntry("{entry.name}", "{entry.module}", {entry.required})`'
+               for entry in STEP_LIST]
+    assert STEP_LIST[0].name == "frames" and STEP_LIST[0].required
+    unnamed = [entry for entry in entries if entry not in step_list]
+    assert not unnamed, f"The part headed The step list should name {unnamed}"
+    places = [step_list.index(entry) for entry in entries]
+    assert places == sorted(places), (
+        f"The part headed The step list should name {entries} in that order")
+    gone = ("The list holds the frames step and the train step, both required, and then the "
+            "clean step, optional",
+            "The camera solve spec puts its entry between the frames step and the train step",
+            "so the order becomes frames, cameras, train, clean",
+            "a job runs the frames step and then fails at the train step",
+            "The list holds the frames step as its first, required entry",
             "Each later step spec adds its own entry after the frames step",
             "a job is done once the frames step is done",
             "The list starts empty", "No steps are set up yet",
@@ -190,7 +221,12 @@ def test_the_step_list_part_names_the_frames_cameras_train_and_clean_entries() -
             "The camera solve spec puts its entry between the frames step and the train step",
             "Until the camera solve spec adds its entry",
             "Each later step spec adds its own entry after the cameras step",
-            "Until the training spec adds its entry")
+            "Until the training spec adds its entry",
+            "The camera solve spec puts its entry between the frames step and the depth step",
+            "The list holds the frames step, required, the depth step, optional",
+            "The list holds the frames step, the cameras step and the train step, all three "
+            "required",
+            "A job is done once all four steps are done")
     left = [words for words in gone if words in step_list]
     assert not left, f"The part headed The step list should no longer say {left}"
 
@@ -529,19 +565,123 @@ def test_the_train_files_in_out_part_names_the_splat_and_the_clean_steps_limit()
     assert not missing, f"The train section's Files in out/ part should name {missing}"
 
 
+# The ## Step: depth section (depth-priors spec, Req 17.1, 17.2, 17.9)
+
+DEPTH = "Step: depth"
+# The Depth_Report's counts (Req 9.1) and timings (Req 9.2).
+DEPTH_COUNTS = ("images", "prior_width", "prior_height", "fitted_images", "few_points_images",
+                "flat_images", "poor_fit_images", "peak_gpu_memory_bytes")
+DEPTH_TIMINGS = ("load_model", "infer", "fit", "write")
+# The Prior_Index and a Prior_File's three arrays (Req 7.1, 7.3).
+PRIOR_NAMES = ("`work/depth/depth.json`", "`inverse_depth`", "`normal`", "`mask`")
+
+
+def depth_part(title: str) -> str:
+    """The text of the ### part with this title in the ## Step: depth section."""
+    section = doc_part(pipeline_parts(), 2, DEPTH)
+    return doc_part(doc_parts(section), 3, title, f"The ## {DEPTH} section")
+
+
+def test_the_depth_section_comes_after_frames_and_before_train_and_has_the_five_parts() -> None:
+    """Depth-priors spec, Req 17.1, 17.9."""
+    parts = pipeline_parts()
+    section = doc_parts(doc_part(parts, 2, DEPTH))
+    for title in STEP_PARTS:
+        doc_part(section, 3, title, f"The ## {DEPTH} section")
+    titles = [title for level, title, _ in parts if level == 2]
+    assert titles.index(FRAMES) < titles.index(DEPTH) < titles.index(TRAIN), (
+        f"docs/pipeline.md should have ## {DEPTH} after ## {FRAMES} and before ## {TRAIN}")
+
+
+def test_the_depth_config_section_names_every_real_key_and_its_tables() -> None:
+    """Depth-priors spec, Req 17.1, 17.9: the keys of the real [depth] and of its preset tables."""
+    config = depth_part("Config section")
+    section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["depth"]
+    presets = {name: table for name, table in section.items() if isinstance(table, dict)}
+    shared = [key for key, value in section.items() if not isinstance(value, dict)]
+    per_preset = list(dict.fromkeys(key for table in presets.values() for key in table))
+    tables = ["[depth]", *(f"[depth.{name}]" for name in presets)]
+    names = [f"`{name}`" for name in (*shared, *per_preset, *tables)]
+    missing = [words for words in names if words not in config]
+    assert not missing, f"The depth section's Config section part should name {missing}"
+
+
+def test_the_depth_step_report_fields_part_names_every_count_and_the_four_timings() -> None:
+    """Depth-priors spec, Req 17.9, with the counts of Req 9.1 and the timings of Req 9.2."""
+    report = depth_part("Step report fields")
+    names = [*(f"`counts.{name}`" for name in DEPTH_COUNTS),
+             *(f"`timings.{name}`" for name in DEPTH_TIMINGS)]
+    missing = [name for name in names if name not in report]
+    assert not missing, f"The depth section's Step report fields part should name {missing}"
+
+
+def test_the_depth_what_it_writes_part_names_the_prior_index_and_the_three_arrays() -> None:
+    """Depth-priors spec, Req 17.2, 17.9: the Prior_Index and the Prior_File's arrays."""
+    writes = depth_part("What it writes")
+    missing = [words for words in PRIOR_NAMES if words not in writes]
+    assert not missing, f"The depth section's What it writes part should name {missing}"
+
+
+# The 15 [train] keys of the depth-priors spec's Req 14.1, each checked against the real [train].
+PRIOR_TRAIN_KEYS = ("plain_gradient", "depth_gradient_falloff", "depth_weight_start",
+                    "depth_weight_end", "depth_weight_floor", "depth_error_cap", "normal_weight",
+                    "normal_start_step", "normal_every", "flatten_reg", "depth_normal_weight",
+                    "normal_consistency_weight", "depth_normal_start_fraction",
+                    "backproject_share", "backproject_max")
+# The five Prior_Terms the Trainer adds to the Loss_Table with a Prior_Set (Req 13.1).
+PRIOR_TERMS = ("depth", "normal", "flatten", "depth_normal", "normal_consistency")
+# The scale-up of a Prior to the Training_Size and the Prior_Pixels (Req 10.6, 10.7).
+SCALE_UP_PHRASES = ("scaled up bilinearly", "unit length", "scaled up nearest-neighbour",
+                    "counts as a prior pixel")
+
+
+def test_the_train_section_names_the_prior_keys_and_counts_and_depth_names_the_scale_up() -> None:
+    """Depth-priors spec, Req 17.2, 17.3, 17.9: ## Step: train names every new key of the real
+    [train], the five Prior_Terms, the prior index, counts.prior_images,
+    counts.backprojected_splats and the Req 10.3 warning, and the depth section's What it writes
+    part names the bilinear and nearest-neighbour scale-up."""
+    real = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["train"]
+    absent = [key for key in PRIOR_TRAIN_KEYS if key not in real]
+    assert not absent, f"The real [train] should hold {absent}"
+    section = doc_part(pipeline_parts(), 2, TRAIN)
+    names = [*(f"`{key}`" for key in PRIOR_TRAIN_KEYS), *(f"`{term}`" for term in PRIOR_TERMS),
+             "`work/depth/depth.json`",
+             "`counts.prior_images`", "`counts.backprojected_splats`",
+             "Training ran without depth priors."]
+    missing = [words for words in names if words not in section]
+    assert not missing, f"The ## {TRAIN} section should name {missing}"
+    writes = depth_part("What it writes")
+    missing = [words for words in SCALE_UP_PHRASES if words not in writes]
+    assert not missing, f"The depth section's What it writes part should name {missing}"
+
+
 # The smoke test and cap deadline parts of ## Running a job in the cloud (training spec,
-# Req 12.13, 13.9, 13.11, and cameras spec, Req 15.10, 15.11)
+# Req 12.13, 13.9, 13.11; cameras spec, Req 15.10, 15.11; depth-priors spec, Req 16.12, 17.5)
 
 CLOUD = "Running a job in the cloud"
+
+
+def smoke_part() -> str:
+    """The text of the ### The smoke test part in the ## Running a job in the cloud section."""
+    cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
+    return doc_part(cloud, 3, "The smoke test", f"The ## {CLOUD} section")
 
 
 def test_the_smoke_test_part_names_the_cameras_and_training_checks_and_their_cloud_smoke_keys() -> None:
     """Training spec, Req 12.13, 13.11, and cameras spec, Req 15.11, 16.12: the smoke test part
     lists the cameras check and the training check and says their numbers are in [cloud.smoke]."""
-    cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
-    smoke = doc_part(cloud, 3, "The smoke test", f"The ## {CLOUD} section")
+    smoke = smoke_part()
     phrases = ("cameras check", "`cameras_frames`", "training check", "`train_steps`",
                "`[cloud.smoke]`")
+    missing = [words for words in phrases if words not in smoke]
+    assert not missing, f"The part headed The smoke test should name {missing}"
+
+
+def test_the_smoke_test_part_names_the_depth_check_and_depth_normal_start_step() -> None:
+    """Depth-priors spec, Req 16.12, 17.5, 17.9: the smoke test part lists the depth check and says
+    its number, depth_normal_start_step, is in [cloud.smoke]."""
+    smoke = smoke_part()
+    phrases = ("depth check", "`depth_normal_start_step`", "`[cloud.smoke]`")
     missing = [words for words in phrases if words not in smoke]
     assert not missing, f"The part headed The smoke test should name {missing}"
 
@@ -570,6 +710,28 @@ def test_the_gsplat_training_skill_names_out_train_ply_and_no_longer_out_splat_p
     assert "`out/train.ply`" in skill, "The gsplat-training skill should name `out/train.ply`"
     assert "out/splat.ply" not in skill, (
         "The gsplat-training skill should no longer name out/splat.ply")
+
+
+# The moge-depth skill (depth-priors spec, Req 17.8)
+
+MOGE_DEPTH_SKILL = ROOT / ".kiro" / "skills" / "moge-depth" / "SKILL.md"
+
+
+def test_the_moge_depth_skill_says_what_the_depth_priors_spec_decided() -> None:
+    """Depth-priors spec, Req 17.8: the skill names `moge_weights` in `[depth]` and the image's
+    `--no-deps` installs, and its sentences on what the image didn't have yet, the missing licence
+    rows, the code's row covering the three git dependencies and the depth-priors spec deciding are
+    gone. So is "Step 7 of the image build" for the weights' download, which is step 8 now that
+    step 7 installs MoGe's code."""
+    skill = MOGE_DEPTH_SKILL.read_text(encoding="utf-8")
+    for words in ("`moge_weights` in `[depth]`", "`--no-deps`"):
+        assert words in skill, f"The moge-depth skill should name {words}"
+    gone = ("The image doesn't have MoGe's code yet", "huggingface-hub has none yet",
+            "the code's row covers the three git dependencies", "The depth-priors spec decides",
+            "Step 7 of the image build")
+    lowered = skill.lower()  # so a phrase counts at a sentence's start or inside one
+    left = [words for words in gone if words.lower() in lowered]
+    assert not left, f"The moge-depth skill should no longer say {left}"
 
 
 # The colmap-cli skill (cameras spec, Req 15.12)
