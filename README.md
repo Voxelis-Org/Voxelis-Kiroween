@@ -37,6 +37,8 @@ uv run pytest
 
 To run jobs in your own AWS account, follow [docs/aws-setup.md](docs/aws-setup.md). The account owner deploys one CloudFormation stack from `cloud/aws-setup.yaml`, and each person who runs jobs sets up two AWS CLI profiles.
 
+The stack also holds the website in `app/`: judges sign in, upload a video, start a job within a daily and total limit, and see its status, its 3D viewer and one download, and a job's owner can share one finished result by a secret link. The setup guide's "The website" section documents its deploy. Only the account owner runs the deploy, account and showcase commands, in AWS CloudShell.
+
 ## Run your own copy
 
 To run jobs in your own AWS account you need:

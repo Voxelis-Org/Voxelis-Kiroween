@@ -1,0 +1,656 @@
+{
+ "AssumeRunnerPolicy": {
+  "Properties": {
+   "Description": "Lets the people who run jobs assume the runner role, and nothing else.",
+   "PolicyDocument": {
+    "Statement": [
+     {
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::GetAtt": [
+        "RunnerRole",
+        "Arn"
+       ]
+      },
+      "Sid": "AssumeRunnerRole"
+     }
+    ],
+    "Version": "2012-10-17"
+   }
+  },
+  "Type": "AWS::IAM::ManagedPolicy"
+ },
+ "JobBucketPolicy": {
+  "Properties": {
+   "Bucket": {
+    "Ref": "JobBucket"
+   },
+   "PolicyDocument": {
+    "Statement": [
+     {
+      "Action": "s3:*",
+      "Condition": {
+       "Bool": {
+        "aws:SecureTransport": false
+       }
+      },
+      "Effect": "Deny",
+      "Principal": "*",
+      "Resource": [
+       {
+        "Fn::GetAtt": [
+         "JobBucket",
+         "Arn"
+        ]
+       },
+       {
+        "Fn::Sub": "${JobBucket.Arn}/*"
+       }
+      ],
+      "Sid": "DenyRequestsWithoutTls"
+     }
+    ],
+    "Version": "2012-10-17"
+   }
+  },
+  "Type": "AWS::S3::BucketPolicy"
+ },
+ "JobInstanceProfile": {
+  "Properties": {
+   "Roles": [
+    {
+     "Ref": "JobRole"
+    }
+   ]
+  },
+  "Type": "AWS::IAM::InstanceProfile"
+ },
+ "JobPolicy": {
+  "Metadata": {
+   "guard": {
+    "SuppressedRules": [
+     "IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE"
+    ]
+   }
+  },
+  "Properties": {
+   "Description": "Lets job machines list, read and upload files under jobs/ and work/ in the job bucket, with no deletes, and run the Session Manager agent.",
+   "PolicyDocument": {
+    "Statement": [
+     {
+      "Action": "s3:ListBucket",
+      "Condition": {
+       "StringLike": {
+        "s3:prefix": [
+         "jobs/*",
+         "work/*"
+        ]
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::GetAtt": [
+        "JobBucket",
+        "Arn"
+       ]
+      },
+      "Sid": "ListJobAndWorkFolders"
+     },
+     {
+      "Action": [
+       "s3:GetObject",
+       "s3:PutObject",
+       "s3:AbortMultipartUpload"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+       {
+        "Fn::Sub": "${JobBucket.Arn}/jobs/*"
+       },
+       {
+        "Fn::Sub": "${JobBucket.Arn}/work/*"
+       }
+      ],
+      "Sid": "ReadAndUploadJobFiles"
+     },
+     {
+      "Action": "ssm:UpdateInstanceInformation",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+      },
+      "Sid": "SessionManagerAgentHeartbeat"
+     },
+     {
+      "Action": [
+       "ssmmessages:CreateControlChannel",
+       "ssmmessages:CreateDataChannel",
+       "ssmmessages:OpenControlChannel"
+      ],
+      "Condition": {
+       "StringEquals": {
+        "aws:RequestedRegion": {
+         "Ref": "AWS::Region"
+        }
+       }
+      },
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "SessionManagerAgentChannels"
+     },
+     {
+      "Action": "ssmmessages:OpenDataChannel",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:session/*"
+      },
+      "Sid": "SessionManagerAgentDataChannel"
+     }
+    ],
+    "Version": "2012-10-17"
+   }
+  },
+  "Type": "AWS::IAM::ManagedPolicy"
+ },
+ "JobRole": {
+  "Properties": {
+   "AssumeRolePolicyDocument": {
+    "Statement": [
+     {
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Principal": {
+       "Service": "ec2.amazonaws.com"
+      },
+      "Sid": "Ec2AssumesThisRole"
+     }
+    ],
+    "Version": "2012-10-17"
+   },
+   "Description": "The role that job machines run as, through the job instance profile. Only EC2 can assume it.",
+   "ManagedPolicyArns": [
+    {
+     "Ref": "JobPolicy"
+    }
+   ],
+   "Tags": [
+    {
+     "Key": "project",
+     "Value": "voxelis-kiroween"
+    }
+   ]
+  },
+  "Type": "AWS::IAM::Role"
+ },
+ "JobSecurityGroup": {
+  "Metadata": {
+   "guard": {
+    "SuppressedRules": [
+     "EC2_SECURITY_GROUP_EGRESS_OPEN_TO_WORLD_RULE"
+    ]
+   }
+  },
+  "Properties": {
+   "GroupDescription": "Job machines: nothing in, HTTPS and HTTP out",
+   "SecurityGroupEgress": [
+    {
+     "CidrIp": "0.0.0.0/0",
+     "Description": "HTTPS to AWS APIs, S3, Session Manager and package mirrors",
+     "FromPort": 443,
+     "IpProtocol": "tcp",
+     "ToPort": 443
+    },
+    {
+     "CidrIp": "0.0.0.0/0",
+     "Description": "HTTP to the Ubuntu apt mirrors",
+     "FromPort": 80,
+     "IpProtocol": "tcp",
+     "ToPort": 80
+    }
+   ],
+   "Tags": [
+    {
+     "Key": "project",
+     "Value": "voxelis-kiroween"
+    }
+   ],
+   "VpcId": {
+    "Ref": "DefaultVpcId"
+   }
+  },
+  "Type": "AWS::EC2::SecurityGroup"
+ },
+ "ProjectGroup": {
+  "Properties": {
+   "ManagedPolicyArns": [
+    {
+     "Ref": "ReadPolicy"
+    },
+    {
+     "Ref": "AssumeRunnerPolicy"
+    }
+   ]
+  },
+  "Type": "AWS::IAM::Group"
+ },
+ "ReadPolicy": {
+  "Metadata": {
+   "guard": {
+    "SuppressedRules": [
+     "IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE"
+    ]
+   }
+  },
+  "Properties": {
+   "Description": "Read-only access for the people who run jobs and for the runner role. Describes EC2, reads the console output of tagged job machines, the GPU quota and the Deep Learning Base AMI ids, lists and reads the whole job bucket, and reads this stack, all in this region. It starts, changes and deletes nothing.",
+   "PolicyDocument": {
+    "Statement": [
+     {
+      "Action": "ec2:Describe*",
+      "Condition": {
+       "StringEquals": {
+        "aws:RequestedRegion": {
+         "Ref": "AWS::Region"
+        }
+       }
+      },
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "DescribeEc2InThisRegion"
+     },
+     {
+      "Action": "ec2:GetConsoleOutput",
+      "Condition": {
+       "StringEquals": {
+        "aws:ResourceTag/project": "voxelis-kiroween"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+      },
+      "Sid": "ReadJobMachineConsoles"
+     },
+     {
+      "Action": [
+       "servicequotas:GetServiceQuota",
+       "servicequotas:ListRequestedServiceQuotaChangeHistoryByQuota"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:servicequotas:${AWS::Region}:${AWS::AccountId}:ec2/L-DB2E81BA"
+      },
+      "Sid": "ReadGpuQuota"
+     },
+     {
+      "Action": [
+       "ssm:GetParameter",
+       "ssm:GetParameters"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/deeplearning/ami/x86_64/base-*"
+      },
+      "Sid": "ReadBaseAmiIds"
+     },
+     {
+      "Action": "s3:ListBucket",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::GetAtt": [
+        "JobBucket",
+        "Arn"
+       ]
+      },
+      "Sid": "ListJobBucket"
+     },
+     {
+      "Action": "s3:GetObject",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "${JobBucket.Arn}/*"
+      },
+      "Sid": "ReadJobFiles"
+     },
+     {
+      "Action": [
+       "cloudformation:DescribeStacks",
+       "cloudformation:DescribeStackEvents",
+       "cloudformation:DescribeStackResource",
+       "cloudformation:DescribeStackResources",
+       "cloudformation:ListStackResources"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+       "Ref": "AWS::StackId"
+      },
+      "Sid": "ReadThisStack"
+     }
+    ],
+    "Version": "2012-10-17"
+   }
+  },
+  "Type": "AWS::IAM::ManagedPolicy"
+ },
+ "RunnerLaunchPolicy": {
+  "Properties": {
+   "Description": "Lets the runner role launch job machines in this region, only of the allowed types, from an Amazon image or a tagged image of this account, with the job instance profile, IMDSv2, the project tag, the job security group and a subnet of the default VPC, and with no key pair or launch template.",
+   "PolicyDocument": {
+    "Statement": [
+     {
+      "Action": "ec2:RunInstances",
+      "Condition": {
+       "ArnEquals": {
+        "ec2:InstanceProfile": {
+         "Fn::GetAtt": [
+          "JobInstanceProfile",
+          "Arn"
+         ]
+        }
+       },
+       "StringEquals": {
+        "aws:RequestTag/project": "voxelis-kiroween",
+        "ec2:InstanceType": [
+         "g5.xlarge",
+         "g5.2xlarge",
+         "g5.4xlarge",
+         "g5.8xlarge",
+         "g6.2xlarge",
+         "g6.4xlarge",
+         "g6e.2xlarge",
+         "g6e.4xlarge"
+        ],
+        "ec2:MetadataHttpTokens": "required"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+      },
+      "Sid": "LaunchJobMachine"
+     },
+     {
+      "Action": "ec2:RunInstances",
+      "Condition": {
+       "StringEquals": {
+        "ec2:Owner": "amazon"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+      },
+      "Sid": "LaunchFromAmazonImage"
+     },
+     {
+      "Action": "ec2:RunInstances",
+      "Condition": {
+       "StringEquals": {
+        "aws:ResourceTag/project": "voxelis-kiroween",
+        "ec2:Owner": {
+         "Ref": "AWS::AccountId"
+        }
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+      },
+      "Sid": "LaunchFromMachineImage"
+     },
+     {
+      "Action": "ec2:RunInstances",
+      "Condition": {
+       "ArnEquals": {
+        "ec2:Vpc": {
+         "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${JobSecurityGroup.VpcId}"
+        }
+       }
+      },
+      "Effect": "Allow",
+      "Resource": [
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+       }
+      ],
+      "Sid": "LaunchInDefaultVpc"
+     },
+     {
+      "Action": "ec2:RunInstances",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${JobSecurityGroup.GroupId}"
+      },
+      "Sid": "LaunchWithJobSecurityGroup"
+     },
+     {
+      "Action": "ec2:RunInstances",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+      },
+      "Sid": "LaunchVolumes"
+     },
+     {
+      "Action": "ec2:CreateTags",
+      "Condition": {
+       "StringEquals": {
+        "ec2:CreateAction": [
+         "RunInstances",
+         "CreateImage"
+        ]
+       }
+      },
+      "Effect": "Allow",
+      "Resource": [
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+       }
+      ],
+      "Sid": "TagOnlyWhenCreating"
+     },
+     {
+      "Action": "iam:PassRole",
+      "Condition": {
+       "StringEquals": {
+        "iam:PassedToService": "ec2.amazonaws.com"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::GetAtt": [
+        "JobRole",
+        "Arn"
+       ]
+      },
+      "Sid": "PassJobRole"
+     }
+    ],
+    "Version": "2012-10-17"
+   }
+  },
+  "Type": "AWS::IAM::ManagedPolicy"
+ },
+ "RunnerManagePolicy": {
+  "Properties": {
+   "Description": "Lets the runner role stop and terminate tagged job machines in this region, make tagged images of them, remove tagged images and snapshots, upload files under jobs/ in the job bucket with no deletes, and open shells on tagged job machines and end or resume only its own. It can't share, publish, copy or export an image or a snapshot.",
+   "PolicyDocument": {
+    "Statement": [
+     {
+      "Action": [
+       "ec2:StopInstances",
+       "ec2:TerminateInstances"
+      ],
+      "Condition": {
+       "StringEquals": {
+        "aws:ResourceTag/project": "voxelis-kiroween"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+      },
+      "Sid": "StopJobMachines"
+     },
+     {
+      "Action": "ec2:CreateImage",
+      "Condition": {
+       "StringEquals": {
+        "aws:ResourceTag/project": "voxelis-kiroween"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+      },
+      "Sid": "ImageFromJobMachine"
+     },
+     {
+      "Action": "ec2:CreateImage",
+      "Condition": {
+       "StringEquals": {
+        "aws:RequestTag/project": "voxelis-kiroween"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": [
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+       }
+      ],
+      "Sid": "TagNewMachineImage"
+     },
+     {
+      "Action": [
+       "ec2:DeregisterImage",
+       "ec2:DeleteSnapshot"
+      ],
+      "Condition": {
+       "StringEquals": {
+        "aws:ResourceTag/project": "voxelis-kiroween"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": [
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+       },
+       {
+        "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*"
+       }
+      ],
+      "Sid": "RemoveMachineImages"
+     },
+     {
+      "Action": [
+       "s3:PutObject",
+       "s3:AbortMultipartUpload"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "${JobBucket.Arn}/jobs/*"
+      },
+      "Sid": "UploadJobFiles"
+     },
+     {
+      "Action": "ssm:StartSession",
+      "Condition": {
+       "StringEquals": {
+        "ssm:resourceTag/project": "voxelis-kiroween"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+      },
+      "Sid": "StartShellOnJobMachine"
+     },
+     {
+      "Action": "ssm:StartSession",
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/SSM-SessionManagerRunShell"
+      },
+      "Sid": "StartShellDocument"
+     },
+     {
+      "Action": [
+       "ssm:TerminateSession",
+       "ssm:ResumeSession",
+       "ssmmessages:OpenDataChannel"
+      ],
+      "Condition": {
+       "StringEquals": {
+        "ssm:resourceTag/aws:ssmmessages:session-id": "${aws:userid}"
+       }
+      },
+      "Effect": "Allow",
+      "Resource": {
+       "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:session/*"
+      },
+      "Sid": "OwnShellsOnly"
+     }
+    ],
+    "Version": "2012-10-17"
+   }
+  },
+  "Type": "AWS::IAM::ManagedPolicy"
+ },
+ "RunnerRole": {
+  "Properties": {
+   "AssumeRolePolicyDocument": {
+    "Statement": [
+     {
+      "Action": "sts:AssumeRole",
+      "Effect": "Allow",
+      "Principal": {
+       "AWS": {
+        "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+       }
+      },
+      "Sid": "AccountPrincipalsAssumeThisRole"
+     }
+    ],
+    "Version": "2012-10-17"
+   },
+   "Description": "The role that launches, stops and cleans up job machines, uploads job files and opens shells on job machines. Principals in this account whose own policies allow it can assume it, with no MFA.",
+   "ManagedPolicyArns": [
+    {
+     "Ref": "ReadPolicy"
+    },
+    {
+     "Ref": "RunnerLaunchPolicy"
+    },
+    {
+     "Ref": "RunnerManagePolicy"
+    }
+   ],
+   "Tags": [
+    {
+     "Key": "project",
+     "Value": "voxelis-kiroween"
+    }
+   ]
+  },
+  "Type": "AWS::IAM::Role"
+ }
+}

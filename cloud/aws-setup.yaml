@@ -2,21 +2,39 @@
 # owner deploys it once as the stack, from CloudShell in the AWS console, by following
 # docs/aws-setup.md.
 #
-# This file holds its own numbers and names: the 60 and 7 days of the bucket's lifecycle rules,
-# the ports 443 and 80, the allowed instance types, the project tag project=voxelis-kiroween and
-# the bucket's prefixes jobs/ and work/. They live here and not in config.toml, because
+# This file holds its own numbers and names: the 60, 7 and 1 days of the bucket's lifecycle
+# rules, the ports 443 and 80, the allowed instance types, the project tag
+# project=voxelis-kiroween, the bucket's prefixes jobs/, work/, uploads/ and website/ (the website
+# bundles), the website log's 30 days, and the website function's 1024 MB and 300 seconds. They
+# live here and not in config.toml, because
 # CloudFormation can't read config.toml. Changing one of them, an allowed instance type for
 # example, means editing this file and then updating the stack, as docs/aws-setup.md says.
 #
 # Keep this file within 51,200 bytes, the most that --template-body takes.
 
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "AWS setup for the splat pipeline: a private job bucket, the job machines' role, instance profile and security group, the runner role, the read policy and the project group. One parameter: the id of this region's default VPC."
+Description: "AWS setup for the splat pipeline: a private job bucket, the job machines' role, instance profile and security group, the runner role, the read policy, the project group, and the website: one function with its URL, role, log group and table."
 
 Parameters:
   DefaultVpcId:
     Type: AWS::EC2::VPC::Id
     Description: ID of this region's default VPC, where the job machines start.
+  WebsiteCodeBucket:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[a-z0-9.-]{0,63}$"
+    Description: Bucket that holds the website bundle. The deploy command sets it to the job bucket. Empty until the first deploy.
+  WebsiteCodeKey:
+    Type: String
+    Default: ""
+    AllowedPattern: "^(website/[0-9a-f]{40}\\.zip)?$"
+    Description: Key of the website bundle in that bucket, website/<commit>.zip. Empty gives the placeholder page.
+
+Conditions:
+  # The bundle is used only when both are set; the deploy command sets both together.
+  HasWebsiteCode: !And
+    - !Not [!Equals [!Ref WebsiteCodeKey, ""]]
+    - !Not [!Equals [!Ref WebsiteCodeBucket, ""]]
 
 Resources:
   JobBucket:
@@ -47,6 +65,20 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
+      # Browsers on the website's own origin may send video parts (PUT, reading each part's ETag)
+      # and the viewer may read a job's splat and cameras (GET, HEAD). The origin is the function
+      # URL's host, so nothing on the function's side refers back to this bucket.
+      CorsConfiguration:
+        CorsRules:
+          - Id: website-part-uploads
+            AllowedMethods: [PUT]
+            AllowedOrigins:
+              - !Join ["", ["https://", !Select [2, !Split ["/", !GetAtt WebsiteFunctionUrl.FunctionUrl]]]]
+            ExposedHeaders: [ETag]
+          - Id: website-viewer-reads
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins:
+              - !Join ["", ["https://", !Select [2, !Split ["/", !GetAtt WebsiteFunctionUrl.FunctionUrl]]]]
       LifecycleConfiguration:
         # Only files under work/ are ever deleted. The abort rule stays a rule of its own with no
         # filter, so it covers the whole bucket, jobs/ included, and only aborts unfinished uploads.
@@ -59,6 +91,14 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 7
+          # The website copies each video into its job's input/ when the job starts, so the
+          # browser's upload under uploads/ is only needed for a day.
+          - Id: delete-uploads-after-1-day
+            Status: Enabled
+            Prefix: uploads/
+            ExpirationInDays: 1
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
       Tags:
         - Key: project
           Value: voxelis-kiroween
@@ -476,6 +516,278 @@ Resources:
         - !Ref ReadPolicy
         - !Ref AssumeRunnerPolicy
 
+  # The website's one table: accounts, sessions, uploads, job owners, the limit counters, share
+  # links and showcase entries, under string keys pk and sk. Deleting the stack keeps it, so the
+  # limit counters outlast mistakes.
+  WebsiteTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Metadata:
+      guard:
+        SuppressedRules:
+          - DYNAMODB_TABLE_ENCRYPTED_KMS  # DynamoDB encrypts every table at rest by default. A customer key would add a monthly cost for a tiny table.
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  WebsiteLogGroup:
+    Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+          - CLOUDWATCH_LOG_GROUP_ENCRYPTED  # CloudWatch Logs encrypts log data by default, and the website logs no secrets. A customer key would add a monthly cost.
+    Properties:
+      LogGroupName: !Sub "/voxelis-kiroween/${AWS::StackName}/website"
+      RetentionInDays: 30
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  # The role the website function runs as. Its policy attaches itself with Roles, so nothing on
+  # the function's side refers to the policy, and the policy may refer to the bucket.
+  WebsiteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: The role the website function runs as. Only Lambda can assume it.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaAssumesThisRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  # Everything the website may do. It launches job machines under the runner's own conditions, but
+  # only from our tagged image, and it stops, terminates, images and deletes nothing. Its writes
+  # reach uploads/ and jobs/<job id>/input/ only, never a job's out/: each ? matches one
+  # character, so the pattern holds a job id's exact shape.
+  WebsitePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Metadata:
+      guard:
+        SuppressedRules:
+          - IAM_POLICYDOCUMENT_NO_WILDCARD_RESOURCE  # EC2's describe actions only take "*". That statement is limited to this stack's region.
+    Properties:
+      Description: Lets the website use its own table and log group, read this stack, the GPU quota, EC2 in this region and the job bucket's jobs/ and uploads/, upload to uploads/ and to jobs/<job id>/input/, and launch job machines from our own tagged image. It stops, terminates, images and deletes nothing.
+      Roles:
+        - !Ref WebsiteRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: UseWebsiteTable
+            Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:Query
+            Resource: !GetAtt WebsiteTable.Arn
+          - Sid: WriteWebsiteLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !GetAtt WebsiteLogGroup.Arn
+          - Sid: ReadThisStack
+            Effect: Allow
+            Action: cloudformation:DescribeStacks
+            Resource: !Ref AWS::StackId
+          - Sid: ReadGpuQuota
+            Effect: Allow
+            Action: servicequotas:GetServiceQuota
+            Resource: !Sub "arn:${AWS::Partition}:servicequotas:${AWS::Region}:${AWS::AccountId}:ec2/L-DB2E81BA"
+          - Sid: DescribeEc2InThisRegion
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeImages
+              - ec2:DescribeSubnets
+              - ec2:DescribeInstanceTypeOfferings
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: !Ref AWS::Region
+          - Sid: LaunchJobMachine
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+            Condition:
+              StringEquals:
+                ec2:InstanceType:
+                  - g5.xlarge
+                  - g5.2xlarge
+                  - g5.4xlarge
+                  - g5.8xlarge
+                  - g6.2xlarge
+                  - g6.4xlarge
+                  - g6e.2xlarge
+                  - g6e.4xlarge
+                ec2:MetadataHttpTokens: required
+                aws:RequestTag/project: voxelis-kiroween
+              ArnEquals:
+                ec2:InstanceProfile: !GetAtt JobInstanceProfile.Arn
+          - Sid: LaunchFromMachineImage
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}::image/*"
+            Condition:
+              StringEquals:
+                ec2:Owner: !Ref AWS::AccountId
+                aws:ResourceTag/project: voxelis-kiroween
+          - Sid: LaunchInDefaultVpc
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:subnet/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+            Condition:
+              ArnEquals:
+                ec2:Vpc: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${JobSecurityGroup.VpcId}"
+          - Sid: LaunchWithJobSecurityGroup
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${JobSecurityGroup.GroupId}"
+          - Sid: LaunchVolumes
+            Effect: Allow
+            Action: ec2:RunInstances
+            Resource: !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+          - Sid: TagOnlyWhenLaunching
+            Effect: Allow
+            Action: ec2:CreateTags
+            Resource:
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/*"
+              - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction: RunInstances
+          - Sid: PassJobRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !GetAtt JobRole.Arn
+            Condition:
+              StringEquals:
+                iam:PassedToService: ec2.amazonaws.com
+          - Sid: ListJobsAndUploads
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource: !GetAtt JobBucket.Arn
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - "jobs/*"
+                  - "uploads/*"
+          - Sid: ReadJobsAndUploads
+            Effect: Allow
+            Action: s3:GetObject
+            Resource:
+              - !Sub "${JobBucket.Arn}/jobs/*"
+              - !Sub "${JobBucket.Arn}/uploads/*"
+          - Sid: WriteUploadsAndJobInputs
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:AbortMultipartUpload
+            Resource:
+              - !Sub "${JobBucket.Arn}/uploads/*"
+              - !Sub "${JobBucket.Arn}/jobs/????????-??????-??????/input/*"
+
+  # The website: one function that answers browsers through its URL. With no bundle yet it runs a
+  # placeholder page. Its code comes from the two parameters and its environment holds only the
+  # table's name; it reads the bucket and the rest from this stack when it runs.
+  WebsiteFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      guard:
+        SuppressedRules:
+          - LAMBDA_INSIDE_VPC  # The function reaches only AWS APIs. A VPC would need a NAT gateway or endpoints, which bill by the hour.
+          - LAMBDA_DLQ_CHECK  # The function URL calls it synchronously, so a dead-letter queue would never receive anything.
+          - LAMBDA_CONCURRENCY_CHECK  # A reservation fails on accounts whose Lambda limit can't spare it, and the website limits paid work itself.
+    Properties:
+      Description: The website. It signs judges in, takes uploads, starts jobs and shows their results.
+      Runtime: python3.11
+      Architectures:
+        - x86_64
+      MemorySize: 1024
+      Timeout: 300
+      Role: !GetAtt WebsiteRole.Arn
+      Handler: !If [HasWebsiteCode, app.lambda_function.handler, index.handler]
+      Code: !If
+        - HasWebsiteCode
+        - S3Bucket: !Ref WebsiteCodeBucket
+          S3Key: !Ref WebsiteCodeKey
+        - ZipFile: |
+            def handler(event, context):
+                return {"statusCode": 503,
+                        "headers": {"Content-Type": "text/html; charset=utf-8",
+                                    "Cache-Control": "no-store",
+                                    "X-Content-Type-Options": "nosniff"},
+                        "body": "<!doctype html><title>Not deployed yet</title>"
+                                "<p>The website isn't deployed yet.</p>"}
+      Environment:
+        Variables:
+          WEBSITE_TABLE: !Ref WebsiteTable
+      LoggingConfig:
+        LogGroup: !Ref WebsiteLogGroup
+        LogFormat: Text
+      Tags:
+        - Key: project
+          Value: voxelis-kiroween
+
+  WebsiteFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt WebsiteFunction.Arn
+      AuthType: NONE
+      InvokeMode: BUFFERED
+
+  # A function URL with no IAM auth needs both permissions, the second only through the URL.
+  WebsiteUrlPermission:
+    Type: AWS::Lambda::Permission
+    Metadata:
+      guard:
+        SuppressedRules:
+          - LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED  # The website has to answer browsers. It does its own sign-in.
+    Properties:
+      FunctionName: !Ref WebsiteFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  WebsiteInvokePermission:
+    Type: AWS::Lambda::Permission
+    Metadata:
+      guard:
+        SuppressedRules:
+          - LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED  # Only through the function URL, by its InvokedViaFunctionUrl condition.
+    Properties:
+      FunctionName: !Ref WebsiteFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
 Outputs:
   BucketName:
     Description: Name of the job bucket, which holds one jobs/<job id>/ folder and one work/<job id>/ folder per job.
@@ -498,3 +810,9 @@ Outputs:
   GroupName:
     Description: Name of the IAM group for the people who run jobs.
     Value: !Ref ProjectGroup
+  WebsiteUrl:
+    Description: The website's address, to give to the judges.
+    Value: !GetAtt WebsiteFunctionUrl.FunctionUrl
+  WebsiteTableName:
+    Description: Name of the website's table, for the account and showcase commands.
+    Value: !Ref WebsiteTable

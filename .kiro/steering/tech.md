@@ -17,3 +17,4 @@ inclusion: always
 - boto3 only inside `cloud/`.
 - Node only for PlayCanvas splat-transform.
 - Settings live in `config.toml` at the root, read with Python's built-in `tomllib`.
+- The website: one Lambda function on Python 3.11 behind a function URL, and one on-demand DynamoDB table, both in the stack. Its web parts use only the standard library: routing, `html.escape`d page templates and one plain JavaScript file. It reaches AWS only through `cloud/`, its App_Project in `app/pyproject.toml` lists only boto3, and it starts jobs through the same Start_Core in `cloud/start.py` as `cloud.start`.
