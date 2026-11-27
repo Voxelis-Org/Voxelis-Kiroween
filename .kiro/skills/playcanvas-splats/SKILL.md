@@ -1,8 +1,8 @@
 ---
 name: playcanvas-splats
-description: How the PlayCanvas engine and @playcanvas/supersplat-viewer 1.43.3 show Gaussian splats in a browser. Which files they load (the .sog that splat-transform 3.8.0 writes, a 3DGS .ply), the first engine release that reads that .sog, putting the viewer in a web page with no build step and giving it a file's URL, its camera controls on a laptop and on a phone, what it needs from a page's Content-Security-Policy, and its licences. Use when building or reviewing the web viewer page, picking viewer or engine versions, writing the page's CSP or the file host's CORS rules, or explaining the viewer's controls.
+description: How the PlayCanvas engine and @playcanvas/supersplat-viewer 1.43.3 show Gaussian splats in a browser. Which files they load (the .sog that splat-transform 3.8.0 writes, a 3DGS .ply), the first engine release that reads that .sog, putting the viewer in a web page with no build step and giving it a file's URL, its camera controls on a laptop and on a phone, what it needs from a page's Content-Security-Policy, and its licences, and, for engine 2.24.3, changing splat colours through the gsplatModifyVS chunk and drawing meshes among the splats. Use when building or reviewing the web viewer page, picking viewer or engine versions, writing the page's CSP or the file host's CORS rules, explaining the viewer's controls, or changing how our own viewer draws splats or adding meshes to it.
 metadata:
-  sources: the v1.43.3 tag of supersplat-viewer (README, docs/api.md, src/, LICENSE, THIRD_PARTY_NOTICES.md), its files on jsDelivr, the v2.24.1 tag of the PlayCanvas engine and its release notes back to v2.11.0, the v3.8.0 tag of splat-transform, and the PlayCanvas developer docs, read November 2026. Nothing was installed or run.
+  sources: the v1.43.3 tag of supersplat-viewer (README, docs/api.md, src/, LICENSE, THIRD_PARTY_NOTICES.md), its files on jsDelivr, the v2.24.1 tag of the PlayCanvas engine and its release notes back to v2.11.0, the v3.8.0 tag of splat-transform, and the PlayCanvas developer docs, read November 2026, and the v2.24.3 tag of the engine for the section on our own colours and meshes. Nothing was installed or run.
 ---
 
 # PlayCanvas splats in the browser
@@ -369,6 +369,113 @@ fallback licence. Ask Samarth if we want to be strict about it, though the files
 `.sog` and `.ply` never run the decoders. MIT asks us to keep the copyright notice, so
 serve the package's `LICENSE` and `THIRD_PARTY_NOTICES.md` beside the files when we self-host
 them.
+
+## Our own colours and meshes in the splat (engine 2.24.3)
+
+What pumpkin smash (`app/viewer/smash.js`) needed from the engine our own viewer runs on,
+2.24.3 on WebGL 2, checked in the v2.24.3 source. The links are at the end of this section.
+
+### Changing the splats' colours
+
+- `GSplatComponent#unified` defaults to true ([component.js#L176][c176]). In unified mode
+  `entity.gsplat.material` is null and warns, pointing to
+  `app.systems.gsplat.getMaterial(camera, layer)` ([component.js#L308][c308],
+  [system.js#L263][s263]). For every splat at once, use the template,
+  `app.scene.gsplat.material`: its defines, parameters and shader chunks go to every gsplat
+  material ([gsplat-params.js#L1048][p1048]).
+- Override `gsplatModifyVS` on the template with
+  `getShaderChunks(SHADERLANGUAGE_GLSL).set('gsplatModifyVS', code)`, then `update()`. The code
+  must define all three functions of the default ([gsplatModify.js][modify]):
+  `modifySplatCenter(inout vec3 center)`,
+  `modifySplatRotationScale(vec3 originalCenter, vec3 modifiedCenter, inout vec4 rotation, inout vec3 scale)`
+  and `modifySplatColor(vec3 center, inout vec4 color)`. Our own uniforms are declared in the
+  same chunk.
+- The vertex shader calls `modifySplatColor(modelCenter, clr)` after the spherical harmonics
+  and before the alpha clip, so a changed alpha changes which splats are clipped
+  ([gsplat.js#L89][v89]). The colour is in gamma space: the shader then clamps it at 0 and
+  hands it to `prepareOutputFromGamma` ([gsplat.js#L127][v127]).
+- In unified mode that centre is in the world. The work buffer stores
+  `matrix_model * modelCenter` ([gsplatCopyToWorkbuffer.js#L77][w77]), and the quad renderer
+  draws it with the manager's own `GraphNode`, which nothing moves
+  ([gsplat-manager.js#L62][m62], [gsplat-quad-renderer.js#L478][q478]). In the legacy
+  non-unified mode it's the splat's own frame.
+- On WebGL, `GSPLAT_RENDERER_AUTO` resolves to CPU sorting, the quad renderer
+  ([gsplat-params.js#L200][p200]). It copies the template's defines, parameters and chunks only
+  when the template's `updateVersion` changes ([gsplat-quad-renderer.js#L352][q352]), and
+  `Material#update()` is what moves it on ([material.js#L1376][mat1376]). So call `update()`
+  after every change, every frame for an animation. Parameter data is copied by reference, so a
+  `Float32Array` changed in place carries its new values, and the shader is rebuilt only when
+  the defines or chunks changed.
+- To undo, delete the chunk and `update()`. The copy removes chunks the template no longer has
+  ([shader-chunk-map.js#L154][map154], [gsplat-quad-renderer.js#L438][q438]), so the default
+  comes back. Setting or deleting the chunk rebuilds the splat shader once.
+- The other hook, `setWorkBufferModifier()` ([component.js#L648][c648]), runs as splats are
+  written to the work buffer, which happens only when something changes unless
+  `workBufferUpdate` is `WORKBUFFER_UPDATE_ALWAYS`, and that rewrites every splat each frame
+  ([component.js#L600][c600]). For colours that change every frame, the template is the
+  cheaper place.
+
+### Meshes among the splats, hidden by walls
+
+- The splats are one instanced mesh instance in the World layer, drawn with
+  `BLEND_PREMULTIPLIED` and no depth writes ([gsplat-quad-renderer.js#L125][q125],
+  [#L189][q189]), with the depth test left at its default, on ([material.js#L1007][mat1007]).
+- The default layer order draws the World layer's opaque part before its transparent part
+  ([app-base.js#L607][a607], [#L610][a610]). So an opaque mesh in the World layer draws first
+  and writes depth: splats behind it fail the depth test and splats in front blend over it,
+  which is how a wall in front hides it. It needs no extra layer or depth pass. We keep our
+  meshes opaque and fade them by shrinking, so how transparent draws sort against the splat's
+  one mesh instance never matters.
+- A mesh instance of our own needs no render component: it goes in with
+  `layer.addMeshInstances()` ([layer.js#L67][l67]), with a `GraphNode` outside the scene as its
+  node.
+- Instancing with a `ShaderMaterial`: `setInstancing(vertexBuffer)` turns frustum culling off
+  by default ([mesh-instance.js#L1566][mi1566]). The shader gets an `INSTANCING` define but no
+  instancing code ([shader-generator-shader.js#L82][g82]), so it reads its own per-instance
+  attributes, named in the material's `attributes` map. Some semantics share a location:
+  `SEMANTIC_ATTR12` has TEXCOORD7's and `SEMANTIC_ATTR13` has TANGENT's
+  ([constants.js#L2483][k2483], [#L2498][k2498]). The engine fills `matrix_viewProjection` and `view_position`
+  by name ([renderer.js#L408][r408]).
+- A `VertexBuffer` keeps the array it was given, and `unlock(byteOffset, byteLength)` uploads
+  only that range ([vertex-buffer.js#L170][vb170]). A mesh instance doesn't destroy an
+  instancing buffer we made ([mesh-instance.js#L127][mi127]), so we destroy it ourselves.
+- The splat's centres are on the CPU as `resource.centers`, x, y and z per splat in the splat's
+  own frame ([gsplat-resource-base.js#L42][rb42]), kept while `scene.gsplatCentersEnabled` is
+  true, its default ([scene.js#L362][sc362]). Pumpkin smash counts them into a grid to find the
+  walls.
+
+[c176]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/components/gsplat/component.js#L176
+[c308]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/components/gsplat/component.js#L308
+[c600]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/components/gsplat/component.js#L600
+[c648]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/components/gsplat/component.js#L648
+[s263]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/components/gsplat/system.js#L263
+[p200]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-params.js#L200
+[p1048]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-params.js#L1048
+[modify]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/shader-lib/glsl/chunks/gsplat/vert/gsplatModify.js
+[v89]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/shader-lib/glsl/chunks/gsplat/vert/gsplat.js#L89
+[v127]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/shader-lib/glsl/chunks/gsplat/vert/gsplat.js#L127
+[w77]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/shader-lib/glsl/chunks/gsplat/frag/gsplatCopyToWorkbuffer.js#L77
+[m62]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-manager.js#L62
+[q125]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-quad-renderer.js#L125
+[q189]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-quad-renderer.js#L189
+[q352]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-quad-renderer.js#L352
+[q438]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-quad-renderer.js#L438
+[q478]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat-unified/gsplat-quad-renderer.js#L478
+[map154]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/shader-lib/shader-chunk-map.js#L154
+[mat1007]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/materials/material.js#L1007
+[mat1376]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/materials/material.js#L1376
+[a607]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/app-base.js#L607
+[a610]: https://github.com/playcanvas/engine/blob/v2.24.3/src/framework/app-base.js#L610
+[l67]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/layer.js#L67
+[mi127]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/mesh-instance.js#L127
+[mi1566]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/mesh-instance.js#L1566
+[g82]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/shader-lib/programs/shader-generator-shader.js#L82
+[k2483]: https://github.com/playcanvas/engine/blob/v2.24.3/src/platform/graphics/constants.js#L2483
+[k2498]: https://github.com/playcanvas/engine/blob/v2.24.3/src/platform/graphics/constants.js#L2498
+[r408]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/renderer/renderer.js#L408
+[vb170]: https://github.com/playcanvas/engine/blob/v2.24.3/src/platform/graphics/vertex-buffer.js#L170
+[rb42]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/gsplat/gsplat-resource-base.js#L42
+[sc362]: https://github.com/playcanvas/engine/blob/v2.24.3/src/scene/scene.js#L362
 
 ## Our rules that touch this
 
