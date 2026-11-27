@@ -77,13 +77,24 @@ to keep the wall's middle in view, with a faint grey-level noise texture painted
 helpers, given a frame's index and a size (width, height), work out on the CPU, by meeting each
 pixel's ray with the wall, its true depth, normal and Covered mask, its BGR frame, and, for the
 scoring, its ScoreSource and its Candidate. The section above textured_camera gives its numbers.
+
+The box room is the Walls_Step's scene for the Facets, the World_Planes and the cross-frame
+stages (walls spec, Req 12, 13, 22.1): a back wall, a side wall and a floor, each painted with
+the textured plane's noise texture, seen by BOX_FRAMES PINHOLE cameras of 128 x 96 pixels, frame
+i at Pick_Number i and Frame_Time BOX_SECONDS · i. The back wall ends before the floor does, so
+its end edge is a depth jump in front of the floor, and the other edges between surfaces are
+creases where only the normal jumps. BOX_IMAGES and BOX_POINTS are records for write_model, with
+the Observed_Points on the surfaces, and BOX_PLANES holds the surfaces' true world planes. Its
+helpers, box_camera, box_pose, box_depth, box_normal, box_covered, box_surface, box_frame,
+box_candidate and box_score_source, work like the textured plane's, and box_surface says which
+surface each pixel sees, for the tests' oracles. The section above BOX_FRAMES gives its numbers.
 """
 
 from __future__ import annotations
 
 import math
 import struct
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -598,23 +609,46 @@ def _textured_image(index: int) -> ImageRecord:
 TEXTURED_IMAGES = tuple(_textured_image(index) for index in range(TEXTURED_FRAMES))
 
 
-def textured_camera() -> Camera:
-    """The textured plane's Shared_Camera, as the Model_Reader gives it."""
+def _as_camera(record: CameraRecord) -> Camera:
+    """`record` as the Model_Reader gives a Shared_Camera."""
     from splatpipe.train.colmap import Camera
 
-    record = TEXTURED_CAMERA
     return Camera(camera_id=record.camera_id, width=record.width, height=record.height,
                   fx=record.fx, fy=record.fy, cx=record.cx, cy=record.cy)
+
+
+def _pose(image: ImageRecord) -> np.ndarray:
+    """`image`'s world-to-camera Image_Pose, (4, 4) float64 [[R, t], [0, 0, 0, 1]], with R from
+    this module's own quaternion turn."""
+    pose = np.eye(4)
+    pose[:3, :3] = _rotate(image.quaternion, np.eye(3)).T   # row j of _rotate's output is R e_j
+    pose[:3, 3] = image.translation
+    return pose
+
+
+def _world_rays(camera: CameraRecord, image: ImageRecord, u: np.ndarray,
+                v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The camera centre of `image`, (3,), and the world direction of the ray through each of the
+    camera's full-size pixel positions (u, v), (N, 3) in u's flattened order, scaled so that a
+    step of t along it is a step of t in camera-space z."""
+    shape = np.shape(u)
+    rays = np.stack([((np.asarray(u, dtype=np.float64) - camera.cx) / camera.fx).ravel(),
+                     ((np.asarray(v, dtype=np.float64) - camera.cy) / camera.fy).ravel(),
+                     np.ones(int(np.prod(shape)))], axis=-1)  # camera-space z of 1
+    turned = _inverse(image.quaternion)
+    centre = _rotate(turned, -np.asarray(image.translation, dtype=np.float64)[np.newaxis])[0]
+    return centre, _rotate(turned, rays)
+
+
+def textured_camera() -> Camera:
+    """The textured plane's Shared_Camera, as the Model_Reader gives it."""
+    return _as_camera(TEXTURED_CAMERA)
 
 
 def textured_pose(index: int) -> np.ndarray:
     """Frame `index`'s world-to-camera Image_Pose, (4, 4) float64 [[R, t], [0, 0, 0, 1]], with R
     from this module's own quaternion turn."""
-    image = TEXTURED_IMAGES[index]
-    pose = np.eye(4)
-    pose[:3, :3] = _rotate(image.quaternion, np.eye(3)).T   # row j of _rotate's output is R e_j
-    pose[:3, 3] = image.translation
-    return pose
+    return _pose(TEXTURED_IMAGES[index])
 
 
 def _wall_hits(index: int, u: np.ndarray,
@@ -622,15 +656,8 @@ def _wall_hits(index: int, u: np.ndarray,
     """Where the rays of frame `index` through the camera's full-size pixel positions (u, v) meet
     the wall, as (z, x, y, covered): the camera-space z, the wall's own x and y, and whether the
     ray meets the textured part in front of the camera."""
-    image = TEXTURED_IMAGES[index]
-    camera = TEXTURED_CAMERA
     shape = np.shape(u)
-    rays = np.stack([((np.asarray(u, dtype=np.float64) - camera.cx) / camera.fx).ravel(),
-                     ((np.asarray(v, dtype=np.float64) - camera.cy) / camera.fy).ravel(),
-                     np.ones(int(np.prod(shape)))], axis=-1)  # camera-space z of 1
-    turned = _inverse(image.quaternion)
-    centre = _rotate(turned, -np.asarray(image.translation, dtype=np.float64)[np.newaxis])[0]
-    direction = _rotate(turned, rays)
+    centre, direction = _world_rays(TEXTURED_CAMERA, TEXTURED_IMAGES[index], u, v)
     with np.errstate(divide="ignore", invalid="ignore"):
         z = (TEXTURED_Z - centre[2]) / direction[:, 2]
     x = centre[0] + z * direction[:, 0]
@@ -640,13 +667,13 @@ def _wall_hits(index: int, u: np.ndarray,
     return z.reshape(shape), x.reshape(shape), y.reshape(shape), covered.reshape(shape)
 
 
-def _pixel_positions(size: tuple[int, int],
-                     offset: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
-    """The camera's full-size (u, v) of each pixel of a `size` (w, h) grid, at `offset` across and
+def _pixel_positions(size: tuple[int, int], offset: float = 0.5,
+                     camera: CameraRecord = TEXTURED_CAMERA) -> tuple[np.ndarray, np.ndarray]:
+    """`camera`'s full-size (u, v) of each pixel of a `size` (w, h) grid, at `offset` across and
     down inside the pixel, 0.5 being its centre, as two (h, w) arrays."""
     width, height = size
-    u = (np.arange(width, dtype=np.float64) + offset) * TEXTURED_CAMERA.width / width
-    v = (np.arange(height, dtype=np.float64) + offset) * TEXTURED_CAMERA.height / height
+    u = (np.arange(width, dtype=np.float64) + offset) * camera.width / width
+    v = (np.arange(height, dtype=np.float64) + offset) * camera.height / height
     return np.meshgrid(u, v)
 
 
@@ -691,27 +718,44 @@ def textured_frame(index: int, size: tuple[int, int] | None = None, *,
     BGR image with the same grey in each channel: the mean of the texture over TEXTURE_SAMPLES ×
     TEXTURE_SAMPLES rays spread evenly over each pixel, in float64, then rounded. A ray that
     misses the textured part reads TEXTURE_GREY. `plain` paints the whole wall TEXTURE_GREY."""
-    size = size or (TEXTURED_CAMERA.width, TEXTURED_CAMERA.height)
+    def paint(u: np.ndarray, v: np.ndarray) -> np.ndarray | float:
+        _, x, y, covered = _wall_hits(index, u, v)
+        return TEXTURE_GREY if plain else np.where(covered, _texture(x, y), TEXTURE_GREY)
+
+    return _supersampled(TEXTURED_CAMERA, size, paint)
+
+
+def _supersampled(camera: CameraRecord, size: tuple[int, int] | None,
+                  paint: Callable[[np.ndarray, np.ndarray], np.ndarray | float]) -> np.ndarray:
+    """An (h, w, 3) uint8 BGR image at `size` (w, h), `camera`'s own size if not given, with the
+    same grey in each channel: the mean of paint(u, v), the grey seen along the rays through the
+    camera's full-size pixel positions (u, v), over TEXTURE_SAMPLES × TEXTURE_SAMPLES positions
+    spread evenly over each pixel, in float64, then rounded."""
+    size = size or (camera.width, camera.height)
     width, height = size
     grey = np.zeros((height, width))
     for row in range(TEXTURE_SAMPLES):
         for column in range(TEXTURE_SAMPLES):
-            u, _ = _pixel_positions(size, (column + 0.5) / TEXTURE_SAMPLES)
-            _, v = _pixel_positions(size, (row + 0.5) / TEXTURE_SAMPLES)
-            _, x, y, covered = _wall_hits(index, u, v)
-            painted = TEXTURE_GREY if plain else np.where(covered, _texture(x, y), TEXTURE_GREY)
-            grey = grey + painted
+            u, _ = _pixel_positions(size, (column + 0.5) / TEXTURE_SAMPLES, camera)
+            _, v = _pixel_positions(size, (row + 0.5) / TEXTURE_SAMPLES, camera)
+            grey = grey + paint(u, v)
     level = np.clip(np.rint(grey / TEXTURE_SAMPLES ** 2), 0, 255).astype(np.uint8)
     return np.repeat(level[..., np.newaxis], 3, axis=-1)
+
+
+def _candidate(image: ImageRecord, pick_number: int, seconds: float) -> Candidate:
+    """`image` as source choice sees it, at Pick_Number `pick_number` and Frame_Time
+    pick_number × `seconds`."""
+    from splatpipe.walls.sources import Candidate
+
+    return Candidate(name=str(image.name), pick_number=pick_number,
+                     frame_time=pick_number * seconds, world_to_camera=_pose(image))
 
 
 def textured_candidate(index: int) -> Candidate:
     """Frame `index` as source choice sees it: its name, its Pick_Number `index`, its Frame_Time
     index × TEXTURED_SECONDS and its Image_Pose."""
-    from splatpipe.walls.sources import Candidate
-
-    return Candidate(name=TEXTURED_IMAGES[index].name, pick_number=index,
-                     frame_time=index * TEXTURED_SECONDS, world_to_camera=textured_pose(index))
+    return _candidate(TEXTURED_IMAGES[index], index, TEXTURED_SECONDS)
 
 
 def textured_score_source(index: int, half: str, *, prior_size: tuple[int, int],
@@ -727,13 +771,385 @@ def textured_score_source(index: int, half: str, *, prior_size: tuple[int, int],
     Start_Depth to about the true depth through its Scene_Scale, whatever one factor its
     Prior_Depth is off by.
     """
+    return _score_source(TEXTURED_IMAGES[index], textured_frame(index, plain=plain), half,
+                         start_depth=textured_depth(index, prior_size),
+                         covered=textured_covered(index, prior_size),
+                         high_pass_sigma=high_pass_sigma, band_sigmas=band_sigmas)
+
+
+def _score_source(image: ImageRecord, frame: np.ndarray, half: str, *, start_depth: np.ndarray,
+                  covered: np.ndarray, high_pass_sigma: float,
+                  band_sigmas: Sequence[float]) -> ScoreSource:
+    """`image`, whose BGR Score_Size frame is `frame`, as a Source_Frame of Source_Half `half`:
+    its High_Pass and Bands are images.py's, from the frame's Luma, its Score_Mask keeps every
+    pixel, and its Prior_Size Start_Depth and Covered mask are the ones given."""
     from splatpipe.walls.images import bands, high_pass, luma
     from splatpipe.walls.scoring import ScoreSource
 
-    grey = luma(textured_frame(index, plain=plain))
-    return ScoreSource(name=TEXTURED_IMAGES[index].name, world_to_camera=textured_pose(index),
+    grey = luma(frame)
+    return ScoreSource(name=str(image.name), world_to_camera=_pose(image),
                        high_pass=high_pass(grey, high_pass_sigma),
                        bands=np.stack(bands(grey, band_sigmas)),
                        score_mask=np.ones(grey.shape, dtype=bool),
-                       start_depth=textured_depth(index, prior_size),
-                       covered=textured_covered(index, prior_size), half=half)
+                       start_depth=start_depth, covered=covered, half=half)
+
+
+# The box room, the Walls_Step's scene for the Facets, the World_Planes and the cross-frame stages
+# (walls spec, Req 12, 13, 22.1). World axes are COLMAP's camera axes for a camera that looks
+# along +z: x right, y down, z forward. So the floor is up the page at y = BOX_FLOOR_Y = 0 and
+# the walls rise to y = BOX_TOP_Y = −3.5, toward −y.
+#
+#   BOX_BACK   the back wall, z = BOX_BACK_Z = 4, for x from BOX_SIDE_X = −3 to BOX_END_X = 1 and
+#              y from −3.5 to 0. It ends at x = 1, before the floor does, so past its end the
+#              floor runs on behind it, to z = 5, and the wall's end edge stands in front of the
+#              floor: a depth jump, where a wall meets the floor nearer the camera.
+#   BOX_FLOOR  the floor, y = 0, for x from −3 to 2.5 and z from −0.5 to 5.
+#   BOX_SIDE   the left wall, x = −3, for z from −0.5 to 4 and y from −3.5 to 0. It meets the
+#              back wall and the floor at right angles, along creases with no depth jump.
+#
+# Past the floor's edges there's nothing, so a ray that meets no surface isn't a Covered_Pixel.
+# BOX_PLANES gives each surface's world plane as (normal, offset), normal·X = offset, with the
+# unit normal facing into the room, toward every camera.
+#
+# BOX_FRAMES = 10 PINHOLE cameras of 128 x 96 pixels, fx = fy = BOX_FOCAL = 320, a view of about
+# 23° x 17°, stand 4 units above the floor, each looking down at about 45° at the place BOX_VIEWS
+# names, frame i at Pick_Number i and Frame_Time BOX_SECONDS · i = 0.5·i. A camera's turn comes
+# from the shortest rotation of its z axis onto its view, so frames 0 to 3, which look left at
+# the side wall, are rolled and their creases cross the frame on a slant.
+#
+# The long focal length is what the real facet_jump (1%) and facet_jump_distance (2 pixels) need.
+# Across a plane, a pixel's inverse depth changes by |n_x| / (f·|n·r|) of itself per pixel across
+# and |n_y| / (f·|n·r|) per pixel down, n being the camera-frame normal and r = ((u − cx) / f,
+# (v − cy) / f, 1) the pixel's ray. With f = 320 and every camera looking down at about 45°, that
+# stays below 1% over 2 pixels on every surface, so the only Jump_Pixels are along the back
+# wall's end edge. A 128-pixel camera with a wide view would see its walls and floor at
+# grazing angles, and every pixel of them would be a Jump_Pixel.
+#
+# At the Prior_Size 128 x 96 (12,288 pixels), each frame's pixels on each surface, worked out
+# from box_surface, with the Jump_Pixels of the real settings taken out in brackets:
+#
+#   frame  looks at                       back          floor         side          Jump  none
+#   0      the left crease                0             6192          6096          0     0
+#   1      the left crease                0             6192          6096          0     0
+#   2      the left crease                0             6144          6144          0     0
+#   3      the back-left corner           633           5617          6038          0     0
+#   4      the back crease, left          6144          6144          0             0     0
+#   5      the back crease, left          6144          6144          0             0     0
+#   6      the back wall's end            5988 (5920)   6297 (6231)   0             134   3
+#   7      the back wall's end            5569 (5500)   6607 (6539)   0             137   112
+#   8      up the back wall               10387         1901          0             0     0
+#   9      the back wall's end            5121 (5053)   6940 (6872)   0             136   227
+#
+# So every surface a frame sees holds at least 5,000 pixels that aren't Jump_Pixels, well over
+# facet_min_pixels (4,000),
+# except two small patches: the back wall's 633 pixels in frame 3 and the floor's 1,901 in frame
+# 8, each of them 4-connected and holding no Jump_Pixel, so a Facet cut drops them for their size
+# alone. Every frame's normals are its surfaces' own, constant across each one. The back wall is
+# a Facet-sized surface in frames 4 to 9, the floor in frames 0 to 7 and 9, and the side wall in
+# frames 0 to 3, so each plane has Facets in at least plane_min_frames (3) frames.
+#
+# Every Jump_Pixel of the real settings, in frames 6, 7 and 9, lies within 4 pixels of where the
+# back wall's end edge stands in front of the floor behind it, and the jump fades out toward the
+# corner where that edge meets the floor. Nowhere else does a 2-pixel step change the inverse
+# depth by more than 1%.
+#
+# The room isn't built for source choice. Under the real time, spacing, Overlap and Image_Motion
+# rules, frames 1 to 3 find one Source_Frame each and the rest none, fewer than min_sources, so
+# a Frame_Solve of it fails the source rule. The tests that need a passing Self_Check use the
+# textured plane.
+#
+# The texture is the textured plane's, TEXTURE_NODES sampled bilinearly, with each surface laid
+# on a region of its own: its point's two in-plane coordinates (a, b), less the surface's lowest
+# a and b, plus its texture origin, are the texture's (x, y). A texture cell, 0.07 units, is 3 to
+# 5 pixels at these depths of 4.4 to 6.5.
+#
+# The Observed_Points lie on a lattice BOX_POINT_SPACING = 0.4 apart on each surface, half a step
+# in from its edges, so none sits on a crease or an edge. A lattice point is seen by a frame when
+# it's in front of the camera, lands inside the frame and is the nearest surface along its ray,
+# and BOX_POINTS keeps the points seen by at least BOX_MIN_TRACK = 2 frames, ids from 1 in the
+# surfaces' order and then the lattice's. Each image's keypoints are its points in id order, and
+# each point's colour is the texture's grey there.
+BOX_FRAMES = 10
+BOX_SECONDS = 0.5             # seconds between neighbouring frames
+BOX_FOCAL = 320.0             # pixels
+BOX_CAMERA = CameraRecord(camera_id=1, width=128, height=96, fx=BOX_FOCAL, fy=BOX_FOCAL,
+                          cx=64.0, cy=48.0)
+
+BOX_FLOOR_Y = 0.0
+BOX_TOP_Y = -3.5
+BOX_BACK_Z = 4.0
+BOX_SIDE_X = -3.0
+BOX_END_X = 1.0               # where the back wall ends, before the floor does
+BOX_FLOOR_X = (BOX_SIDE_X, 2.5)
+BOX_FLOOR_Z = (-0.5, 5.0)
+BOX_SIDE_Z = (-0.5, BOX_BACK_Z)
+
+# The surfaces' numbers in box_surface, and its number for a pixel that sees none.
+BOX_BACK, BOX_FLOOR, BOX_SIDE = 0, 1, 2
+BOX_NONE = -1
+BOX_SURFACE_NAMES = ("back", "floor", "side")
+
+BOX_POINT_SPACING = 0.4
+BOX_MIN_TRACK = 2
+
+# Each frame's camera centre and the point its optical axis goes through, in world units.
+BOX_VIEWS = (
+    ((1.0, -4.0, 1.2), (BOX_SIDE_X, BOX_FLOOR_Y, 1.2)),
+    ((1.0, -4.0, 1.6), (BOX_SIDE_X, BOX_FLOOR_Y, 1.8)),
+    ((0.9, -4.0, 1.9), (BOX_SIDE_X, BOX_FLOOR_Y, 2.4)),
+    ((0.5, -4.0, 0.5), (BOX_SIDE_X, BOX_FLOOR_Y, 3.0)),
+    ((-0.4, -4.0, 0.0), (-1.5, BOX_FLOOR_Y, BOX_BACK_Z)),
+    ((-0.2, -4.0, 0.0), (-0.75, BOX_FLOOR_Y, BOX_BACK_Z)),
+    ((0.0, -4.0, 0.0), (0.0, BOX_FLOOR_Y, BOX_BACK_Z)),
+    ((0.0, -4.0, 0.0), (0.15, BOX_FLOOR_Y, BOX_BACK_Z)),
+    ((-0.2, -4.0, 0.0), (-0.3, -0.75, BOX_BACK_Z)),
+    ((0.2, -4.0, 0.0), (0.3, BOX_FLOOR_Y, BOX_BACK_Z)),
+)
+
+# What the table above shows, for the facet tests to name: the frames that see the back wall's
+# end edge in front of the floor, and each frame's small patch, the surface it sees with fewer
+# than facet_min_pixels pixels.
+BOX_JUMP_FRAMES = (6, 7, 9)
+BOX_SMALL_PATCHES = {3: BOX_BACK, 8: BOX_FLOOR}
+
+
+@dataclass(frozen=True)
+class _BoxSurface:
+    """One surface of the box room: the plane normal·X = offset, with the unit normal facing into
+    the room, and its extent in two world axes, a and b, each a (lowest, highest) range. The
+    texture's (x, y) at a point is (X[a] − a_range[0], X[b] − b_range[0]) + texture_origin."""
+
+    normal: tuple[float, float, float]
+    offset: float
+    a_axis: int
+    a_range: tuple[float, float]
+    b_axis: int
+    b_range: tuple[float, float]
+    texture_origin: tuple[float, float]
+
+
+# In BOX_BACK, BOX_FLOOR, BOX_SIDE order. The texture regions, x from −5.9 to −1.9 and y from −3.9
+# to −0.4 for the back wall, x from 0.3 to 5.8 and y from −3.9 to 1.6 for the floor, and x from
+# −5.9 to −1.4 and y from 0.2 to 3.7 for the side wall, lie apart inside the texture's grid.
+_BOX_SURFACES = (
+    _BoxSurface(normal=(0.0, 0.0, -1.0), offset=-BOX_BACK_Z, a_axis=0,
+                a_range=(BOX_SIDE_X, BOX_END_X), b_axis=1, b_range=(BOX_TOP_Y, BOX_FLOOR_Y),
+                texture_origin=(-5.9, -3.9)),
+    _BoxSurface(normal=(0.0, -1.0, 0.0), offset=0.0 - BOX_FLOOR_Y, a_axis=0, a_range=BOX_FLOOR_X,
+                b_axis=2, b_range=BOX_FLOOR_Z, texture_origin=(0.3, -3.9)),
+    _BoxSurface(normal=(1.0, 0.0, 0.0), offset=BOX_SIDE_X, a_axis=2, a_range=BOX_SIDE_Z,
+                b_axis=1, b_range=(BOX_TOP_Y, BOX_FLOOR_Y), texture_origin=(-5.9, 0.2)),
+)
+
+# Each surface's true world plane, (unit normal, offset) with normal·X = offset, the normal facing
+# into the room, in BOX_BACK, BOX_FLOOR, BOX_SIDE order.
+BOX_PLANES = tuple((surface.normal, surface.offset) for surface in _BOX_SURFACES)
+
+
+def _box_view(index: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Frame `index`'s world-to-camera quaternion and translation, from BOX_VIEWS."""
+    if not 0 <= index < BOX_FRAMES:
+        raise ValueError(f"The box room has frames 0 to {BOX_FRAMES - 1}, not {index}")
+    return _looking_at(*BOX_VIEWS[index])
+
+
+def _box_hits_world(centre: np.ndarray,
+                    direction: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Where each ray from `centre` along `direction` (N, 3) first meets the box room, as (t,
+    surface, point): t along the ray (+inf for none), the surface's number (BOX_NONE for none)
+    and the world point (N, 3), NaN for none. A ray on an edge between two surfaces keeps the
+    first in BOX_BACK, BOX_FLOOR, BOX_SIDE order."""
+    count = direction.shape[0]
+    nearest = np.full(count, np.inf)
+    surface = np.full(count, BOX_NONE, dtype=np.int64)
+    for number, plane in enumerate(_BOX_SURFACES):
+        normal = np.asarray(plane.normal)
+        rise = np.sum(direction * normal, axis=-1)
+        with np.errstate(divide="ignore", invalid="ignore"):   # a ray along the plane
+            t = (plane.offset - float(np.sum(centre * normal))) / rise
+            point = centre + t[:, np.newaxis] * direction
+        inside = ((point[:, plane.a_axis] >= plane.a_range[0])
+                  & (point[:, plane.a_axis] <= plane.a_range[1])
+                  & (point[:, plane.b_axis] >= plane.b_range[0])
+                  & (point[:, plane.b_axis] <= plane.b_range[1]))
+        hit = np.isfinite(t) & (t > 0) & inside & (t < nearest)
+        nearest[hit] = t[hit]
+        surface[hit] = number
+    with np.errstate(invalid="ignore"):
+        points = centre + nearest[:, np.newaxis] * direction
+    points[surface == BOX_NONE] = np.nan
+    return nearest, surface, points
+
+
+def _box_hits(index: int, u: np.ndarray,
+              v: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Where the rays of frame `index` through the camera's full-size pixel positions (u, v) first
+    meet the box room, as (z, surface, point): the camera-space z (+inf for none), the surface's
+    number (BOX_NONE for none), both shaped like u, and the world point, u's shape plus 3."""
+    shape = np.shape(u)
+    centre, direction = _world_rays(BOX_CAMERA, BOX_IMAGES[index], u, v)
+    z, surface, points = _box_hits_world(centre, direction)
+    return z.reshape(shape), surface.reshape(shape), points.reshape(*shape, 3)
+
+
+def _box_texture(surface: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """The texture's grey at each world point (..., 3) on its surface, TEXTURE_GREY where the
+    surface is BOX_NONE."""
+    grey = np.full(np.shape(surface), TEXTURE_GREY)
+    for number, plane in enumerate(_BOX_SURFACES):
+        on = surface == number
+        x = points[on][:, plane.a_axis] - plane.a_range[0] + plane.texture_origin[0]
+        y = points[on][:, plane.b_axis] - plane.b_range[0] + plane.texture_origin[1]
+        grey[on] = _texture(x, y)
+    return grey
+
+
+def _box_image(index: int) -> ImageRecord:
+    """Image `index` of the box room, named like the Frames_Step's picks, with no keypoints yet."""
+    quaternion, translation = _box_view(index)
+    return ImageRecord(image_id=index + 1, quaternion=quaternion, translation=translation,
+                       camera_id=BOX_CAMERA.camera_id, name=f"{index:06d}.jpg")
+
+
+def _box_lattice() -> tuple[np.ndarray, np.ndarray]:
+    """Every surface's lattice points, (N, 3) world positions, and each one's surface number, in
+    the surfaces' order and then row by row."""
+    points, surfaces = [], []
+    for number, plane in enumerate(_BOX_SURFACES):
+        half = BOX_POINT_SPACING / 2
+        across = np.arange(plane.a_range[0] + half, plane.a_range[1], BOX_POINT_SPACING)
+        down = np.arange(plane.b_range[0] + half, plane.b_range[1], BOX_POINT_SPACING)
+        for b in down:
+            for a in across:
+                point = np.zeros(3)
+                point[plane.a_axis], point[plane.b_axis] = a, b
+                fixed = 3 - plane.a_axis - plane.b_axis   # the plane's own axis
+                point[fixed] = plane.offset * plane.normal[fixed]   # a unit axis normal
+                points.append(point)
+                surfaces.append(number)
+    return np.array(points), np.array(surfaces)
+
+
+def _box_sightings(image: ImageRecord, lattice: np.ndarray) -> list[tuple[int, float, float]]:
+    """The lattice points `image` sees, each as (row in `lattice`, u, v): in front of the camera,
+    inside the frame and the nearest surface along its ray."""
+    camera = BOX_CAMERA
+    z, u, v = _project_points(camera, image.quaternion, image.translation, lattice)
+    inside = (z > 0) & (u >= 0) & (u < camera.width) & (v >= 0) & (v < camera.height)
+    rows = np.flatnonzero(inside)
+    centre, direction = _world_rays(camera, image, u[rows], v[rows])
+    nearest, _, _ = _box_hits_world(centre, direction)
+    seen = nearest >= z[rows] * (1 - 1e-9)   # nothing nearer than the point along its ray
+    return [(int(row), float(u[row]), float(v[row])) for row in rows[seen]]
+
+
+def _box_model() -> tuple[tuple[ImageRecord, ...], tuple[PointRecord, ...]]:
+    """The box room's images, with their keypoints, and its Observed_Points, with their tracks."""
+    lattice, surfaces = _box_lattice()
+    bare = [_box_image(index) for index in range(BOX_FRAMES)]
+    sightings = [_box_sightings(image, lattice) for image in bare]
+    seen_by = np.zeros(len(lattice), dtype=np.int64)
+    for rows in sightings:
+        for row, _, _ in rows:
+            seen_by[row] += 1
+    kept = np.flatnonzero(seen_by >= BOX_MIN_TRACK)
+    point_id = {int(row): number + 1 for number, row in enumerate(kept)}
+    tracks: dict[int, list[tuple[int, int]]] = {int(row): [] for row in kept}
+    images = []
+    for image, rows in zip(bare, sightings):
+        keypoints = tuple((u, v, point_id[row]) for row, u, v in rows if row in point_id)
+        for place, (_, _, number) in enumerate(keypoints):
+            tracks[int(kept[number - 1])].append((image.image_id, place))
+        images.append(ImageRecord(image_id=image.image_id, quaternion=image.quaternion,
+                                  translation=image.translation, camera_id=image.camera_id,
+                                  name=image.name, keypoints=keypoints))
+    greys = _box_texture(surfaces[kept], lattice[kept])
+    points = tuple(
+        PointRecord(point_id=point_id[int(row)], position=tuple(float(c) for c in lattice[row]),
+                    colour=(int(round(grey)),) * 3, error=0.5, track=tuple(tracks[int(row)]))
+        for row, grey in zip(kept, greys))
+    return tuple(images), points
+
+
+BOX_IMAGES, BOX_POINTS = _box_model()
+
+
+def box_camera() -> Camera:
+    """The box room's Shared_Camera, as the Model_Reader gives it."""
+    return _as_camera(BOX_CAMERA)
+
+
+def box_pose(index: int) -> np.ndarray:
+    """Frame `index`'s world-to-camera Image_Pose, (4, 4) float64 [[R, t], [0, 0, 0, 1]]."""
+    _box_view(index)   # refuses an index outside the room's frames
+    return _pose(BOX_IMAGES[index])
+
+
+def box_surface(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s surface at `size` (w, h), (h, w) int64: the number of the surface the ray
+    through each pixel's centre meets first, BOX_BACK, BOX_FLOOR or BOX_SIDE, or BOX_NONE."""
+    _box_view(index)
+    return _box_hits(index, *_pixel_positions(size, camera=BOX_CAMERA))[1]
+
+
+def box_covered(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s Covered mask at `size` (w, h), (h, w) bool: where the ray through a pixel's
+    centre meets a surface."""
+    return box_surface(index, size) != BOX_NONE
+
+
+def box_depth(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s true depth at `size` (w, h), (h, w) float64: the camera-space z at which
+    the ray through each pixel's centre first meets a surface, NaN off the Covered mask."""
+    _box_view(index)
+    z, surface, _ = _box_hits(index, *_pixel_positions(size, camera=BOX_CAMERA))
+    return np.where(surface != BOX_NONE, z, np.nan)
+
+
+def box_normal(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s true normal at `size` (w, h), (h, w, 3) float64: the unit normal, in the
+    camera frame and facing the camera, of the surface each pixel sees, and 0 off the Covered
+    mask. So it is constant across each surface and jumps at the creases."""
+    surface = box_surface(index, size)
+    image = BOX_IMAGES[index]
+    centre = _rotate(_inverse(image.quaternion),
+                     -np.asarray(image.translation, dtype=np.float64)[np.newaxis])[0]
+    normal = np.zeros((*surface.shape, 3))
+    for number, plane in enumerate(_BOX_SURFACES):
+        facing = 1.0 if float(np.sum(centre * np.asarray(plane.normal))) > plane.offset else -1.0
+        normal[surface == number] = _rotate(image.quaternion,
+                                            np.array([plane.normal]) * facing)[0]
+    return normal
+
+
+def box_frame(index: int, size: tuple[int, int] | None = None) -> np.ndarray:
+    """Frame `index` at `size` (w, h), the camera's own size if not given, as an (h, w, 3) uint8
+    BGR image with the same grey in each channel: the mean of the texture over TEXTURE_SAMPLES ×
+    TEXTURE_SAMPLES rays spread evenly over each pixel, then rounded. A ray that meets no surface
+    reads TEXTURE_GREY."""
+    _box_view(index)
+
+    def paint(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+        _, surface, points = _box_hits(index, u, v)
+        return _box_texture(surface, points)
+
+    return _supersampled(BOX_CAMERA, size, paint)
+
+
+def box_candidate(index: int) -> Candidate:
+    """Frame `index` as source choice sees it: its name, its Pick_Number `index`, its Frame_Time
+    index × BOX_SECONDS and its Image_Pose."""
+    _box_view(index)
+    return _candidate(BOX_IMAGES[index], index, BOX_SECONDS)
+
+
+def box_score_source(index: int, half: str, *, prior_size: tuple[int, int],
+                     high_pass_sigma: float, band_sigmas: Sequence[float]) -> ScoreSource:
+    """Frame `index` as a Source_Frame of Source_Half `half`, at the Score_Size, the camera's own
+    128 x 96, with `high_pass_sigma` and `band_sigmas` from [walls]: its High_Pass and Bands from
+    the Luma of box_frame, a Score_Mask that keeps every pixel, and its true depth and Covered
+    mask at `prior_size` (w, h) as its Start_Depth, as for textured_score_source."""
+    return _score_source(BOX_IMAGES[index], box_frame(index), half,
+                         start_depth=box_depth(index, prior_size),
+                         covered=box_covered(index, prior_size),
+                         high_pass_sigma=high_pass_sigma, band_sigmas=band_sigmas)
