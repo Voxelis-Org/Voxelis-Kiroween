@@ -53,7 +53,7 @@ Then open `http://127.0.0.1:8000/app/viewer/?url=/data/jobs/<job id>/out/` from 
 
 ## What it needs from the website
 
-This fits the website design on `feat/website` (`.kiro/specs/website/design.md`), so the website's spec takes these changes.
+The website does all of this: its handler serves the files under `/viewer/`, and under `/shared/<token>/viewer/` for a share link, and its result page fills the Viewer_Slot.
 
 ### Its files
 

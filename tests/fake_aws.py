@@ -23,18 +23,44 @@ This module imports no boto3 (it reaches boto3 only indirectly, for the data cla
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from cloud.aws import ImageInfo, InstanceInfo
+from cloud.aws import ImageInfo, InstanceInfo, s3_origin
 from cloud.config import CloudConfig
-from cloud.errors import CapacityUnavailable, CloudError
+from cloud.errors import CapacityUnavailable, CloudError, QuotaRefused
+from cloud.table import (Change, Check, Condition, ConditionFailed, Key, KeyRange, Prefix, Put,
+                         Scalar, TransactionConflict, TransactItem, Update, item_key, transact_key)
+from tests.fake_table import apply, holds
+
+
+@dataclass
+class FakeMultipart:
+    """One multipart upload the fake holds: its key and the parts sent so far."""
+
+    key: str
+    parts: dict[int, tuple[str, bytes]] = field(default_factory=dict)   # number -> (ETag, bytes)
+
+
+@dataclass(frozen=True)
+class FakeLink:
+    """One Presigned_Link the fake made."""
+
+    kind: str            # "part" or "get"
+    key: str
+    upload_id: str
+    part: int
+    expires: datetime
+    filename: str | None
 
 
 class FakeAws:
@@ -50,9 +76,28 @@ class FakeAws:
                  objects: Mapping[str, bytes] | None = None,
                  no_capacity: Sequence[tuple[str, str]] | None = None,
                  unsupported: Sequence[tuple[str, str]] | None = None,
-                 launch_failures: Sequence[tuple[str, str]] | None = None) -> None:
+                 launch_failures: Sequence[tuple[str, str]] | None = None,
+                 quota_refused: Sequence[tuple[str, str]] | None = None,
+                 table: str | None = "voxelis-kiroween-website-fake") -> None:
         self.region = region
         self.bucket = bucket
+        self.table = table
+        # The Website_Table: (pk, sk) -> item.
+        self.items: dict[tuple[str, str], dict[str, Scalar]] = {}
+        self.conflicts = 0                      # the next n transactions raise TransactionConflict
+        self.tokens: set[str] = set()           # ClientRequestTokens already applied
+        self.multipart: dict[str, FakeMultipart] = {}
+        self.links: dict[str, FakeLink] = {}
+        self.object_sizes: dict[str, int] = {}  # claimed sizes, beating len(objects[key])
+        self.now = datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc)   # the clock links expire by
+        self.instance_jobs: dict[str, str] = {}  # instance id -> job_id tag
+        self.job_machines_error = False
+        self.copy_failures: set[str] = set()     # source keys whose copy fails
+        self.upload_failures: set[str] = set()   # keys whose s3_upload fails
+        self.change_sets: list[dict[str, Any]] = []
+        self.changes: list[tuple[str, str, str]] = []
+        self.deleted_change_sets: list[tuple[str, str]] = []
+        self.quota_refused = set(quota_refused or ())
         self.calls: list[tuple[str, str]] = []
         self.instances: list[InstanceInfo] = list(instances or ())
         self.offerings: dict[str, list[str]] = {
@@ -121,10 +166,15 @@ class FakeAws:
             raise CapacityUnavailable("Unsupported", zone, instance_type)
         if (instance_type, zone) in self.launch_failures:
             raise CloudError(f"The fake refused to launch {instance_type} in {zone}.")
+        if (instance_type, zone) in self.quota_refused:
+            raise QuotaRefused(f"VcpuLimitExceeded: the fake's vCPU limit for {instance_type}.")
         self._counter += 1
         info = InstanceInfo(id=f"i-fake{self._counter:04d}", type=instance_type, state="pending",
                             zone=zone, launch_time="2026-11-20T00:00:00+00:00", state_reason="")
         self.instances.append(info)
+        job_id = _job_tag(request)
+        if job_id is not None:
+            self.instance_jobs[info.id] = job_id
         return info
 
     def stop_instance(self, instance_id: str) -> None:
@@ -159,6 +209,8 @@ class FakeAws:
 
     def s3_upload(self, local: Path, key: str) -> None:
         self._record("s3_upload", key)
+        if key in self.upload_failures:
+            raise CloudError(f"The fake refused to upload {key!r}.")
         self.objects[key] = Path(local).read_bytes()
 
     def s3_download(self, key: str, local: Path) -> None:
@@ -196,6 +248,199 @@ class FakeAws:
         self._record("stack_outputs", stack_name)
         return dict(self.stack)
 
+    # DynamoDB, the Website_Table
+
+    def table_get(self, key: Key) -> dict[str, Scalar] | None:
+        self._record("table_get", _shown(key))
+        self._need_table()
+        item = self.items.get((key.pk, key.sk))
+        return copy.deepcopy(item) if item is not None else None
+
+    def table_get_many(self, keys: Sequence[Key]) -> list[dict[str, Scalar] | None]:
+        wanted = list(keys)
+        self._record("table_get_many", ",".join(_shown(key) for key in wanted))
+        self._need_table()
+        return [copy.deepcopy(self.items.get((key.pk, key.sk))) for key in wanted]
+
+    def table_query(self, pk: str, sk: KeyRange | None = None) -> list[dict[str, Scalar]]:
+        self._record("table_query", pk)
+        self._need_table()
+        if sk is None:
+            def inside(value: str) -> bool:
+                return True
+        elif isinstance(sk, Prefix):
+            def inside(value: str) -> bool:
+                return value.startswith(sk.value)
+        else:
+            def inside(value: str) -> bool:
+                return sk.low <= value <= sk.high
+        return [copy.deepcopy(item) for (p, s), item in sorted(self.items.items())
+                if p == pk and inside(s)]
+
+    def table_put(self, item: Mapping[str, Scalar], condition: Condition | None = None) -> None:
+        key = item_key(item)
+        self._record("table_put", _shown(key))
+        self._need_table()
+        if not holds(condition, self.items.get((key.pk, key.sk))):
+            raise ConditionFailed(None)
+        self.items[(key.pk, key.sk)] = dict(item)
+
+    def table_update(self, key: Key, updates: Sequence[Update],
+                     condition: Condition | None = None) -> None:
+        self._record("table_update", _shown(key))
+        self._need_table()
+        current = self.items.get((key.pk, key.sk))
+        if not holds(condition, current):
+            raise ConditionFailed(None)
+        self.items[(key.pk, key.sk)] = apply(updates, current, {"pk": key.pk, "sk": key.sk})
+
+    def table_transact(self, items: Sequence[TransactItem], token: str | None = None) -> None:
+        entries = list(items)
+        self._record("table_transact", token or "")
+        self._need_table()
+        if token is not None and token in self.tokens:
+            return  # DynamoDB applies one token's transaction once
+        keys = [transact_key(entry) for entry in entries]
+        if len(set(keys)) != len(keys):
+            raise CloudError("ValidationException: a transaction can't hold two items on one key.")
+        if self.conflicts > 0:
+            self.conflicts -= 1
+            raise TransactionConflict()
+        for index, (entry, key) in enumerate(zip(entries, keys)):
+            if not holds(entry.condition, self.items.get((key.pk, key.sk))):
+                raise ConditionFailed(index)
+        for entry, key in zip(entries, keys):
+            if isinstance(entry, Put):
+                self.items[(key.pk, key.sk)] = dict(entry.item)
+            elif isinstance(entry, Change):
+                self.items[(key.pk, key.sk)] = apply(entry.updates, self.items.get((key.pk, key.sk)),
+                                                     {"pk": key.pk, "sk": key.sk})
+        if token is not None:
+            self.tokens.add(token)
+
+    def table_delete(self, key: Key) -> None:
+        self._record("table_delete", _shown(key))
+        self._need_table()
+        self.items.pop((key.pk, key.sk), None)
+
+    # EC2, for "Ended without a result"
+
+    def job_machines(self, job_id: str) -> list[InstanceInfo]:
+        self._record("job_machines", job_id)
+        if self.job_machines_error:
+            raise CloudError("The fake's machine lookup failed.")
+        return [info for info in self.instances if self.instance_jobs.get(info.id) == job_id]
+
+    # S3, for the website
+
+    def s3_start_upload(self, key: str) -> str:
+        self._record("s3_start_upload", key)
+        self._counter += 1
+        upload_id = f"fake-upload-{self._counter:04d}"
+        self.multipart[upload_id] = FakeMultipart(key=key)
+        return upload_id
+
+    def s3_part_link(self, key: str, upload_id: str, part: int, seconds: int) -> str:
+        self._record("s3_part_link", key)
+        return self._link(FakeLink("part", key, upload_id, part,
+                                   self.now + timedelta(seconds=seconds), None))
+
+    def s3_complete_upload(self, key: str, upload_id: str,
+                           parts: Sequence[tuple[int, str]]) -> None:
+        self._record("s3_complete_upload", key)
+        upload = self.multipart.get(upload_id)
+        if upload is None or upload.key != key:
+            raise CloudError("NoSuchUpload: the fake has no such multipart upload.")
+        chunks = []
+        for number, etag in parts:
+            sent = upload.parts.get(number)
+            if sent is None or sent[0] != etag:
+                raise CloudError(f"InvalidPart: part {number} wasn't sent with that ETag.")
+            chunks.append(sent[1])
+        self.objects[key] = b"".join(chunks)
+        del self.multipart[upload_id]
+
+    def s3_abort_upload(self, key: str, upload_id: str) -> None:
+        self._record("s3_abort_upload", key)
+        self.multipart.pop(upload_id, None)
+
+    def s3_download_link(self, key: str, filename: str | None, seconds: int) -> str:
+        self._record("s3_download_link", key)
+        return self._link(FakeLink("get", key, "", 0, self.now + timedelta(seconds=seconds),
+                                   filename))
+
+    def s3_copy(self, source_key: str, key: str, *, part_bytes: int) -> None:
+        self._record("s3_copy", key)
+        if source_key in self.copy_failures or source_key not in self.objects:
+            raise CloudError(f"The fake couldn't copy {source_key!r}.")
+        self.objects[key] = self.objects[source_key]
+        if source_key in self.object_sizes:
+            self.object_sizes[key] = self.object_sizes[source_key]
+
+    def s3_size(self, key: str) -> int | None:
+        self._record("s3_size", key)
+        if key not in self.objects:
+            return None
+        return self.object_sizes.get(key, len(self.objects[key]))
+
+    def s3_read_range(self, key: str, offset: int, length: int) -> bytes:
+        self._record("s3_read_range", key)
+        try:
+            data = self.objects[key]
+        except KeyError:
+            raise CloudError(f"The fake bucket has no object at {key!r}.") from None
+        return data[offset:offset + length]
+
+    # The tests' browser
+
+    def put_part(self, url: str, data: bytes) -> tuple[int, str | None]:
+        """A browser's PUT of one part: (200, its ETag), or (403, None) for an expired or unknown
+        link or a finished upload."""
+        link = self.links.get(url)
+        if link is None or link.kind != "part" or self.now >= link.expires:
+            return 403, None
+        upload = self.multipart.get(link.upload_id)
+        if upload is None:
+            return 403, None
+        etag = '"' + hashlib.md5(data).hexdigest() + '"'
+        upload.parts[link.part] = (etag, data)
+        return 200, etag
+
+    def follow_link(self, url: str) -> tuple[int, bytes]:
+        """A browser's GET of a Download_Link: (200, the bytes), or (403, b"")."""
+        link = self.links.get(url)
+        if link is None or link.kind != "get" or self.now >= link.expires:
+            return 403, b""
+        if link.key not in self.objects:
+            return 404, b""
+        return 200, self.objects[link.key]
+
+    # CloudFormation, for the Deploy_Command
+
+    def create_change_set(self, request: Mapping[str, Any]) -> None:
+        self._record("create_change_set", str(request.get("ChangeSetName", "")))
+        self.change_sets.append(copy.deepcopy(dict(request)))
+
+    def change_set_changes(self, stack_name: str,
+                           change_set_name: str) -> list[tuple[str, str, str]]:
+        self._record("change_set_changes", change_set_name)
+        return list(self.changes)
+
+    def delete_change_set(self, stack_name: str, change_set_name: str) -> None:
+        self._record("delete_change_set", change_set_name)
+        self.deleted_change_sets.append((stack_name, change_set_name))
+
+    def _link(self, link: FakeLink) -> str:
+        self._counter += 1
+        url = (f"{s3_origin(self.bucket, self.region)}/{link.key}"
+               f"?X-Amz-Signature=fake{self._counter:06d}&X-Amz-Expires=1")
+        self.links[url] = link
+        return url
+
+    def _need_table(self) -> None:
+        if not self.table:
+            raise CloudError("No website table is set on the fake.")
+
     def _zone_of(self, request: Mapping[str, Any]) -> str:
         """The zone a request targets: the subnet's zone from the seeded subnets, else a Placement."""
         subnet = str(request.get("SubnetId", ""))
@@ -206,6 +451,20 @@ class FakeAws:
         if isinstance(placement, Mapping) and placement.get("AvailabilityZone"):
             return str(placement["AvailabilityZone"])
         return ""
+
+
+def _shown(key: Key) -> str:
+    return f"{key.pk}|{key.sk}"
+
+
+def _job_tag(request: Mapping[str, Any]) -> str | None:
+    """The job_id tag on a launch request's instance, or None."""
+    for spec in request.get("TagSpecifications") or []:
+        if spec.get("ResourceType") == "instance":
+            for tag in spec.get("Tags") or []:
+                if tag.get("Key") == "job_id":
+                    return str(tag.get("Value"))
+    return None
 
 
 def cloud_config(**overrides: Any) -> CloudConfig:

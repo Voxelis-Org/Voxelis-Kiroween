@@ -50,8 +50,10 @@ These apply to Kiro and to everyone on the team.
 ## Money
 
 - The owner of the AWS account that the jobs run on approves people in advance, by adding them to the project's AWS group. That is their OK to run jobs on that account. After that, whoever is in the chat says yes to each paid run (cloud machines, cloud runs, deploys), once Kiro has told them the machine, the expected time and the rough cost.
-- The exception is jobs that people start through the app (the judges now, other users later). The account owner approves those in advance, as a daily job limit and a daily cost limit that the app enforces. The numbers come in the app spec.
-- Kiro and the team still need an OK for every run they start by hand.
+- The exception is jobs that people start through the website (the judges now, other users later). The account owner approves those once, with `APPROVED_SPEND=1` on the deploy command: at most 10 jobs and $52 a UTC day, and $500 in total, until 08:00 UTC on 4 February 2027, set in `[website]` in `config.toml` and enforced by the website. They count against those limits whoever starts them, the team included. A limit change needs a redeploy and a new yes. The website never holds the spend variable.
+- Kiro and the team still need an OK for every run they start by hand, a job started with `cloud.start` included.
+- Only the account owner runs the deploy, account and showcase commands, in AWS CloudShell signed in as the account owner. Kiro never runs them.
+- Kiro never opens or downloads anything under `uploads/` or under any job's `input/` in the job bucket: those are the judges' and users' videos. Kiro never needs them, because the status and download commands read only a job's `out/`.
 - It runs on AWS, in the account of whoever deploys it (for our team, Samarth's).
 - Speed and reliability matter more than saving a few cents, so pick the faster machine when it helps.
 - Once the person in the chat says yes to a paid run, Kiro runs our start, image-build or smoke-test command itself, with `APPROVED_SPEND=1` on that one command.

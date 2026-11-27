@@ -33,8 +33,11 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from splatpipe.config import Config
 
-from cloud.errors import CapacityUnavailable, CloudError
+from cloud.errors import CapacityUnavailable, CloudError, QuotaRefused
 from cloud.redact import account_redaction
+from cloud.table import (And, Between, Change, Check, Condition, ConditionFailed, Equals, Exists,
+                         Key, KeyRange, NotExists, Or, Prefix, Put, Remove, Scalar, Set,
+                         TransactionConflict, TransactItem, Update, AtLeast, AtMost, Add)
 
 # The repo's real config.toml, read for the Project_Tag. machine_aws has no Config object, so it
 # reads the tag here, as cloud.spend reads [aws].spend_variable from the file.
@@ -45,6 +48,10 @@ GPU_QUOTA_CODE = "L-DB2E81BA"
 BUCKET_ENV = "BUCKET"
 # A launch ClientError with one of these codes means no On-Demand capacity, not a real failure.
 _CAPACITY_CODES = frozenset({"InsufficientInstanceCapacity", "Unsupported"})
+# A launch ClientError with one of these codes means EC2's vCPU or instance limit refused it.
+_QUOTA_CODES = frozenset({"VcpuLimitExceeded", "InstanceLimitExceeded"})
+# The tag a Job machine carries with its Job_Id (cloud.launch.JOB_ID_TAG, kept here to avoid a cycle).
+_JOB_ID_TAG = "job_id"
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,8 @@ class Aws(Protocol):
     Service Quotas and SSM. `BotoAws` is the real implementation; tests pass a `FakeAws`."""
 
     region: str
+    bucket: str | None
+    table: str | None
 
     # EC2 reads
     def tagged_instances(self, states: Sequence[str]) -> list[InstanceInfo]: ...
@@ -104,6 +113,57 @@ class Aws(Protocol):
 
     # CloudFormation
     def stack_outputs(self, stack_name: str) -> dict[str, str]: ...
+
+    # DynamoDB, the Website_Table
+    def table_get(self, key: Key) -> dict[str, Scalar] | None: ...
+    def table_get_many(self, keys: Sequence[Key]) -> list[dict[str, Scalar] | None]: ...
+    def table_query(self, pk: str, sk: KeyRange | None = None) -> list[dict[str, Scalar]]: ...
+    def table_put(self, item: Mapping[str, Scalar], condition: Condition | None = None) -> None: ...
+    def table_update(self, key: Key, updates: Sequence[Update],
+                     condition: Condition | None = None) -> None: ...
+    def table_transact(self, items: Sequence[TransactItem], token: str | None = None) -> None: ...
+    def table_delete(self, key: Key) -> None: ...
+
+    # EC2, for "Ended without a result"
+    def job_machines(self, job_id: str) -> list[InstanceInfo]: ...
+
+    # S3, for the website
+    def s3_start_upload(self, key: str) -> str: ...
+    def s3_part_link(self, key: str, upload_id: str, part: int, seconds: int) -> str: ...
+    def s3_complete_upload(self, key: str, upload_id: str,
+                           parts: Sequence[tuple[int, str]]) -> None: ...
+    def s3_abort_upload(self, key: str, upload_id: str) -> None: ...
+    def s3_download_link(self, key: str, filename: str | None, seconds: int) -> str: ...
+    def s3_copy(self, source_key: str, key: str, *, part_bytes: int) -> None: ...
+    def s3_size(self, key: str) -> int | None: ...
+    def s3_read_range(self, key: str, offset: int, length: int) -> bytes: ...
+
+    # CloudFormation, for the Deploy_Command
+    def create_change_set(self, request: Mapping[str, Any]) -> None: ...
+    def change_set_changes(self, stack_name: str,
+                           change_set_name: str) -> list[tuple[str, str, str]]: ...
+    def delete_change_set(self, stack_name: str, change_set_name: str) -> None: ...
+
+
+def s3_origin(bucket: str, region: str) -> str:
+    """https://<bucket>.s3.<region>.amazonaws.com, the host of every Presigned_Link and the
+    Job_Bucket's entry in the website's Content-Security-Policy."""
+    return f"https://{bucket}.s3.{region}.amazonaws.com"
+
+
+def website_aws(region: str) -> BotoAws:
+    """A `BotoAws` naming only the region, so the website function runs as the Website_Role."""
+    return BotoAws(make_session(region, None), region=region)
+
+
+def cloudshell_aws(region: str) -> BotoAws:
+    """A `BotoAws` naming only the region, so a CloudShell_Command runs as the Admin_Login."""
+    return BotoAws(make_session(region, None), region=region)
+
+
+def aws_setting(config: Config, key: str) -> str:
+    """A non-empty string for `key` in the parsed `[aws]` table, or a CloudError naming it."""
+    return _required(_aws_table(config), key)
 
 
 def make_session(region: str, profile: str | None) -> boto3.Session:
@@ -163,11 +223,16 @@ class BotoAws:
         # The Job_Bucket is a Stack_Output, unknown at build time; the caller sets it after
         # resolve_stack, before any S3 call. _bucket() refuses an S3 call while it is unset.
         self.bucket = bucket
+        # The Website_Table's name, set by the caller before the first table call.
+        self.table: str | None = None
+        self._session = session
+        self._links: Any = None   # the presigning S3 client, built on the first link
         self._ec2 = session.client("ec2")
         self._s3 = session.client("s3")
         self._cfn = session.client("cloudformation")
         self._quotas = session.client("service-quotas")
         self._ssm = session.client("ssm")
+        self._dynamodb = session.client("dynamodb")
         self._project_tag = _project_tag()
 
     # EC2 reads
@@ -241,6 +306,8 @@ class BotoAws:
             if code in _CAPACITY_CODES:  # no capacity: the launch loop tries the next attempt
                 raise CapacityUnavailable(
                     code, _request_zone(payload), str(payload.get("InstanceType", ""))) from error
+            if code in _QUOTA_CODES:  # EC2's own limit: no machine started, and the loop stops
+                raise QuotaRefused(account_redaction(str(error))) from error
             raise CloudError(account_redaction(str(error))) from error
         except BotoCoreError as error:
             raise CloudError(account_redaction(str(error))) from error
@@ -332,7 +399,199 @@ class BotoAws:
         return {str(output.get("OutputKey", "")): str(output.get("OutputValue", ""))
                 for output in stacks[0].get("Outputs", [])}
 
+    # DynamoDB, the Website_Table
+
+    def table_get(self, key: Key) -> dict[str, Scalar] | None:
+        result = self._table_call(lambda: self._dynamodb.get_item(
+            TableName=self._table(), Key=_key(key), ConsistentRead=True))
+        raw = result.get("Item")
+        return _from_item(raw) if raw else None
+
+    def table_get_many(self, keys: Sequence[Key]) -> list[dict[str, Scalar] | None]:
+        wanted = list(keys)
+        if not wanted:
+            return []
+        table = self._table()
+        result = self._table_call(lambda: self._dynamodb.transact_get_items(TransactItems=[
+            {"Get": {"TableName": table, "Key": _key(key)}} for key in wanted]))
+        responses = result.get("Responses") or [{} for _ in wanted]
+        return [_from_item(r["Item"]) if r.get("Item") else None for r in responses]
+
+    def table_query(self, pk: str, sk: KeyRange | None = None) -> list[dict[str, Scalar]]:
+        names = {"#pk": "pk", "#sk": "sk"}
+        values: dict[str, Any] = {":pk": {"S": pk}}
+        if sk is None:  # the whole partition
+            expression = "#pk = :pk"
+            del names["#sk"]
+        elif isinstance(sk, Prefix):
+            expression = "#pk = :pk AND begins_with(#sk, :p)"
+            values[":p"] = {"S": sk.value}
+        else:
+            expression = "#pk = :pk AND #sk BETWEEN :lo AND :hi"
+            values[":lo"] = {"S": sk.low}
+            values[":hi"] = {"S": sk.high}
+        items: list[dict[str, Scalar]] = []
+
+        def run() -> None:
+            paginator = self._dynamodb.get_paginator("query")
+            for page in paginator.paginate(TableName=self._table(), KeyConditionExpression=expression,
+                                           ExpressionAttributeNames=names,
+                                           ExpressionAttributeValues=values, ConsistentRead=True):
+                items.extend(_from_item(raw) for raw in page.get("Items", []))
+
+        self._table_call(run)
+        return items
+
+    def table_put(self, item: Mapping[str, Scalar], condition: Condition | None = None) -> None:
+        request: dict[str, Any] = {"TableName": self._table(), "Item": _to_item(item)}
+        request.update(_Expressions().with_condition(condition))
+        self._table_call(lambda: self._dynamodb.put_item(**request))
+
+    def table_update(self, key: Key, updates: Sequence[Update],
+                     condition: Condition | None = None) -> None:
+        request: dict[str, Any] = {"TableName": self._table(), "Key": _key(key)}
+        request.update(_Expressions().with_updates(updates, condition))
+        self._table_call(lambda: self._dynamodb.update_item(**request))
+
+    def table_transact(self, items: Sequence[TransactItem], token: str | None = None) -> None:
+        table = self._table()
+        request: dict[str, Any] = {"TransactItems": [_transact_entry(table, entry) for entry in items]}
+        if token is not None:  # one token's transaction applies once, for ten minutes
+            request["ClientRequestToken"] = token
+        self._table_call(lambda: self._dynamodb.transact_write_items(**request))
+
+    def table_delete(self, key: Key) -> None:
+        self._table_call(lambda: self._dynamodb.delete_item(TableName=self._table(), Key=_key(key)))
+
+    # EC2, for "Ended without a result"
+
+    def job_machines(self, job_id: str) -> list[InstanceInfo]:
+        key, value = self._project_tag
+        filters = [{"Name": f"tag:{key}", "Values": [value]},
+                   {"Name": f"tag:{_JOB_ID_TAG}", "Values": [job_id]}]
+        result = self._call(lambda: self._ec2.describe_instances(Filters=filters))
+        return [_as_instance(raw)
+                for reservation in result.get("Reservations", [])
+                for raw in reservation.get("Instances", [])]
+
+    # S3, for the website
+
+    def s3_start_upload(self, key: str) -> str:
+        result = self._call(lambda: self._s3.create_multipart_upload(Bucket=self._bucket(), Key=key))
+        return str(result["UploadId"])
+
+    def s3_part_link(self, key: str, upload_id: str, part: int, seconds: int) -> str:
+        params = {"Bucket": self._bucket(), "Key": key, "UploadId": upload_id, "PartNumber": part}
+        return str(self._call(lambda: self._link_client().generate_presigned_url(
+            "upload_part", Params=params, ExpiresIn=seconds, HttpMethod="PUT")))
+
+    def s3_complete_upload(self, key: str, upload_id: str,
+                           parts: Sequence[tuple[int, str]]) -> None:
+        listed = [{"PartNumber": number, "ETag": etag} for number, etag in parts]
+        self._call(lambda: self._s3.complete_multipart_upload(
+            Bucket=self._bucket(), Key=key, UploadId=upload_id, MultipartUpload={"Parts": listed}))
+
+    def s3_abort_upload(self, key: str, upload_id: str) -> None:
+        self._call(lambda: self._s3.abort_multipart_upload(
+            Bucket=self._bucket(), Key=key, UploadId=upload_id))
+
+    def s3_download_link(self, key: str, filename: str | None, seconds: int) -> str:
+        params: dict[str, Any] = {"Bucket": self._bucket(), "Key": key}
+        if filename is not None:  # a download; without a name, a link the viewer fetches
+            params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+        return str(self._call(lambda: self._link_client().generate_presigned_url(
+            "get_object", Params=params, ExpiresIn=seconds, HttpMethod="GET")))
+
+    def s3_copy(self, source_key: str, key: str, *, part_bytes: int) -> None:
+        from boto3.s3.transfer import TransferConfig
+
+        config = TransferConfig(multipart_threshold=part_bytes, multipart_chunksize=part_bytes)
+        bucket = self._bucket()
+        self._call(lambda: self._s3.copy({"Bucket": bucket, "Key": source_key}, bucket, key,
+                                         Config=config))
+
+    def s3_size(self, key: str) -> int | None:
+        result = self._call(lambda: self._s3.list_objects_v2(
+            Bucket=self._bucket(), Prefix=key, MaxKeys=1))
+        for obj in result.get("Contents", []):
+            if obj.get("Key") == key:
+                return int(obj.get("Size", 0))
+        return None
+
+    def s3_read_range(self, key: str, offset: int, length: int) -> bytes:
+        def run() -> bytes:
+            result = self._s3.get_object(Bucket=self._bucket(), Key=key,
+                                         Range=f"bytes={offset}-{offset + length - 1}")
+            return bytes(result["Body"].read())
+
+        return self._call(run)
+
+    # CloudFormation, for the Deploy_Command
+
+    def create_change_set(self, request: Mapping[str, Any]) -> None:
+        payload = dict(request)
+        self._call(lambda: self._cfn.create_change_set(**payload))
+        self._call(lambda: self._cfn.get_waiter("change_set_create_complete").wait(
+            StackName=payload["StackName"], ChangeSetName=payload["ChangeSetName"]))
+
+    def change_set_changes(self, stack_name: str,
+                           change_set_name: str) -> list[tuple[str, str, str]]:
+        changes: list[tuple[str, str, str]] = []
+        token: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {"StackName": stack_name, "ChangeSetName": change_set_name}
+            if token:
+                kwargs["NextToken"] = token
+            page = self._call(lambda: self._cfn.describe_change_set(**kwargs))
+            for change in page.get("Changes", []):
+                resource = change.get("ResourceChange") or {}
+                changes.append((str(resource.get("Action", "")),
+                                str(resource.get("LogicalResourceId", "")),
+                                str(resource.get("Replacement", ""))))
+            token = page.get("NextToken")
+            if not token:
+                return changes
+
+    def delete_change_set(self, stack_name: str, change_set_name: str) -> None:
+        self._call(lambda: self._cfn.delete_change_set(
+            StackName=stack_name, ChangeSetName=change_set_name))
+
     # Helpers
+
+    def _table(self) -> str:
+        """The Website_Table, or a CloudError when the caller hasn't set it yet."""
+        if not self.table:
+            raise CloudError("No website table is set on this AWS client. Set it before any table "
+                             "call. This is a bug if a user sees it.")
+        return self.table
+
+    def _link_client(self) -> Any:
+        """The S3 client for Presigned_Links, built on the first link: SigV4, virtual-hosted, on
+        the regional endpoint, so every link's host is s3_origin(bucket, region)."""
+        if self._links is None:
+            from botocore.config import Config as BotoConfig
+
+            self._links = self._session.client(
+                "s3", config=BotoConfig(signature_version="s3v4",
+                                        s3={"addressing_style": "virtual"}),
+                endpoint_url=f"https://s3.{self.region}.amazonaws.com")
+        return self._links
+
+    def _table_call(self, thunk: Any) -> Any:
+        """Run one DynamoDB call, turning a failed condition or a conflict into its own error."""
+        try:
+            return thunk()
+        except ClientError as error:
+            code = str(error.response.get("Error", {}).get("Code", ""))
+            if code == "ConditionalCheckFailedException":
+                raise ConditionFailed(None) from error
+            if code == "TransactionConflictException":
+                raise TransactionConflict() from error
+            if code == "TransactionCanceledException":
+                raise _cancelled(error.response.get("CancellationReasons") or []) from error
+            raise CloudError(account_redaction(str(error))) from error
+        except BotoCoreError as error:
+            raise CloudError(account_redaction(str(error))) from error
 
     def _bucket(self) -> str:
         """The Job_Bucket, or a CloudError when the caller hasn't set it from the Stack yet."""
@@ -347,6 +606,136 @@ class BotoAws:
             return thunk()
         except (ClientError, BotoCoreError) as error:
             raise CloudError(account_redaction(str(error))) from error
+
+
+# DynamoDB's typed values and expressions. Every attribute name and value goes in as a #n or :v
+# placeholder, so no name or value is ever pasted into an expression.
+
+def _to_value(value: Scalar) -> dict[str, Any]:
+    if isinstance(value, bool):
+        return {"BOOL": value}
+    if isinstance(value, int):
+        return {"N": str(value)}
+    if isinstance(value, str):
+        return {"S": value}
+    raise CloudError(f"The website's table holds only text, whole numbers and true or false, not "
+                     f"{type(value).__name__}. This is a bug if a user sees it.")
+
+
+def _from_value(raw: Mapping[str, Any]) -> Scalar:
+    if "S" in raw:
+        return str(raw["S"])
+    if "BOOL" in raw:
+        return bool(raw["BOOL"])
+    if "N" in raw:
+        return int(str(raw["N"]))
+    raise CloudError("The website's table holds a value of a type the website doesn't use.")
+
+
+def _to_item(item: Mapping[str, Scalar]) -> dict[str, Any]:
+    return {name: _to_value(value) for name, value in item.items()}
+
+
+def _from_item(raw: Mapping[str, Any]) -> dict[str, Scalar]:
+    return {str(name): _from_value(value) for name, value in raw.items()}
+
+
+def _key(key: Key) -> dict[str, Any]:
+    return {"pk": {"S": key.pk}, "sk": {"S": key.sk}}
+
+
+class _Expressions:
+    """Placeholder names and values for one request's condition and update expressions."""
+
+    def __init__(self) -> None:
+        self.names: dict[str, str] = {}
+        self.values: dict[str, Any] = {}
+
+    def name(self, attr: str) -> str:
+        for placeholder, known in self.names.items():
+            if known == attr:
+                return placeholder
+        placeholder = f"#n{len(self.names)}"
+        self.names[placeholder] = attr
+        return placeholder
+
+    def value(self, value: Scalar) -> str:
+        placeholder = f":v{len(self.values)}"
+        self.values[placeholder] = _to_value(value)
+        return placeholder
+
+    def condition(self, condition: Condition) -> str:
+        if isinstance(condition, Exists):
+            return f"attribute_exists({self.name(condition.attr)})"
+        if isinstance(condition, NotExists):
+            return f"attribute_not_exists({self.name(condition.attr)})"
+        if isinstance(condition, Equals):
+            return f"{self.name(condition.attr)} = {self.value(condition.value)}"
+        if isinstance(condition, AtMost):
+            return f"{self.name(condition.attr)} <= {self.value(condition.limit)}"
+        if isinstance(condition, AtLeast):
+            return f"{self.name(condition.attr)} >= {self.value(condition.limit)}"
+        if isinstance(condition, (And, Or)):
+            word = " AND " if isinstance(condition, And) else " OR "
+            return "(" + word.join(self.condition(part) for part in condition.parts) + ")"
+        raise CloudError("Unknown table condition. This is a bug if a user sees it.")
+
+    def update(self, updates: Sequence[Update]) -> str:
+        sets = [f"{self.name(u.attr)} = {self.value(u.value)}" for u in updates if isinstance(u, Set)]
+        adds = [f"{self.name(u.attr)} {self.value(u.amount)}" for u in updates if isinstance(u, Add)]
+        removes = [self.name(u.attr) for u in updates if isinstance(u, Remove)]
+        clauses = [(word, parts) for word, parts in (("SET", sets), ("ADD", adds), ("REMOVE", removes))
+                   if parts]
+        return " ".join(f"{word} {', '.join(parts)}" for word, parts in clauses)
+
+    def with_condition(self, condition: Condition | None) -> dict[str, Any]:
+        request: dict[str, Any] = {}
+        if condition is not None:
+            request["ConditionExpression"] = self.condition(condition)
+        return self._placeholders(request)
+
+    def with_updates(self, updates: Sequence[Update], condition: Condition | None) -> dict[str, Any]:
+        request: dict[str, Any] = {"UpdateExpression": self.update(updates)}
+        if condition is not None:
+            request["ConditionExpression"] = self.condition(condition)
+        return self._placeholders(request)
+
+    def _placeholders(self, request: dict[str, Any]) -> dict[str, Any]:
+        if self.names:
+            request["ExpressionAttributeNames"] = dict(self.names)
+        if self.values:
+            request["ExpressionAttributeValues"] = dict(self.values)
+        return request
+
+
+def _transact_entry(table: str, entry: TransactItem) -> dict[str, Any]:
+    """One TransactWriteItems entry."""
+    expressions = _Expressions()
+    if isinstance(entry, Put):
+        body = {"TableName": table, "Item": _to_item(entry.item),
+                **expressions.with_condition(entry.condition)}
+        return {"Put": body}
+    if isinstance(entry, Change):
+        body = {"TableName": table, "Key": _key(entry.key),
+                **expressions.with_updates(entry.updates, entry.condition)}
+        return {"Update": body}
+    if isinstance(entry, Check):
+        body = {"TableName": table, "Key": _key(entry.key),
+                **expressions.with_condition(entry.condition)}
+        return {"ConditionCheck": body}
+    raise CloudError("Unknown transaction item. This is a bug if a user sees it.")
+
+
+def _cancelled(reasons: Sequence[Mapping[str, Any]]) -> Exception:
+    """The error for a cancelled transaction, from its reasons in request order."""
+    codes = [str(reason.get("Code") or "None") for reason in reasons]
+    for index, code in enumerate(codes):
+        if code == "ConditionalCheckFailed":
+            return ConditionFailed(index)
+    if "TransactionConflict" in codes:
+        return TransactionConflict()
+    listed = ", ".join(code for code in codes if code != "None") or "no reason given"
+    return CloudError(f"The website's table cancelled a transaction ({listed}). Try again.")
 
 
 # Turning boto3's dicts into our small data classes

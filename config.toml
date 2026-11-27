@@ -919,3 +919,75 @@ sh_iterations = 10
 sog_sh_bands = 0
 # Iterations of splat-transform's spherical harmonic compression.
 sh_iterations = 20
+
+[website]
+# When the website stops starting jobs, in UTC, as text like "2027-02-04T08:00:00Z".
+stop_starting_at = "2027-02-04T08:00:00Z"
+# Most website jobs that may start in one UTC day.
+daily_jobs = 10
+# Most money that website jobs may reserve in one UTC day, in US dollars.
+daily_cost_usd = 52
+# Most money that website jobs may reserve in total, across every redeploy, in US dollars.
+total_cost_usd = 500
+# Minutes added to a preset's time cap for the worst-case reservation: a hung machine runs its boot minutes before the cap's shutdown is scheduled.
+boot_margin_minutes = 5
+# Size of each part the browser uploads, in bytes (16 MiB). S3 takes 5 MiB up to 5 GiB per part.
+upload_part_bytes = 16777216
+# How long an upload link stays valid, in seconds (15 minutes).
+upload_link_seconds = 900
+# How many times the browser asks for a new link for one part before it gives up.
+part_link_retries = 3
+# How long a download link stays valid, in seconds (5 minutes). The viewer's links last as long.
+download_link_seconds = 300
+# Size of each part when the website copies a video inside S3, in bytes (64 MiB).
+copy_part_bytes = 67108864
+# How long the table keeps an upload's record, in hours. S3 deletes the video itself after 1 day.
+upload_record_hours = 48
+# Most top-level boxes the video check walks before it finds the moov box.
+max_boxes = 100
+# Largest moov box the video check reads, in bytes (32 MiB).
+max_moov_bytes = 33554432
+# Minutes since a job started before a job with no summary can be shown as ended without a result, once its machines are gone.
+ended_check_minutes = 10
+# Failed sign-ins from one address that start a wait.
+signin_max_failures = 5
+# The window those failed sign-ins must fall within, in minutes.
+signin_window_minutes = 15
+# How long an address waits after too many failed sign-ins, in minutes.
+signin_wait_minutes = 15
+# How long the sign-in page's form token stays valid, in minutes.
+signin_token_minutes = 60
+# How long a sign-in lasts, in days.
+session_days = 7
+# Random bytes in each session id, CSRF token, sign-in form token and share link.
+token_bytes = 32
+# Length of the passwords the account command makes, in letters and digits.
+password_length = 24
+# scrypt's cost N, a power of 2. With r = 8 it uses N kibibytes of memory per hash.
+scrypt_n = 32768
+# scrypt's block size r.
+scrypt_r = 8
+# scrypt's parallelism p.
+scrypt_p = 3
+# Length of each password hash, in bytes.
+scrypt_dklen = 32
+# Length of each password's random salt, in bytes.
+scrypt_salt_bytes = 16
+# Largest request body the website reads, in bytes. The video never passes through the website.
+max_body_bytes = 65536
+# Most jobs the job list shows.
+max_listed_jobs = 20
+# Longest showcase title, in characters.
+max_title_chars = 80
+# Longest footage credit on a showcase entry, in characters.
+max_credit_chars = 200
+# Longest original file name kept with a job, in characters.
+max_name_chars = 120
+# How long a browser may keep the viewer's files, in seconds (1 hour). The engine alone is 2.9 MB.
+static_cache_seconds = 3600
+# The CloudShell commands' modules. The guard hook blocks running one of these on a laptop.
+cloudshell_modules = ["app.deploy", "app.account_command", "app.showcase_command"]
+# Folder under /tmp in CloudShell that the deploy command clones, builds and caches in.
+deploy_folder = "/tmp/voxelis-website"
+# Largest unzipped website bundle, in bytes: Lambda's limit of 250 MB.
+max_bundle_bytes = 262144000

@@ -1,0 +1,22 @@
+# The App_Project: the website's own packages, which the deploy command installs into the
+# website bundle. Only boto3, pinned with its closure to the versions in the root uv.lock, so the
+# website ships exactly what the tests ran against. Never add these to the root pyproject.toml.
+[project]
+name = "voxelis-website"
+version = "0.1.0"
+description = "The Voxelis website: one Lambda function that signs judges in and starts jobs."
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+dependencies = ["boto3==1.44.9"]
+
+[tool.uv]
+# The packages boto3 pulls in, at the root uv.lock's versions. tests/test_website_project.py
+# checks app/uv.lock against the root lock.
+constraint-dependencies = [
+    "botocore==1.44.9",
+    "s3transfer==0.19.3",
+    "jmespath==1.1.0",
+    "python-dateutil==2.9.0.post0",
+    "six==1.17.0",
+    "urllib3==2.8.0",
+]

@@ -216,6 +216,70 @@ It works only on machines with the project tag. You can end or resume only the s
 
 Kiro doesn't open shells.
 
+## The website
+
+The website is one Lambda function with a public URL, one on-demand DynamoDB table and a log group, all in the stack. Judges sign in with one shared account, upload a video straight to the job bucket's `uploads/`, pick a preset and press Start. The website checks the video, takes a reservation against its limits and starts the job through the same code as `uv run python -m cloud.start`. It shows each job's status, its 3D viewer and one download, and the job's owner can make a secret share link that shows one finished job's result and viewer to anyone who has it, without signing in, until the owner turns it off.
+
+### The limits and the one yes
+
+The website starts at most 10 jobs and reserves at most $52 a UTC day, and at most $500 in total, until 08:00 UTC on 4 February 2027, when it stops starting jobs. The numbers are in `[website]` in `config.toml`. Each job reserves its preset's worst case: the dearest machine on its fallback list for its time cap plus 5 minutes, $5.15 for fast, $7.62 for default and $18.41 for quality. A reservation is never settled against the real cost, so the real spend stays below the counters.
+
+The account owner's `APPROVED_SPEND=1` on the deploy command is the one yes for every job the website starts within those limits, whoever starts them, the team included. A job started by hand with `cloud.start` still needs its own yes. Changing a limit needs a redeploy, and so a new yes. The website itself never holds the spend variable.
+
+### What it costs
+
+While nobody uses it, about nothing: Lambda bills per request, the table is on demand, the function URL is free, and the log keeps 30 days. Only the GPU machines it starts cost real money, within the limits above.
+
+### The CloudShell steps
+
+Only the account owner runs the deploy, account and showcase commands, in CloudShell signed in with the admin login, in us-east-1. Kiro never runs them, and the guard hook blocks them on a laptop. CloudShell keeps only the home folder between sessions, so run these again in each session. First check that `echo $AWS_EXECUTION_ENV` prints `CloudShell`.
+
+```bash
+export VOXELIS=/tmp/voxelis-website
+export XDG_CACHE_HOME="$VOXELIS/cache" PIP_CACHE_DIR="$VOXELIS/cache/pip"
+mkdir -p "$VOXELIS"
+sudo dnf install -y python3.11 python3.11-pip
+git clone --depth 1 https://github.com/Voxelis-Org/Voxelis-Kiroween.git "$VOXELIS/repo"
+cd "$VOXELIS/repo"
+python3.11 -m app.lockfile app/uv.lock > "$VOXELIS/requirements.txt"
+python3.11 -m pip install --target "$VOXELIS/site" --no-deps --require-hashes --only-binary=:all: --no-cache-dir -r "$VOXELIS/requirements.txt"
+export PYTHONPATH="$VOXELIS/site"
+```
+
+### Deploying it
+
+```bash
+APPROVED_SPEND=1 python3.11 -m app.deploy
+```
+
+It builds the bundle from the clone's commit, uploads it to `website/<commit>.zip` in the job bucket and makes a change set without executing it. It prints one line per change and the change set's name. Review it with the `describe-change-set` command it prints, and look for `WebsiteTable`, `WebsiteFunction` or `WebsiteFunctionUrl` with a replacement of `True` or `Conditional`: a new table would reset the limit counters and the accounts, and a new function or URL would change the judges' address. The deploy command already refuses a change set that removes, adds or replaces the table, or removes or replaces the function or its URL, once the website is deployed. If the change set looks right, run the `execute-change-set` command it prints, then `aws cloudformation wait stack-update-complete --stack-name voxelis-kiroween --region us-east-1`. The address is the stack's `WebsiteUrl` output. The first request after the first deploy can take a few seconds more while the function's policy attaches.
+
+### The judges' account
+
+```bash
+python3.11 -m app.account_command judges
+```
+
+It prints the new password once. Give the judges the address, the name and the password. `--new-password` makes a new password and signs the account out everywhere, and `--remove` removes the account's sessions, uploads and job list, and keeps the job bucket's files.
+
+### The showcase
+
+```bash
+python3.11 -m app.showcase_command add <job id> --title "The old mill" --licence own
+python3.11 -m app.showcase_command list
+python3.11 -m app.showcase_command remove <job id>
+```
+
+A showcase entry shows a finished job to every signed-in account. `--licence` is `own`, `cc0`, `cc-by`, `cc-by-sa` or `pexels`, and `cc-by` and `cc-by-sa` need `--credit` with the footage's author.
+
+### The read profile and the judges' videos
+
+The project group's read policy, and so the read profile Kiro uses, can read `uploads/` and every job's `input/`, which hold the judges' and users' videos. Kiro never opens or downloads them: the status and download commands read only a job's `out/`.
+
+### After judging
+
+When judging ends, delete the website jobs' `jobs/<job id>/` and `work/<job id>/` folders in the S3 console, or keep the ones in the showcase. After the stop time, take the website down by removing it from the template and updating the stack, or by removing the whole setup as below.
+
 ## Stack outputs
 
 The stack has these outputs, on its Outputs tab in the CloudFormation console:
@@ -229,6 +293,8 @@ The stack has these outputs, on its Outputs tab in the CloudFormation console:
 | `SecurityGroupId` | The id of the job machines' security group | The start command |
 | `VpcId` | The id of the default VPC that holds the security group | The start command, which picks one of its default subnets |
 | `GroupName` | The project group's name | The account owner, adding people in Step 5 |
+| `WebsiteUrl` | The website's address | The account owner, to give to the judges |
+| `WebsiteTableName` | The website's table | The account and showcase commands, in CloudShell |
 
 The ARNs hold the account id, so keep them out of chats and logs.
 
@@ -242,10 +308,16 @@ When `cloud/aws-setup.yaml` changes, the account owner updates the stack in Clou
    rm -f aws-setup.yaml
    ```
 
-2. Make the change set. It passes the same stack tag as Step 4's create command, so the stack keeps its project tag whatever CloudFormation does with a change set that leaves the tags out. It passes `UsePreviousValue=true` for the default VPC's id, so the stack keeps the id it was made with. Its own output is the change set's ARN, so `> /dev/null` drops it. Its errors still show.
+2. Make the change set. It passes the same stack tag as Step 4's create command, so the stack keeps its project tag whatever CloudFormation does with a change set that leaves the tags out. It passes `UsePreviousValue=true` for the default VPC's id, so the stack keeps the id it was made with. Its own output is the change set's ARN, so `> /dev/null` drops it. Its errors still show. Before the first website deploy, use this one:
 
    ```bash
    aws cloudformation create-change-set --stack-name voxelis-kiroween --change-set-name <name> --template-body file://aws-setup.yaml --capabilities CAPABILITY_IAM --tags Key=project,Value=voxelis-kiroween --parameters ParameterKey=DefaultVpcId,UsePreviousValue=true --region <your-region> > /dev/null
+   ```
+
+   After the first website deploy, keep the website's code too, or the update swaps the website for its placeholder page:
+
+   ```bash
+   aws cloudformation create-change-set --stack-name voxelis-kiroween --change-set-name <name> --template-body file://aws-setup.yaml --capabilities CAPABILITY_IAM --tags Key=project,Value=voxelis-kiroween --parameters ParameterKey=DefaultVpcId,UsePreviousValue=true ParameterKey=WebsiteCodeBucket,UsePreviousValue=true ParameterKey=WebsiteCodeKey,UsePreviousValue=true --region <your-region> > /dev/null
    ```
 
 3. Wait for the change set:
@@ -260,7 +332,7 @@ When `cloud/aws-setup.yaml` changes, the account owner updates the stack in Clou
    aws cloudformation describe-change-set --stack-name voxelis-kiroween --change-set-name <name> --query "Changes[].ResourceChange.[Action,LogicalResourceId,Replacement]" --output text --region <your-region>
    ```
 
-5. Look for `JobBucket` with a replacement of `True`, or `Conditional`, which means it may be replaced. A replacement makes a new, empty job bucket, and keeps the old one with its files outside the stack, because of the bucket's `UpdateReplacePolicy: Retain`. If that isn't what you want, delete the change set with the command below instead of executing it, and ask whoever changed the template.
+5. Look for `JobBucket`, `WebsiteTable`, `WebsiteFunction` or `WebsiteFunctionUrl` with a replacement of `True`, or `Conditional`, which means it may be replaced. A new website table resets its accounts and limit counters, and a new function or URL changes the judges' address. A replacement makes a new, empty job bucket, and keeps the old one with its files outside the stack, because of the bucket's `UpdateReplacePolicy: Retain`. If that isn't what you want, delete the change set with the command below instead of executing it, and ask whoever changed the template.
 
    ```bash
    aws cloudformation delete-change-set --stack-name voxelis-kiroween --change-set-name <name> --region <your-region>
@@ -294,6 +366,8 @@ The account owner removes the setup. First, in the EC2 console, terminate every 
 The machine images and snapshots that the runner role made aren't part of the stack, so deleting the stack leaves them. They carry the project tag. Deregister them and delete their snapshots in the EC2 console.
 
 The IAM users, the admin login and the budget aren't part of the stack either, so they stay too.
+
+The website's function, its URL, its two permissions, its role, its policy and its log group go with the stack. Its table is kept, with its accounts, limit counters and showcase entries, because of its `DeletionPolicy: RetainExceptOnCreate`; delete it in the DynamoDB console if you're sure. The bundles under `website/` stay in the kept job bucket.
 
 ## Another region or another name
 

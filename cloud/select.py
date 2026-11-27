@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from cloud.errors import CloudError
+from cloud.errors import CloudError, NoGpuQuota, QuotaFull
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -105,14 +105,14 @@ def admit(candidates: Sequence[str], running: int, quota: float, cc: CloudConfig
     anything is uploaded or launched (Req 4.5).
     """
     if quota == 0:
-        raise CloudError(
+        raise NoGpuQuota(
             "This AWS account has no GPU quota: the limit on Running On-Demand G and VT instances is "
             "0, so no GPU machine can start. Ask AWS to raise the quota as docs/aws-setup.md explains, "
             "then run the command again.")
     kept = [name for name in candidates if running + cc.spec(name).vcpus <= quota]
     if not kept:
         smallest = min((cc.spec(name).vcpus for name in candidates), default=0)
-        raise CloudError(
+        raise QuotaFull(
             f"The GPU quota is {quota:g} vCPUs and our running machines already use {running}, so "
             f"there is no room for the smallest fitting type, which needs {smallest} vCPUs. Wait for a "
             "machine to finish, stop one with the stop-all command, or ask AWS to raise the quota, "
