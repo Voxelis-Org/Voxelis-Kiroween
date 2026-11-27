@@ -90,6 +90,7 @@ class CamerasSettings:
     min_placed_frames: int  # the Placed_Check's fewest Placed_Frames (D9)
     min_placed_share: float  # the Placed_Check's smallest share of the Picks (D9)
     level: LevelSettings  # up_agreement, heading_min_degrees, the two axis point shares
+    min_highest_ray_degrees: float  # the minimum upward coverage before a warning
     timeouts: Mapping[str, float]  # each COLMAP command's Time_Limit in seconds, by command
     # The Step_Needs, kept for the cloud-jobs spec's Start_Command. The step never uses them.
     min_vcpus: int
@@ -408,6 +409,7 @@ _SHARED: dict[str, Range] = {
     "axis_point_min_eigen_share": _ABOVE_ZERO_TO_ONE,
     "axis_point_min_front_share": _ZERO_TO_ONE,
     "heading_min_degrees": _ABOVE_ZERO_BELOW_90,
+    "min_highest_ray_degrees": _DEGREES_ZERO_TO_180,
     **{key: _ABOVE_ZERO for key in TIMEOUT_KEYS.values()},  # the Time_Limits, in seconds
     "min_vcpus": _WHOLE_ABOVE_ZERO,
     "min_memory_gb": _WHOLE_ABOVE_ZERO,
@@ -458,6 +460,7 @@ def read_settings(settings: Mapping[str, Any], section: str, preset: str) -> Cam
         min_placed_frames=values["min_placed_frames"],
         min_placed_share=values["min_placed_share"],
         level=_level(values),
+        min_highest_ray_degrees=values["min_highest_ray_degrees"],
         timeouts={command: values[key] for command, key in TIMEOUT_KEYS.items()},
         min_vcpus=values["min_vcpus"],
         min_memory_gb=values["min_memory_gb"],

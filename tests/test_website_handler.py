@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import gzip
+import json
 import logging
 import re
 import tempfile
@@ -21,6 +22,7 @@ import cloud.start
 from app import pages
 from app.handler import ROUTES, find_route, handle
 from app.sessions import SESSION_COOKIE, SIGNIN_COOKIE
+from splatpipe.errors import LOOK_UP_WARNING
 from tests.website_helpers import (JOB_ID, STACK, event, json_body, make_account_item, mp4,
                                    seed_job, sign_in_as, website)
 
@@ -167,6 +169,22 @@ def test_a_running_jobs_page_polls_and_has_no_viewer(deps) -> None:
     status = call(deps, "GET", f"/api/jobs/{JOB_ID}/status", cookies=cookies)
     assert json_body(status) == {"status": "running", "text": "Running (step 2 of 5)", "final": False}
     assert call(deps, "GET", f"/jobs/{JOB_ID}/download", cookies=cookies)["statusCode"] == 404
+
+
+def test_the_result_shows_the_capture_warning_from_a_successful_cameras_report(deps) -> None:
+    cookies, _ = sign_in_as(deps, "judges")
+    seed_job(deps)
+    key = f"jobs/{JOB_ID}/out/reports/cameras.json"
+    report = json.loads(deps.aws.objects[key])
+    report["warnings"] = ["Internal camera diagnostic.", LOOK_UP_WARNING]
+    deps.aws.objects[key] = json.dumps(report).encode()
+
+    page = call(deps, "GET", f"/jobs/{JOB_ID}", cookies=cookies)
+    assert page["statusCode"] == 200
+    html = text(page)
+    assert '<strong id="status">Done</strong>' in html
+    assert f'<p class="warning">{LOOK_UP_WARNING}</p>' in html
+    assert "Internal camera diagnostic." not in html
 
 
 def test_the_viewer_files_are_served_as_modules_to_a_signed_in_account(deps) -> None:

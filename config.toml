@@ -324,6 +324,8 @@ axis_point_min_eigen_share = 0.1
 axis_point_min_front_share = 0.5
 # A camera looking within this many degrees of straight up or down has no heading.
 heading_min_degrees = 10.0
+# Warn about missing ceiling coverage when every placed camera's top ray is below this angle.
+min_highest_ray_degrees = 40.0
 # Longest time colmap feature_extractor may run, in seconds.
 feature_extractor_timeout_seconds = 900
 # Longest time each of the two colmap sequential_matcher runs may take, in seconds.

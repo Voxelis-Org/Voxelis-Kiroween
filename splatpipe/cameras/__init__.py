@@ -37,7 +37,8 @@ Step_Runner and returns its Step_Report. `__main__.py` is the CLI,
    and the Undistorted_Mask (Req 8.3 to 8.5).
 8. The Levelling. When it moves the scene, the whole Level_Move goes to every Pose and point at
    once. When it keeps the COLMAP_Frame, the Levelled_Model is the Undistorted_Model as it is,
-   bit for bit, and the reason is a warning (Req 9, C10). The count levelled goes in.
+   bit for bit, and the reason is a warning (Req 9, C10). The count levelled goes in. The highest
+   view ray can add a warning about missing ceiling coverage.
 9. The writes, in this order: the Training_Images, the Training_Masks with mask_used, the
    Levelled_Model, solve.json, then out/cameras.json, last of all. When out/cameras.json can't
    be written, solve.json is removed too, so a run that fails leaves neither (Req 11.1 to 11.9,
@@ -88,7 +89,7 @@ from splatpipe.cameras.outputs import (VIEWER, copy_training_images, mean_reproj
 from splatpipe.cameras.settings import CamerasSettings, read_settings
 from splatpipe.cameras.solve import Solved, run_or_fail
 from splatpipe.cameras.undistort import check_undistorted, mask_camera_line, read_warped_mask
-from splatpipe.errors import ExpectedFailure
+from splatpipe.errors import LOOK_UP_WARNING, ExpectedFailure
 from splatpipe.frames.files import MASK
 # Config comes through splatpipe.step, as for the Fake_Step and the Frames_Step.
 from splatpipe.step import Config, StepContext, run_step
@@ -246,12 +247,18 @@ def _levelling(flow: _Flow, undistorted: Model) -> tuple[Levelling, Model]:
     with step.timed("levelling"):
         scene = scene_of(undistorted, flow.frames.numbers)
         levelling = level.level(scene, flow.cfg.level)
+        rotations = scene.rotations
         if levelling.levelled:
             levelled = move_model(undistorted, levelling.move)
+            rotations = rotations @ levelling.move.rotation.T
         else:
             levelled = undistorted
             step.add_warning(cast(str, levelling.reason))  # a kept frame always has its reason
         step.add_count("levelled", int(levelling.levelled))
+        highest_ray = level.highest_ray_degrees(rotations, undistorted.cameras[0],
+                                               levelled=levelling.levelled)
+        if highest_ray is not None and highest_ray < flow.cfg.min_highest_ray_degrees:
+            step.add_warning(LOOK_UP_WARNING)
     return levelling, levelled
 
 

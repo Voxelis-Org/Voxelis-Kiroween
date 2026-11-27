@@ -42,7 +42,7 @@ from typing import Literal
 
 import numpy as np
 
-from splatpipe.cameras.model import Model
+from splatpipe.cameras.model import Camera, Model
 
 WORLD_UP = np.array([0.0, -1.0, 0.0])  # Fixed_Constant: the World_Up
 FORWARD = np.array([0.0, 0.0, 1.0])  # Fixed_Constant: where the Heading points, +Z
@@ -51,6 +51,8 @@ FORWARD.setflags(write=False)
 # P = diag(1, −1, −1), the half turn about x, which takes the World_Up to minus itself.
 _HALF_TURN = np.diag([1.0, -1.0, -1.0])
 _HALF_TURN.setflags(write=False)
+# The viewer's cutoff for using the mean picture up in an unlevelled scene.
+_VIEWER_UP_MIN_LENGTH = 0.2
 
 _Kind = Literal["axis_point", "point_median"]  # the kinds of Scene_Centre
 
@@ -260,6 +262,28 @@ def scene_of(model: Model, numbers: Mapping[str, int]) -> Scene:
     return Scene(names=tuple(image.name for image in images), rotations=rotations,
                  centres=centres,
                  points=np.array(model.points.xyz, dtype=np.float64).reshape(-1, 3))
+
+
+def highest_ray_degrees(rotations: np.ndarray, camera: Camera, *, levelled: bool) -> float | None:
+    """The largest pitch plus half the vertical field of view, in the viewer's scene frame.
+
+    Rotations are cam_from_world in pick order. As in the viewer, unlevelled poses use the
+    normalized mean picture up when it is long enough, or the first frame's up otherwise.
+    """
+    fy = camera.params[1]
+    if not rotations.size or not np.isfinite(rotations).all() or not math.isfinite(fy):
+        return None
+    if camera.height <= 0 or fy <= 0:
+        return None
+    up = WORLD_UP
+    if not levelled:
+        picture_ups = -rotations[:, 1, :]
+        mean = picture_ups.mean(axis=0)
+        up = mean if np.linalg.norm(mean) > _VIEWER_UP_MIN_LENGTH else picture_ups[0]
+        up = up / np.linalg.norm(up)
+    pitches = np.arcsin(np.clip(rotations[:, 2, :] @ up, -1.0, 1.0))
+    half_vertical_fov = math.atan2(camera.height / 2, fy)
+    return math.degrees(float(pitches.max()) + half_vertical_fov)
 
 
 def move_model(model: Model, move: LevelMove) -> Model:

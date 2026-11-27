@@ -143,6 +143,8 @@ def result_page(view: JobView, *, csrf: str | None, poll_seconds: int, viewer: V
         parts.append(f'<p class="error">{esc(view.readable_error)}</p>')
     for step, error in view.warnings:
         parts.append(f'<p class="warning">The {esc(step)} step failed: {esc(error)}</p>')
+    if view.capture_warning:
+        parts.append(f'<p class="warning">{esc(view.capture_warning)}</p>')
     if view.step_times:
         rows = "".join(f"<li>{esc(t.step)}: {esc(t.outcome)}, {esc(duration(t.seconds))}</li>"
                        for t in view.step_times)
