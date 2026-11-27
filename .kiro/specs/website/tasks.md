@@ -70,7 +70,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Leave every other section exactly as it is, `[git]`, `[aws]`, `[paid]` and `[devlog]` included.
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.10_
 
-  - [ ] 1.2 Write `app/config.py`
+  - [x] 1.2 Write `app/config.py`
     - `WebsiteConfig` with the design's fields, `from_mapping(data)`, `load_website_config(path=None)` and `dollars_to_cents(value)`.
     - Define `ScryptSettings` (`n`, `r`, `p`, `dklen`, `salt_bytes`) here, as the design does, because `WebsiteConfig.scrypt` needs it in this task. Task 5's `app/accounts.py` imports it from `app.config`, so `app.accounts.ScryptSettings` is the same class and there's no import cycle.
     - `from_mapping` refuses with a `PipelineError` that names the key and says what it must be: a missing key, an unknown key, a `bool` where a number belongs, a number below its floor, a Stop_Time not written as `YYYY-MM-DDTHH:MM:SSZ`, a `cloudshell_modules` that isn't a non-empty list of dotted module names, and a `deploy_folder` that isn't an absolute POSIX path strictly inside `/tmp` with no `..` part.
@@ -79,14 +79,14 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `stop_starting_at` becomes an aware UTC `datetime`, and `cloudshell_modules` a tuple. `daily_cost_cents` and `total_cost_cents` come from the dollars through `dollars_to_cents`, which parses the `.2f` text of the value into whole cents, as the Start_Command's quote prints it. `dollars_to_cents` is for the two dollar limits only: the Worst_Case_Cost rounds up its own way in task 6.
     - _Requirements: 2.1, 2.2, 2.3, 2.6, 2.7, 2.8_
 
-  - [ ] 1.3 Write `app/__init__.py`, `app/errors.py` and the data classes in `app/web.py`
+  - [x] 1.3 Write `app/__init__.py`, `app/errors.py` and the data classes in `app/web.py`
     - `app/__init__.py` is empty.
     - `app/errors.py`: `PublicRefusal(Exception)` with `status`, `kind` and `message`, made as `PublicRefusal(status, kind, message)`, with `str()` giving the message.
     - `app/web.py`: `Request`, `Response`, the `Random` protocol, `SecretsRandom` and `Deps`, with the design's fields. `SecretsRandom` is the `Random` that uses `secrets.token_bytes` and `secrets.choice`, for Lambda and CloudShell. `Deps.clock` is a callable that gives an aware UTC now, which the Reservation and the launch read (the design's decision 22).
     - `Deps.baked` is annotated `BakedCommit` through a `TYPE_CHECKING` import with `from __future__ import annotations`, because `app/baked.py` comes in task 3. `handle` and `stack_for` come in task 7.
     - _Requirements: 1.1, 1.3_
 
-  - [ ] 1.4 Write the App_Project and lock it
+  - [x] 1.4 Write the App_Project and lock it
     - `app/pyproject.toml`: `name = "voxelis-website"`, `version = "0.1.0"`, `requires-python = ">=3.11,<3.12"`, `dependencies = ["boto3==1.44.9"]`, and a `[tool.uv]` table whose `constraint-dependencies` pins the packages boto3 pulls in to the root `uv.lock`'s versions: `botocore==1.44.9`, `s3transfer==0.19.3`, `jmespath==1.1.0`, `python-dateutil==2.9.0.post0`, `six==1.17.0` and `urllib3==2.8.0`. It has no build system, so uv treats it as a virtual project.
     - Before locking, check that the root `uv.lock` holds exactly these seven versions. If one differs, stop and ask the user, because every `app/uv.lock` version must equal the root lock's (Req 1.2).
     - Run `uv lock --project app`. It writes only `app/uv.lock` and may use the network, as a dev action like `uv add`. The root has no `[tool.uv.workspace]`, so `app/` isn't a workspace member.
@@ -94,11 +94,11 @@ Some files grow over several tasks, so each piece comes with the first task that
     - For each package in `app/uv.lock` that `docs/third-party-licences.md` doesn't list, add its row in this commit, with its licence and how we use it. Expect boto3, botocore, s3transfer, jmespath, python-dateutil, six and urllib3, which the root project already pulls in. If a new row's licence is copyleft, non-commercial or unclear, stop and ask the user.
     - _Requirements: 1.1, 1.2_
 
-  - [ ] 1.5 Write `website_config(**overrides)` in `tests/website_helpers.py`
+  - [x] 1.5 Write `website_config(**overrides)` in `tests/website_helpers.py`
     - Read the real `[website]` from `REPO_ROOT / "config.toml"` with `tomllib`, apply the overrides by key name, such as `scrypt_n=2`, and build the `WebsiteConfig` with `WebsiteConfig.from_mapping`, the way the cloud-jobs tests' `cloud_config(**overrides)` builds a `CloudConfig`.
     - _Requirements: 18.1_
 
-  - [ ] 1.6 Write the unit tests for the Config in `tests/test_website_config.py`
+  - [x] 1.6 Write the unit tests for the Config in `tests/test_website_config.py`
     - `load_website_config(REPO_ROOT / "config.toml")` gives the settled values: the Stop_Time as the aware UTC instant 2027-02-04 08:00:00, `daily_jobs` 10, `daily_cost_cents` 5200 (the $52 Daily_Cost_Limit), `total_cost_cents` 50000, `boot_margin_minutes` 5, `upload_link_seconds` 900, `download_link_seconds` 300, `ended_check_minutes` 10, `signin_max_failures` 5, `signin_window_minutes` 15, `signin_wait_minutes` 15, `session_days` 7 and `cloudshell_modules` `("app.deploy", "app.account_command", "app.showcase_command")` (Req 2.2 to 2.6, 2.11).
     - `[website]`'s keys share none with `[jobs]`, `[clean]` or `[cloud]` (Req 2.7).
     - `dollars_to_cents`: 52 gives 5200, 4.94 gives 494, and `0.1 + 0.2` gives 30.
@@ -122,7 +122,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw only the corruptions that fit the key: a number below its floor only for the number keys, and for `cloudshell_modules` also an empty list and a list holding a name that isn't a dotted module name.
     - _Requirements: 2.1, 2.8_
 
-  - [ ] 1.9 Run the tests, commit and push
+  - [x] 1.9 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, and check again that `git status --porcelain -- pyproject.toml uv.lock` prints nothing.
     - On `feat/website`, stage `config.toml`, the new `app/` and `tests/` files and, if it changed, `docs/third-party-licences.md`, each by name, and commit them with the title "Website: the website config and the app project" and a body saying that it adds the website section to config.toml, the app project that locks boto3 alone at the root lock's versions so the root lock and the machine image never change for the website, and the checks on both.
     - Then run `git push origin feat/website`.
@@ -132,12 +132,12 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `cloud/table.py`, `tests/fake_table.py`, `tests/test_website_table.py` and `tests/test_website_aws.py` (new), `cloud/aws.py`, `cloud/errors.py`, `cloud/select.py`, `cloud/launch.py` and `tests/fake_aws.py` (changed).
   - _Requirements: 1.4, 1.6, 1.8, 9.2, 10.4, 11.1, 11.4, 12.14, 12.15, 15.14, 18.1, 18.2, 18.3_
 
-  - [ ] 2.1 Write `cloud/table.py`
+  - [x] 2.1 Write `cloud/table.py`
     - The design's typed values, as frozen dataclasses, with the standard library only: `Scalar`, `Key`, `Prefix`, `Between`, `KeyRange`; the conditions `Exists`, `NotExists`, `Equals`, `AtMost`, `AtLeast`, `And`, `Or`; the updates `Set`, `Add`, `Remove`; the transaction items `Put`, `Change`, `Check`; `ConditionFailed` with its `index`; `TransactionConflict`; and `ITEM_THERE` and `ITEM_ABSENT`.
     - Keep DynamoDB's limit of 100 items in one transaction as a named constant with its source.
     - _Requirements: 1.4, 10.4, 18.2_
 
-  - [ ] 2.2 Add the typed errors to `cloud/errors.py` and raise them in `cloud/select.py` and `cloud/launch.py`
+  - [x] 2.2 Add the typed errors to `cloud/errors.py` and raise them in `cloud/select.py` and `cloud/launch.py`
     - `NoGpuQuota`, `QuotaFull`, `CapacityExhausted` with `tried: tuple[tuple[str, str], ...]` in attempt order, and `QuotaRefused`, all subclasses of `CloudError`.
     - `admit` raises `NoGpuQuota` when the G_Quota is 0 and `QuotaFull` when no candidate fits, each with today's message word for word.
     - `launch_with_fallback` raises `CapacityExhausted` with today's message when it tried at least one attempt, and a plain `CloudError` with today's message when the plan was empty.
@@ -162,7 +162,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Module functions: `s3_origin(bucket, region)`; `website_aws(region)` and `cloudshell_aws(region)`, which name the region and no profile; and `aws_setting(config, key)`, which reads a non-empty string from the parsed `[aws]` table or refuses naming the key.
     - _Requirements: 1.6, 1.8, 11.1, 12.14, 15.14_
 
-  - [ ] 2.5 Write `tests/fake_table.py` and extend `tests/fake_aws.py`
+  - [x] 2.5 Write `tests/fake_table.py` and extend `tests/fake_aws.py`
     - `tests/fake_table.py` is a small pure evaluator over dicts, sharing no code with `cloud/aws.py`: whether a condition holds for an item or for no item, where a comparison with a missing attribute is false; applying updates, where `Add` on a missing attribute starts from 0 and `Remove` drops it; and puts, updates and transactions over `items: dict[tuple[str, str], dict[str, Scalar]]`.
     - A transaction applies all its items or none, raises `ConditionFailed(index=i)` for the first failing item in request order, and refuses two items on one key with a `CloudError`, as DynamoDB does.
     - `FakeAws` gains every new method, each recording `(op, key)` in `calls`, every Presigned_Link included. `table_get_many` is one call. `table_transact` records its token and can be seeded to raise `TransactionConflict` for its next n transactions, changing nothing.
@@ -173,7 +173,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Everything `FakeAws` did before behaves as before, so the cloud-jobs tests pass unchanged.
     - _Requirements: 12.14, 12.15, 15.14, 18.1, 18.2, 18.3_
 
-  - [ ] 2.6 Write the unit tests for the fake in `tests/test_website_table.py`
+  - [x] 2.6 Write the unit tests for the fake in `tests/test_website_table.py`
     - Every new `FakeAws` operation records its call, in order, Presigned_Links included, and `table_get_many` records one call (Req 18.3).
     - `table_query` with a `Prefix` and with a `Between` returns the matching items in `sk` order. `table_delete` removes one item.
     - A transaction with two items on one key is refused and changes nothing. A seeded `TransactionConflict` raises once per seeded transaction and changes nothing.
@@ -200,7 +200,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw random items, then a put, an update or a transaction of up to 5 items on distinct keys with random conditions, and compare with an oracle that checks each item's condition against the state before the write and applies each item alone to a copy of the state.
     - _Requirements: 18.2_
 
-  - [ ] 2.9 Run the tests, commit and push
+  - [x] 2.9 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, every `tests/test_cloud_*.py` included, unchanged.
     - Stage the task's files by name and commit them with the title "Website: the table seam, the new AWS operations and their fake" and a body saying that it adds typed table values with no boto3, the new S3, DynamoDB, EC2 and CloudFormation operations on the Aws seam, typed refusals with unchanged messages, and a faithful fake of all of it.
     - Then run `git push origin feat/website`.
@@ -216,14 +216,14 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Before writing, swap the run's own commit id for a placeholder such as `<commit>`, both whole and as the 12-character prefix that the "Launched a …" line prints, because every repo the scenarios make gets a new commit id. Task 3.4 swaps it the same way before comparing.
     - _Requirements: 9.2_
 
-  - [ ] 3.2 Split `start_job` into the Start_Core in `cloud/start.py`
+  - [x] 3.2 Split `start_job` into the Start_Core in `cloud/start.py`
     - The frozen dataclasses `Code`, `Gate`, `Choice` and `Launched`, and the public functions `require_step_list()`, `check_image(aws, config, code)`, `choose_machine(aws, gate, entries, preset, config, cc)` and `launch_job(aws, gate, choice, job_id, code, place_inputs, config, cc, environ)`, with the design's signatures and docstrings. The Step_List check is named `require_step_list` so it doesn't clash with `splatpipe.run.check_step_list`, and there's no `approve` function.
     - `launch_job` calls `check_spend` with the Choice's three strings and `environ` as its first statement, before `place_inputs`, the User_Data and `launch_with_fallback`, so the Spend_Guard is the first gate that can stop a paid run, for both callers (Req 9.11).
     - `start_job` keeps its signature, its messages, its refusal order and today's exact Fake_AWS call order, and composes the four functions in the design's 8 steps. Its `place_inputs` uploads the video, then `code.tar`, then `job.json`. Because `launch_job` calls `check_spend` first, `check_spend` still runs exactly where `start_job` called it before.
     - `launch_job` names `check_spend`, and `start_job` names `make_job`, by their bare module-level names, so both resolve `cloud.start`'s globals at call time. Never bind either as a default argument, a dataclass field or a local alias. `_smoke_marker_key` stays as it is.
     - _Requirements: 9.1, 9.2, 9.11_
 
-  - [ ] 3.3 Add `worst_case_cost` to `cloud/start.py` and write `app/baked.py`
+  - [x] 3.3 Add `worst_case_cost` to `cloud/start.py` and write `app/baked.py`
     - `worst_case_cost(preset, cc, extra_minutes=0.0)` takes the dearest type on the Preset's whole Fallback_List by `price_per_hour_usd` and returns its cost in dollars for the Preset's Time_Cap plus `extra_minutes`, through `cloud.spend_file.rough_cost`, the same cost the quote uses, IPv4 address and root volume included. `start_job` doesn't call it. Task 6's Reservation passes `[website].boot_margin_minutes` as `extra_minutes`, because a hung machine runs its boot minutes before the Time_Cap's shutdown is scheduled (R1).
     - `app/baked.py`: `BakedCommit` with `code()`, which gives the `cloud.start.Code` the Start_Core takes; `read_baked(root)`, which reads `<root>/baked/commit.json` and checks that `<root>/baked/code.tar` exists; and `write_baked(folder, commit, uv_lock_hash, package_lock_hash, archive)`, which writes `commit.json` as `{"commit": ..., "uv_lock_hash": ..., "package_lock_hash": ...}` and puts the archive at `<folder>/baked/code.tar` unless it's already there.
     - Both refuse a commit that isn't 40 lowercase hex digits or a hash that isn't 64, with a `CloudError` naming the field.
@@ -247,7 +247,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `app/limits.py` comes in task 6, so the test writes the same expression itself.
     - _Requirements: 10.2_
 
-  - [ ] 3.6 Run the tests, commit and push
+  - [x] 3.6 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, every `tests/test_cloud_*.py` included, unchanged.
     - Stage the task's files by name and commit them with the title "Website: split start_job into the shared Start_Core" and a body saying that the laptop and the website now start jobs through the same public functions, in the same order and with the same messages, that the launch function runs the spend guard first, and that the website will run the commit it was deployed from.
     - Then run `git push origin feat/website`.
@@ -257,7 +257,7 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `app/video.py` and `tests/test_website_video.py` (new), `tests/website_helpers.py` and `tests/test_website_imports.py` (changed).
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 9.9, 18.10_
 
-  - [ ] 4.1 Write `find_moov` in `app/video.py`
+  - [x] 4.1 Write `find_moov` in `app/video.py`
     - `VIDEO_FILES`, the `Read` alias, `MovieFacts`, `VideoFacts` and `find_moov(read, size, max_boxes, max_moov_bytes)`, as the design's `app/video.py` section gives them.
     - Walk the top-level Boxes from offset 0. At each offset read `min(16, size - offset)` bytes. Fewer than 8 is a broken file. The 32-bit size 1 means the next 8 bytes are the 64-bit `largesize` and the header is 16 bytes. Size 0 means the Box runs to the end of the file. A Box smaller than its own header, or one that runs past the end, is a broken file.
     - A `moov` Box returns its offset and length, after the refusal for one larger than `max_moov_bytes`. Any other Box is skipped by its size, and a size-0 Box that isn't `moov` ends the walk with no `moov`. Walking more than `max_boxes` Boxes is a refusal. Only headers are read, never a payload.
@@ -265,7 +265,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Add the Box header sizes 8 and 16 to the allow list in `tests/test_website_imports.py`, citing ISO/IEC 14496-12.
     - _Requirements: 8.2, 8.4, 8.5, 8.6_
 
-  - [ ] 4.2 Write `read_movie` and `check_video` in `app/video.py`
+  - [x] 4.2 Write `read_movie` and `check_video` in `app/video.py`
     - `read_movie(moov)` walks the `moov` Box's children with the same header rules, bounded by their parent, and reads `mvhd` and each `trak`'s `mdia/hdlr` and `mdia/mdhd`. The handler type is the 4 bytes at offset 8 of the `hdlr` payload, after its version, flags and pre-defined field.
     - In `mvhd` and `mdhd`, version 0 keeps the time scale and duration as 32-bit values at payload offsets 12 and 16, and version 1 keeps the time scale at 20 and a 64-bit duration at 24. A duration of all ones counts as 0, and a time scale of 0 means the length can't be read.
     - The Video_Length is the first `vide` track's `mdhd` duration over its time scale, or the `mvhd` duration over its time scale when that's 0.
@@ -273,12 +273,12 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Each refusal is a `PublicRefusal` in the Website's own words for what to do on a phone, meaning the same as the Job_Maker's refusal in that case. It returns `VideoFacts`, with `video_file` from `VIDEO_FILES` by the lower-cased extension.
     - _Requirements: 8.1, 8.3, 8.6, 8.7, 9.9_
 
-  - [ ] 4.3 Add `mp4(boxes)` and the sparse reader to `tests/website_helpers.py`
+  - [x] 4.3 Add `mp4(boxes)` and the sparse reader to `tests/website_helpers.py`
     - `mp4(boxes)` builds small MP4 and MOV files from Box specs (a type, a payload or a claimed size, and `largesize` or not), with helpers for a `moov` holding an `mvhd` and `trak`s with `mdia/hdlr` and `mdia/mdhd` at version 0 or 1. It packs with `struct` and shares no code with `app/video.py`.
     - The sparse reader serves only the header bytes and the `moov`, records every read, and fails the test when asked for any byte inside another Box's payload, so a Box that claims 4 GiB costs nothing.
     - _Requirements: 18.10_
 
-  - [ ] 4.4 Write the unit tests for the Video_Check in `tests/test_website_video.py`
+  - [x] 4.4 Write the unit tests for the Video_Check in `tests/test_website_video.py`
     - Found: a phone-style MP4 with `ftyp`, `free`, `mdat` and then `moov`; a MOV with `moov` before `mdat`; a 64-bit `largesize` `mdat` that claims 4 GiB through the sparse reader; and a size-0 `moov` last. Version 0 and version 1 headers. An all-ones `mdhd` duration falls back to `mvhd`. The first `vide` track is chosen when a `soun` track comes first.
     - Refused, each with its message: a Box of size 4, a Box past the end, a size-0 `mdat` last with no `moov`, fewer than 8 bytes left, more than `max_boxes` Boxes, a `moov` over `max_moov_bytes`, no video track, a Video_Length of 0, a time scale of 0, over `[jobs].max_video_seconds`, shorter than `[jobs].min_used_seconds`, an `.avi` name, a gone object (`size=None`), a size over `[jobs].max_video_bytes`, and a size that differs from the stated size.
     - `IMG_0042.MOV` is accepted with `video_file` `video.mov`, and `clip.MP4` with `video.mp4`. The sparse reader shows that no payload byte of a non-`moov` Box was read.
@@ -291,7 +291,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw a list of Box specs, a `moov` position, a track list, time scales, durations and an optional size-0 last Box, built into a sparse file. Make each broken layout by one mutation of a good one.
     - _Requirements: 8.2, 8.3, 8.4, 8.5, 8.6, 8.8, 18.10_
 
-  - [ ] 4.6 Run the tests, commit and push
+  - [x] 4.6 Run the tests, commit and push
     - Run `uv run pytest` until every test passes.
     - Stage the task's files by name and commit them with the title "Website: the video check reads MP4 and MOV boxes over range reads" and a body saying that it finds the moov box wherever it is by walking box headers, reads the video track and its length, and refuses a bad video for free before any machine starts.
     - Then run `git push origin feat/website`.
@@ -301,7 +301,7 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `app/accounts.py`, `app/sessions.py`, `app/signin_limit.py`, `app/cloudshell.py`, `app/account_command.py`, `tests/test_website_accounts.py` and `tests/test_website_signin.py` (new), `tests/website_helpers.py`, `tests/test_website_imports.py`, `scripts/hooks/guard.py` and `tests/test_guard.py` (changed).
   - _Requirements: 1.7, 1.8, 1.9, 1.11, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.12, 5.3, 5.4, 18.4, 18.15, 18.16_
 
-  - [ ] 5.1 Write `app/accounts.py`
+  - [x] 5.1 Write `app/accounts.py`
     - `ACCOUNT_NAME`, `PASSWORD_ALPHABET`, `Account`, `check_account_name`, `new_password(length, random)`, `hash_password(password, salt, settings)`, `password_matches(password, account, configured)`, `profile_key(name)`, `read_account(item)`, `make_account(aws, name, wc, random)`, `replace_password(aws, name, wc, random)` and `remove_account(aws, name)`, with the design's signatures. `ScryptSettings` is imported from `app/config.py`.
     - `hash_password` is `hashlib.scrypt(password.encode("utf-8"), salt=salt, n=..., r=..., p=..., dklen=..., maxmem=256 * r * (n + p + 2))`, worked out from the hash's own settings. That's twice what OpenSSL allocates for those settings, `128 * r * (n + 2)` for its working arrays plus `128 * r * p`, as the design says. A shorter `256 * r * n` would be too small whenever `n < p + 2`, as with the tests' `scrypt_n=2, scrypt_p=1`, where OpenSSL refuses the hash.
     - `password_matches` runs exactly one scrypt either way: with an Account, its salt and its stored settings; with `None`, a fixed dummy salt and the configured settings, returning `False`. It compares with `hmac.compare_digest`.
@@ -309,7 +309,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `make_account` puts the profile on `ITEM_ABSENT`, so a taken name raises `ConditionFailed` and changes nothing. `replace_password` updates the hash, the salt, the settings and a new `uid` on `ITEM_THERE`, which ends every Session of the Account at once. `remove_account` queries the partition `account#<name>`, deletes each item (the profile, its Sessions, its Uploads and its job items) and returns how many it deleted.
     - _Requirements: 3.2, 3.3, 3.5, 3.6, 3.7, 3.8, 4.1, 4.2_
 
-  - [ ] 5.2 Write `app/sessions.py`
+  - [x] 5.2 Write `app/sessions.py`
     - `SESSION_COOKIE`, `SIGNIN_COOKIE`, `Session`, `parse_session_cookie(value, token_bytes)`, `current(request, deps, now)`, `sign_in(request, deps, now)`, `sign_out(session, deps, now)`, `set_cookie(name, value, max_age, same_site)` and `clear_cookie(name)`.
     - `parse_session_cookie` accepts `<account name>.<id>` only when the name matches `ACCOUNT_NAME` and the id is exactly the unpadded base64url length of `token_bytes` bytes, 43 characters for 32, in the base64url alphabet. Anything else is `None`, with no AWS call.
     - `current` reads the profile item and the session item `account#<name>` / `session#<SHA-256 hex of the id>` in one `table_get_many`. It's a Valid_Session when both exist, the session isn't `ended`, its `expires_at` is after `now` by the handler's clock, and its `uid` equals the profile's. A failed read raises, never "signed out".
@@ -318,7 +318,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `sign_out` sets `ended` on the session item, clears the Session_Cookie with `Max-Age=0` and answers a 303 to `/signin`. Nothing is deleted.
     - _Requirements: 4.1, 4.3, 4.6, 4.7, 4.8, 4.9, 4.10, 4.12, 5.3, 5.4_
 
-  - [ ] 5.3 Write `app/signin_limit.py`
+  - [x] 5.3 Write `app/signin_limit.py`
     - `locked_until(aws, address, now, wc)` and `record_failure(aws, address, now, wc, random)`, with the design's items: each Sign_In_Failure is `signin#<address>` / `failure#<10-digit epoch seconds>#<8 hex digits>` with `expires_at` one window later, and the lock is `signin#<address>` / `lock` holding `until` and `expires_at`.
     - `locked_until` is one `table_query` of the address's partition, `Between("failure#<now - window + 1 s>", "lock")`, which returns the window's failures and the lock together, and gives the lock's `until` while it's after `now`.
     - `record_failure` puts the new failure, queries again, and when the window holds `signin_max_failures` failures or more, puts the lock with `until = now + signin_wait_minutes`. Times are whole epoch seconds from `int(now.timestamp())`.
@@ -326,7 +326,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Add each number this task's code holds to the allow list in `tests/test_website_imports.py`, with its source: the 2 and 256 of the `maxmem` formula (OpenSSL's scrypt; task 1 already allows the 2, so add this source to it), the 4 random bytes behind a failure's 8 hex digits, 60 seconds a minute, 86,400 seconds a day, and base64's 3 bytes to 4 characters (RFC 4648) if `parse_session_cookie` works out the id's length from them.
     - _Requirements: 4.4, 4.5_
 
-  - [ ] 5.4 Write `app/cloudshell.py` and `app/account_command.py`
+  - [x] 5.4 Write `app/cloudshell.py` and `app/account_command.py`
     - `require_cloudshell(environ)` raises a `CloudError` unless `environ.get("AWS_EXECUTION_ENV") == "CloudShell"`, with the design's message: "This command runs only in AWS CloudShell, signed in as the account owner. Open CloudShell in us-east-1 and follow docs/aws-setup.md." `run_cloudshell_cli(action)` is `cloud.errors.run_cloud_cli`.
     - `account_main(argv, *, environ, make_aws, random, out, config_path)` for `python3.11 -m app.account_command <name> [--new-password | --remove]`, with the design's signature, where `config_path` is a required keyword. The `region` and `stack_name` come from `[aws]` in `config_path`, and the scrypt and password settings from its `[website]`. The `__main__` block passes the `config.toml` beside `app/`, and the tests pass `REPO_ROOT / "config.toml"`, because the autouse `temp_config` has no `[aws]` or `[website]`.
     - It calls `require_cloudshell(environ)` before it builds any AWS client, builds the client with `make_aws(aws_setting(config, "region"))`, reads `WebsiteTableName` with `aws.stack_outputs(aws_setting(config, "stack_name"))` and sets `aws.table`. With no option it makes the Account, `--new-password` replaces the password, and `--remove` removes the Account.
@@ -334,12 +334,12 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The module's `__main__` block runs `run_cloudshell_cli` with `os.environ`, `cloudshell_aws`, `SecretsRandom()`, `sys.stdout` and that `config.toml`, and never prompts.
     - _Requirements: 1.7, 1.8, 1.9, 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9_
 
-  - [ ] 5.5 Add `make_deps` and `sign_in_as` to `tests/website_helpers.py`
+  - [x] 5.5 Add `make_deps` and `sign_in_as` to `tests/website_helpers.py`
     - `make_deps(fake, **overrides)` loads the real `config.toml` by path into the `Config`, the `CloudConfig` and a `WebsiteConfig` with `scrypt_n=2, scrypt_r=1, scrypt_p=1` by default, sets `fake.table` and `fake.bucket`, and builds `Deps` with a `BakedCommit` over a tiny `code.tar` in a temporary folder, whose lock hashes equal the Machine_Image the test seeds, `static={}` until task 7, a seeded `Random`, a settable test clock as `Deps.clock`, which a test can move forward, and a test logger. Any field can be overridden by name.
     - `sign_in_as(deps, name, now)` seeds an Account with `make_account` and a Session item, and returns the Session_Cookie's value and the CSRF_Token.
     - _Requirements: 18.4_
 
-  - [ ] 5.6 Write the unit tests for Accounts and the Account_Command in `tests/test_website_accounts.py`
+  - [x] 5.6 Write the unit tests for Accounts and the Account_Command in `tests/test_website_accounts.py`
     - `hash_password` runs once with the real `[website]` settings, which shows `maxmem` is big enough, and with the tiny test settings. `password_matches` is true for the right password, false for a wrong one, and runs one scrypt for `None`, counted through a patched `hashlib.scrypt`. An Account made with other scrypt settings still checks after `[website]`'s settings change (Req 3.3).
     - The Account_Command outside CloudShell is refused before `make_aws` is called (Req 1.9). It builds its client with the region and no profile (Req 1.8).
     - Making an Account prints a password of `password_length` letters and digits once, alone on its line. The password appears nowhere in the table, in stderr or in the captured logs, and the profile item holds only the design's attributes (Req 3.2, 3.4).
@@ -347,7 +347,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - No route of the Website makes an Account: the only writer of a profile item is `app/accounts.py`, which the Account_Command alone calls (Req 3.1).
     - _Requirements: 1.8, 1.9, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 18.15_
 
-  - [ ] 5.7 Write the unit tests for signing in in `tests/test_website_signin.py`
+  - [x] 5.7 Write the unit tests for signing in in `tests/test_website_signin.py`
     - The right password answers a 303 to `/jobs` with the cookie exactly `__Host-voxelis-session=<name>.<43 characters>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=604800` and no `Domain`. The session item's key holds the SHA-256 hex of the id, never the id, with `csrf`, `uid`, `created_at` and an `expires_at` 7 days later, and the sign-in cookie is cleared (Req 4.1, 4.7, 4.8).
     - A wrong password and an unknown name give the same refusal text, run one scrypt each, count one Sign_In_Failure for the address and make no Session (Req 4.2, 4.3).
     - The fifth failure within 15 minutes starts the wait. The next attempt, even with the right password, is told how many minutes to wait and runs no scrypt. After 15 minutes the right password works (Req 4.4).
@@ -383,17 +383,17 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Every existing test in `tests/test_guard.py` passes unchanged, the aws, git and unrelated-command property tests included.
     - _Requirements: 1.11, 18.16_
 
-  - [ ] 5.11 Run the tests, commit and push
+  - [x] 5.11 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, the existing guard tests included.
     - Stage the task's files by name, `scripts/hooks/guard.py` and `tests/test_guard.py` included, and commit them with the title "Website: accounts, sessions, the sign-in limit and the guard block" and a body saying that it adds scrypt password hashes, random sessions stored only as hashes, a per-address limit on failed sign-ins, the CloudShell-only account command that prints each new password once, and a guard hook block that stops Kiro from running the CloudShell commands on a laptop.
     - Then run `git push origin feat/website`.
     - _Requirements: 18.11_
 
-- [ ] 6. The Website_Limits and Reservations
+- [x] 6. The Website_Limits and Reservations
   - Files: `app/limits.py` and `tests/test_website_limits.py` (new), `tests/test_website_imports.py` (changed).
   - _Requirements: 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 10.12, 10.13, 11.2, 11.3, 18.5, 18.8_
 
-  - [ ] 6.1 Write the Reservation's pieces in `app/limits.py`
+  - [x] 6.1 Write the Reservation's pieces in `app/limits.py`
     - `Reservation` with its `day`, `LimitFull(PublicRefusal)` with its `limit` (`"daily_jobs"`, `"daily_cost"` or `"total_cost"`), `worst_case_cents(preset, cc, wc)`, `utc_day(now)` and `stop_line(wc)`, as in the design's `app/limits.py` section.
     - `worst_case_cents` is `math.ceil(round(cloud.start.worst_case_cost(preset, cc, wc.boot_margin_minutes) * 100, 6))`: the dearest type on the Preset's whole Fallback_List, run for the Preset's Time_Cap plus `[website].boot_margin_minutes`, rounded up to the next cent after the inner `round(…, 6)` clears float noise. It doesn't go through `dollars_to_cents`, which is for the two dollar limits only.
     - Add the 6 of `round(…, 6)` to the allow list in `tests/test_website_imports.py`, citing the design's decision 11.
@@ -402,7 +402,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `stop_line(wc)` gives "The website stopped starting jobs at 08:00 UTC on 4 February 2027.", written from `stop_starting_at` with an English month name and no `%-d`, which Windows lacks. A Stop_Time refusal is a `PublicRefusal` with status 409, kind `stopped` and that message. Task 7's start page and task 8's `begin`, `precheck`, `start` and second clock read reuse it.
     - _Requirements: 10.2, 11.2, 11.3_
 
-  - [ ] 6.2 Write `check_room`, `take` and `give_back` in `app/limits.py`
+  - [x] 6.2 Write `check_room`, `take` and `give_back` in `app/limits.py`
     - `check_room(aws, cents, now, wc)` refuses at or after the Stop_Time first, then refuses when one Reservation alone can't fit a limit, then reads `limits` / `day#<utc_day(now)>` and `limits` / `total` in one `table_get_many`, and refuses when the Reservation wouldn't fit, naming the limit: the Daily_Job_Limit first, then the Daily_Cost_Limit, then the Total_Cost_Limit.
     - `take(aws, draft, steps, clock, wc)` reads `now = clock()` right before it builds its transaction, never the request's arrival time, so the Reservation's UTC_Day and the Stop_Time check come from transaction time (the design's decision 22). It stamps the draft's `day` with `utc_day(now)` and runs `check_room(aws, draft.cents, now, wc)` with that `now`.
     - Then it runs one `table_transact` with the Job_Id as its token, of the design's four items in this order: the day's counters, the total counter, the new job item (state `held`, with the Preset, the cents, the day, `started_at` from the same `now`, the Step count, the Upload's id and `launch = "pending"`, on `ITEM_ABSENT`), and the Upload's `used_by` on `And(Equals("state", "complete"), NotExists("used_by"))`. It returns the day-stamped Reservation, which every later give-back uses.
@@ -412,7 +412,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Nothing else in the Website writes a `limits` item, and no Job's real cost is ever written back.
     - _Requirements: 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 10.12_
 
-  - [ ] 6.3 Write the unit tests for the limits in `tests/test_website_limits.py`
+  - [x] 6.3 Write the unit tests for the limits in `tests/test_website_limits.py`
     - `worst_case_cents` is 515, 762 and 1841 for fast, default and quality, with the real Config read by path, and each is at least `dollars_to_cents(worst_case_cost(preset, cc))`, the laptop quote's worst case (Req 10.2).
     - With today's $52 (5200 cents) a UTC_Day, one day takes 10 fast Jobs (5150 cents), 6 default (4572) or 2 quality (3682). The 11th fast names the Daily_Job_Limit, and the 7th default and the 3rd quality name the Daily_Cost_Limit, each saying "Jobs can start again after 00:00 UTC." (Req 10.3, 11.2).
     - With $500 (50000 cents) in total, 97 fast (49955 cents), 65 default (49530) or 27 quality (49707) Reservations fit, and the next one names the Total_Cost_Limit, with no "after 00:00 UTC". The earlier Reservations are taken over several UTC_Days by moving the test clock, or seeded in `limits` / `total` (Req 10.3, 11.2).
@@ -424,7 +424,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Only `take` and `give_back` write `limits` items, which a scan of `FakeAws.calls` across these flows shows (Req 10.6).
     - _Requirements: 10.2, 10.3, 10.4, 10.5, 10.6, 10.8, 10.9, 10.12, 11.2, 18.5_
 
-  - [ ] 6.4 Write the property test for Property 1 in `tests/test_website_limits.py`, with Hypothesis
+  - [x] 6.4 Write the property test for Property 1 in `tests/test_website_limits.py`, with Hypothesis
     - **Property 1: The Website_Limits are never passed**
     - **Validates: Requirements 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 10.12, 10.13, 18.8**
     - For any interleaving of any number of Website starts, each made of its steps (the room check, taking the Reservation, a give-back after a refusal, a launch failure that keeps the Reservation, and a repeated give-back), with UTC_Day changes and the Stop_Time passing between any two steps, after every step: no UTC_Day's Limit_Counters show more than `daily_jobs` Reservations or more than `daily_cost_cents`, the total shows no more than `total_cost_cents`, no counter is below 0, no Reservation was taken at or after the Stop_Time, and each counter equals the cents and count of the Reservations taken in its UTC_Day, or in total, minus those given back.
@@ -433,7 +433,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - An `@invariant` checks the limits, the floor of 0, the Stop_Time and the equality with a model sum after every step. The model counts a take or a give-back only when the call says it applied.
     - _Requirements: 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 10.12, 10.13, 18.8_
 
-  - [ ] 6.5 Run the tests, commit and push
+  - [x] 6.5 Run the tests, commit and push
     - Run `uv run pytest` until every test passes.
     - Stage the task's files by name, `tests/test_website_imports.py` included, and commit them with the title "Website: daily and total limits with atomic reservations" and a body saying that each start reserves its worst-case cost, boot margin included, in one conditional transaction at the time of a clock read just before it, so two starts at once can't pass the daily or total limit, and a give-back happens at most once.
     - Then run `git push origin feat/website`.
@@ -443,7 +443,7 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `app/lambda_function.py`, `app/pages.py`, `app/statuses.py`, `app/showcase.py`, `app/showcase_command.py`, `app/static/style.css`, `app/static/app.js`, `app/static/favicon.ico`, `tests/test_website_handler.py`, `tests/test_website_pages.py`, `tests/test_website_statuses.py` and `tests/test_website_showcase.py` (new), `app/web.py`, `tests/website_helpers.py` and `tests/test_website_imports.py` (changed).
   - _Requirements: 1.7, 1.9, 1.10, 3.1, 4.10, 4.12, 4.13, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.1, 11.3, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.11, 12.12, 12.13, 12.14, 12.15, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8, 13.9, 16.7, 18.6, 18.9, 18.15_
 
-  - [ ] 7.1 Write `app/statuses.py`
+  - [x] 7.1 Write `app/statuses.py`
     - `StepTime`, `JobView`, `website_status(out_keys, summary, steps)`, `ended_check_due(started_at, now, minutes)`, `result_file(out_keys, clean)`, `job_view(aws, job_id, job_item, config, cc, wc, now, *, timings)`, `may_see(aws, account, job_id)` and `list_jobs(aws, account, config, cc, wc, now)`, as in the design's `app/statuses.py` section, and a table of the design's Website_Status words.
     - `website_status` is pure and never gives `ended`. With a Job_Summary, the status is the summary's `status`, and Failed carries its `readable_error`. With none, it's `starting` while `out_keys` is empty, and otherwise `running`, with n the number of `out/reports/*.json` keys plus 1, at most N. A Job_Summary that isn't valid JSON counts as none, because the machine may be halfway through uploading it.
     - `ended_check_due` is pure: true once `started_at` plus `minutes` is at or before `now`, and false with no `started_at`.
@@ -455,7 +455,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `app/statuses.py` imports `app/showcase.py`, so `app/showcase.py` imports `app.statuses` only inside `add_entry`, to avoid an import cycle.
     - _Requirements: 12.1, 12.2, 12.3, 12.5, 12.6, 12.7, 12.8, 12.14, 12.15_
 
-  - [ ] 7.2 Write `app/showcase.py` and `app/showcase_command.py`
+  - [x] 7.2 Write `app/showcase.py` and `app/showcase_command.py`
     - `FOOTAGE_LICENCES`, `NEEDS_CREDIT`, `ShowcaseEntry`, `entry_key(job_id)`, `check_entry(job_id, title, licence, credit, wc, now)`, `add_entry(aws, entry, config)`, `list_entries(aws)`, `remove_entry(aws, job_id)` and `licence_line(entry)`, as in the design's `app/showcase.py` section.
     - `check_entry` runs `check_job_id` and refuses an empty title, a title over `max_title_chars` or holding a control character, an unknown licence, a credit over `max_credit_chars`, and a missing credit for CC BY or CC BY-SA, saying the licence needs the author's credit.
     - `add_entry` reads the Job's `out/job.json` and lists its `out/`, refuses unless the status is `done` or `done_with_warnings` and a Result_File is there, takes any Job in the Job_Bucket, and puts the entry on `ITEM_ABSENT`, refusing an existing one with a pointer to `remove`. It imports `app.statuses` inside `add_entry` only, because `app/statuses.py`, written beside it in 7.1, imports this module.
@@ -463,7 +463,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `showcase_main(argv, *, environ, make_aws, out, config_path, now)` for `add <job_id> --title T --licence L [--credit C]`, `list` and `remove <job_id>`. It takes the same keyword-only arguments as `account_main` except `random`, plus `now` for a new entry's `added_at`. It calls `require_cloudshell(environ)` first, reads `BucketName` and `WebsiteTableName` from the Stack's outputs, and `list` prints each entry's Job_Id, title, licence and credit. It never prompts.
     - _Requirements: 1.7, 1.9, 13.1, 13.2, 13.3, 13.4, 13.5, 13.8, 13.9_
 
-  - [ ] 7.3 Write `app/pages.py`
+  - [x] 7.3 Write `app/pages.py`
     - `esc(value)` is `html.escape(str(value), quote=True)`, and every value enters a page through it, in text and in attributes alike.
     - `layout(title, body, *, csrf, signed_in)`: the viewport meta tag and the stylesheet, and on a signed-in page the CSRF_Token in `<meta name="csrf-token">`, `app.js` loaded with `defer`, links to Jobs, Start and Showcase, and a sign-out form posting its CSRF_Token in a hidden field `csrf`.
     - `signin_page(token, error)`, `job_list_page(rows)`, `start_page(presets, chosen, stopped, upload)`, `result_page(view)`, `showcase_page(entries)`, `not_found_page()`, which links to the job list, and `error_page()`, which says something went wrong and to try again.
@@ -473,13 +473,13 @@ Some files grow over several tasks, so each piece comes with the first task that
     - No page has an inline script, an inline style, a `style=` attribute or an `on...=` attribute.
     - _Requirements: 1.10, 6.1, 6.2, 6.3, 6.7, 6.8, 7.1, 11.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.11, 13.6, 13.7_
 
-  - [ ] 7.4 Write `app/static/`
+  - [x] 7.4 Write `app/static/`
     - `style.css`: one column with `max-width: 40rem`, no width above 360 px, and inputs and buttons at full width.
     - `favicon.ico`: a 16 by 16 icon under 1 KB, made by a short standard-library script that isn't committed, for example a 16-colour bitmap icon.
     - `app.js`, plain JavaScript with no build step and no inline handlers, holding in this task only the refresh: on a page whose `<main>` has `data-job-id`, `GET /api/jobs/<id>/status` every `data-poll-seconds` seconds, update the status text, and reload the page once the answer says `final`. A 401 opens `/signin`. Set it up from one `DOMContentLoaded` listener, so task 8 adds the start and upload parts beside it.
     - _Requirements: 6.1, 6.2, 12.4_
 
-  - [ ] 7.5 Write `handle`'s parsing, routing, Session check and size check, and `stack_for`, in `app/web.py`
+  - [x] 7.5 Write `handle`'s parsing, routing, Session check and size check, and `stack_for`, in `app/web.py`
     - `handle(event, deps, now)` parses the payload-2.0 event: `requestContext.http.method`, `rawPath`, `rawQueryString`, `cookies` as a list of `name=value`, the headers with lowercased names, and `body` with `isBase64Encoded`, which it decodes only once the size check has passed. The Sign_In_Address is `requestContext.http.sourceIp` alone, and the host is `requestContext.domainName`.
     - The route table is a list of method, compiled regular expression, kind (open, page or script), handler and name. A `<job_id>` segment is any text without `/`. An unknown path, or a known path with the wrong method, is a 404 for a Valid_Session.
     - An Open_Route runs with no Session check. Every other request, unknown paths included, runs `sessions.current` first. With no Valid_Session, a path under `/api/` gets a 401 with `{"error": "signed_out"}` and every other path a 303 to `/signin`, whatever the body's size, and nothing else happens (Req 5.2, 5.5).
@@ -487,7 +487,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `stack_for(deps)` calls `cloud.stack.resolve_stack` once, caches the outputs in `deps.stack` and sets `deps.aws.bucket`. A signed-out request never calls it.
     - _Requirements: 1.7, 5.1, 5.2, 5.3, 5.4, 5.5, 6.6_
 
-  - [ ] 7.6 Write `handle`'s CSRF check, error mapping and headers in `app/web.py`
+  - [x] 7.6 Write `handle`'s CSRF check, error mapping and headers in `app/web.py`
     - Every POST is refused with a 403 of kind `csrf`, changing nothing, when its CSRF_Token is missing or wrong (the form field `csrf` on pages, the `X-CSRF-Token` header on Script_Requests, the double-submit cookie on the sign-in form), when an `Origin` header is there and isn't `https://<host>`, or when `Sec-Fetch-Site` is there and isn't `same-origin` or `none`. Tokens compare with `hmac.compare_digest`. Only POST handlers write to the table, start an upload or start a Job.
     - A `PublicRefusal` becomes `{"error": kind, "message": message}` for a Script_Request, the sign-in page with the message and a fresh sign-in token for `POST /signin`, the 404 page for kind `not_found`, and otherwise the error page with the message, each with its status. Every message passes `account_redaction` and `esc`.
     - Any other `Exception` becomes the 500 page, or `{"error": "server"}` for a Script_Request, and one log line holding the error's type and its Account_Redacted message, with no traceback, AWS error text or ARN in the answer.
@@ -496,7 +496,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Add any further protocol constant the handler needs, such as the base64 sizes 3 and 4 for the body length, to the allow list in `tests/test_website_imports.py`, with its source.
     - _Requirements: 4.12, 4.13, 6.3, 6.4, 6.5, 6.8, 6.9_
 
-  - [ ] 7.7 Add this task's routes to the route table in `app/web.py`
+  - [x] 7.7 Add this task's routes to the route table in `app/web.py`
     - Open: `GET /signin` answers the sign-in page and sets `__Host-voxelis-signin` to a fresh token with `Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=<signin_token_minutes in seconds>`, the same token in the form. `POST /signin` is `sessions.sign_in`. `GET /static/style.css` and `GET /favicon.ico` serve `deps.static` with their content types.
     - Pages: `GET /` answers a 303 to `/jobs`; `GET /jobs` the job list from `list_jobs`; `GET /start` the start page, with the Presets and their Expected_Times from `[jobs]` and `[cloud.presets]`, and `stop_line` after the Stop_Time; `GET /showcase` the entries read live with `list_entries`; `GET /static/app.js` the Page_Script, for signed-in requests only; and `POST /signout` is `sessions.sign_out`.
     - `GET /jobs/<job_id>` passes the segment through `splatpipe.jobs.check_job_id`, then `may_see`, answering the same 404 for a refused Job_Id, a Job that doesn't exist and a Job the Account may not see, then shows `job_view(..., timings=True)`.
@@ -504,17 +504,17 @@ Some files grow over several tasks, so each piece comes with the first task that
     - No route makes an Account. After the Stop_Time every route keeps working, and only starting a Job refuses.
     - _Requirements: 3.1, 4.10, 6.7, 7.1, 11.3, 12.1, 12.2, 12.4, 12.5, 12.12, 12.13, 13.5, 13.6, 13.7, 16.7_
 
-  - [ ] 7.8 Write `app/lambda_function.py`
+  - [x] 7.8 Write `app/lambda_function.py`
     - `handler(event, context)` builds `Deps` on the container's first request and keeps it: the table name from `WEBSITE_TABLE`, the only environment variable it reads, never `APPROVED_SPEND`; `website_aws(aws_setting(config, "region"))` with `table` set; the `Config`, the `CloudConfig` and the `WebsiteConfig` from the bundle's `config.toml`; `read_baked` of the bundle's root; the files of `app/static/` read into memory; `SecretsRandom()`; `clock` set to `lambda: datetime.now(timezone.utc)`; and the logger. It returns `handle(event, deps, deps.clock())`, so the request's `now` and the later clock reads of the Reservation and the launch come from the same clock.
     - A logging filter applies `account_redaction` to every record, the handler's and boto3's alike. Each request writes one line, with the method, the route's name, the status and the time it took, and never a password, Session id, CSRF_Token, cookie, query string, body or Presigned_Link.
     - _Requirements: 1.6, 6.9_
 
-  - [ ] 7.9 Add `event(...)` to `tests/website_helpers.py` and load the static files in `make_deps`
+  - [x] 7.9 Add `event(...)` to `tests/website_helpers.py` and load the static files in `make_deps`
     - `event(method, path, *, cookies, headers, body, source_ip)` builds a payload-2.0 event with `requestContext.http`, `requestContext.domainName`, `rawPath`, `rawQueryString`, the cookie list, lowercased headers and a plain or base64 body.
     - `make_deps` now reads the real `app/static/` files into `static` by default.
     - _Requirements: 18.6_
 
-  - [ ] 7.10 Write the unit tests for the statuses and the job list in `tests/test_website_statuses.py`
+  - [x] 7.10 Write the unit tests for the statuses and the job list in `tests/test_website_statuses.py`
     - Each Website_Status from seeded `out/` files: Starting with an empty `out/`; Running (step 1 of N) with files but no Step_Report, and n capped at N with more reports than Steps; Done, Done with warnings and Failed with its Readable_Error from the Job_Summary; and a Job_Summary that isn't valid JSON counted as none. `website_status` never gives `ended` (Req 12.3).
     - Ended without a result goes through `job_view`, with the Job's machines seeded in `FakeAws` and the test clock (Req 12.14). A machine still `running` after `ended_check_minutes` keeps Starting or Running. With every machine `terminated` and still no Job_Summary, the status at exactly `ended_check_minutes` is Ended, after a second read of `out/job.json`. With no machine found it's Ended too, as for a Job whose start died before its launch. With every machine `terminated` and the Job_Summary written into the fake bucket during the machine lookup, the second read gives the summary's status.
     - One second under `ended_check_minutes`, with no machine at all, the Job keeps Starting or Running and `job_machines` isn't called. A `job_machines` seeded to raise keeps Starting or Running (Req 12.14, 12.15).
@@ -524,7 +524,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `may_see` makes one `table_get_many` and allows the Account's held job and any Showcase_Entry, and nothing else (Req 12.2).
     - _Requirements: 12.1, 12.2, 12.3, 12.5, 12.6, 12.7, 12.8, 12.14, 12.15, 18.6_
 
-  - [ ] 7.11 Write the unit tests for the Showcase in `tests/test_website_showcase.py`
+  - [x] 7.11 Write the unit tests for the Showcase in `tests/test_website_showcase.py`
     - `check_entry` refuses a bad Job_Id, an empty title, a title over `max_title_chars`, a title with a control character, an unknown licence, a credit over `max_credit_chars`, and a CC BY or CC BY-SA entry with no credit, the last saying the licence needs the author's credit (Req 13.3, 13.4).
     - `add_entry` refuses a Failed Job, a Job with no Job_Summary and a Done Job with no Result_File, takes a done Job started from a laptop with no job item, and refuses an entry that's already there with a pointer to `remove` (Req 13.1, 13.2).
     - `licence_line` gives the CC BY line, the CC BY-SA line with "This splat is shared under CC BY-SA 4.0.", the credit alone for another licence with a credit, and `None` with no credit. The Showcase page lists entries newest first with their lines, and a Showcase_Entry's Result_Page shows the same title, credit and licence (Req 13.6, 13.7).
@@ -532,7 +532,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `showcase_main` outside CloudShell is refused before `make_aws` is called. `add`, `list` and `remove` work against `FakeAws`, and `list` prints each entry's Job_Id, title, licence and credit (Req 13.8, 13.9).
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8, 13.9, 18.15_
 
-  - [ ] 7.12 Write the unit tests for the pages in `tests/test_website_pages.py`
+  - [x] 7.12 Write the unit tests for the pages in `tests/test_website_pages.py`
     - Every page has the viewport meta tag and the stylesheet, and no inline script, inline style, `style=` or `on...=` attribute (Req 6.1, 6.2).
     - A signed-in page has the CSRF meta tag, `app.js` with `defer`, the three links and the sign-out form with its token, and holds no password, Password_Hash or AWS key (Req 1.10, 4.10).
     - The start page offers the file input with its `accept` list and the three Presets with their Expected_Times, with fast checked, and after the Stop_Time shows "The website stopped starting jobs at 08:00 UTC on 4 February 2027." in place of the form (Req 7.1, 11.3).
@@ -540,7 +540,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The 404 page links to the job list, and the 500 page says something went wrong and to try again (Req 6.7, 6.8).
     - _Requirements: 1.10, 4.10, 6.1, 6.2, 6.7, 6.8, 7.1, 11.3, 12.4, 12.7, 12.8, 12.11_
 
-  - [ ] 7.13 Write the unit tests for the handler in `tests/test_website_handler.py`
+  - [x] 7.13 Write the unit tests for the handler in `tests/test_website_handler.py`
     - The headers on every kind of answer (an open route, a signed-out 303 and 401, a signed-in page, a Script_Request answer, the 404, the 500 and the 413): the Content-Security-Policy, `nosniff` and `no-referrer`, with `no-store` on every signed-in page and Script_Request answer, and the Job_Bucket's origin in `connect-src` only when signed in (Req 6.4, 6.5).
     - For an Open_Route and for a signed-in request, a body at exactly `max_body_bytes` is read and one byte more gets a 413, for plain and for base64 bodies (Req 6.6). A signed-out request outside the Open_Routes with a body far over `max_body_bytes` gets the 303, or the 401 under `/api/`, and never a 413, because the Session is checked first (Req 5.5, 6.6).
     - A signed-in Account's unknown path gets the 404 page (Req 6.7). A handler that raises a `CloudError` holding an ARN gets the 500 page, and neither the answer nor the log line holds the ARN or a traceback (Req 6.8).
@@ -550,7 +550,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `handler` reads only `WEBSITE_TABLE` from the environment and builds `Deps` once for two calls, with `website_aws` patched to give `FakeAws`, and its `Deps.clock` gives an aware UTC time (Req 1.6). The repo has no `baked/`, so the test writes `baked/commit.json` and `baked/code.tar` into a temporary bundle root with `write_baked` and patches `read_baked`, as `app.lambda_function` looks it up, to read that root, while the real `config.toml` and `app/static/` are read as they are.
     - _Requirements: 1.6, 4.10, 5.5, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 12.12, 12.13, 18.6_
 
-  - [ ] 7.14 Write the property test for Property 2 in `tests/test_website_handler.py`, with Hypothesis
+  - [x] 7.14 Write the property test for Property 2 in `tests/test_website_handler.py`, with Hypothesis
     - **Property 2: A signed-out request gets nothing**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5, 4.9, 6.6, 3.7, 3.8, 18.9**
     - For any request outside the Open_Routes, with any method, any path, any headers, any cookies and any body size, large bodies included, including malformed Session_Cookies, Session_Cookies of unknown Accounts, ended, expired or stale-`uid` Sessions and Sessions of removed Accounts, `handle` answers with a 303 to `/signin`, or with a 401 when the path is under `/api/`, whatever the body's size and never a 413, because the Session is checked before the size; it makes no Presigned_Link, no Stack lookup and no AWS call other than at most one `table_get_many` of the cookie's profile and session items; it makes no AWS call at all when the cookie isn't well-formed; and every answer carries the Content-Security-Policy, `nosniff` and `no-referrer` headers.
@@ -571,7 +571,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw every POST route and every GET route from `app.web`'s route table at test time, so task 8's routes join the draws. Draw the token missing, wrong or from another Session, a cross-site `Origin` or `Sec-Fetch-Site`, and random queries. Compare the table, the objects and the multipart uploads before and after.
     - _Requirements: 4.12, 4.13_
 
-  - [ ] 7.17 Run the tests, commit and push
+  - [x] 7.17 Run the tests, commit and push
     - Run `uv run pytest` until every test passes.
     - Stage the task's files by name, `app/static/favicon.ico` included, and commit them with the title "Website: the request handler, the pages, the job statuses and the showcase" and a body saying that it adds the standard-library handler behind the function URL, with sign-in on every page but sign-in itself, checked before the body size, CSRF checks, strict headers, escaped pages, statuses read from the job files and the job machines, and the CloudShell-only showcase command.
     - Then run `git push origin feat/website`.
@@ -581,13 +581,13 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `app/uploads.py`, `app/website_start.py`, `tests/test_website_uploads.py` and `tests/test_website_start.py` (new), `app/web.py`, `app/static/app.js` and `tests/test_website_imports.py` (changed).
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8.1, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 10.1, 10.7, 10.8, 10.10, 10.14, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 12.9, 12.10, 12.12, 12.13, 16.3, 16.4, 16.7, 18.7, 18.10_
 
-  - [ ] 8.1 Write the Upload record and its pure parts in `app/uploads.py`
+  - [x] 8.1 Write the Upload record and its pure parts in `app/uploads.py`
     - `UPLOAD_ID`, `Upload`, `clean_source_name(name, max_chars)`, `parts_needed(size, part_bytes)` and `read_upload(aws, account, upload_id)`, as in the design's `app/uploads.py` section.
     - `clean_source_name` keeps the part after the last `/` or `\`, drops every character of Unicode category `Cc`, strips spaces at both ends and cuts the result to `max_chars` characters. An empty result is refused with a 400 `bad_request`. The extension check runs on the cleaned name.
     - `read_upload` reads only `account#<the Session's Account>` / `upload#<id>`, so another Account's Upload is simply not there.
     - _Requirements: 7.6, 9.6, 9.8_
 
-  - [ ] 8.2 Write `begin`, `part_link`, `complete` and `abort` in `app/uploads.py`
+  - [x] 8.2 Write `begin`, `part_link`, `complete` and `abort` in `app/uploads.py`
     - `begin(deps, session, name, size, now)` refuses after the Stop_Time with the `stop_line` refusal, refuses a name that doesn't end in `.mp4` or `.mov` in any letter case or a stated size over `[jobs].max_video_bytes` with a Readable_Error that says what to change, draws a new 16-byte id with `deps.random.token_bytes`, starts the multipart upload at `uploads/<id>`, never at a key holding the file's name, and puts the Upload item on `ITEM_ABSENT` with its Account, stated size, cleaned name, part count, state `open` and `expires_at` `upload_record_hours` later.
     - `part_link(deps, session, upload_id, part)` makes an Upload_Link only for the Account's own `open` Upload and a part number from 1 to `parts_needed(size, upload_part_bytes)`, valid for `upload_link_seconds`. Anything else is a 404 `not_found`.
     - `complete(deps, session, upload_id, parts)` takes only the part numbers 1 to N in order, each with an `ETag` that looks like S3's quoted hex digest, completes the multipart upload, reads the object's size with `s3_size`, and sets the state to `complete`, or to `refused` with the refusal when the size is over `[jobs].max_video_bytes` or differs from the stated size.
@@ -595,14 +595,14 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Add the Upload id's 16 random bytes to the allow list in `tests/test_website_imports.py`, citing the design's 32-hex-digit Upload id. It isn't a config key, as the design's Testing Strategy says. Add any other protocol constant this task's code holds the same way, with its source.
     - _Requirements: 7.3, 7.4, 7.6, 7.9, 10.10, 11.3_
 
-  - [ ] 8.3 Write the refusal texts, `Started` and `precheck` in `app/website_start.py`
+  - [x] 8.3 Write the refusal texts, `Started` and `precheck` in `app/website_start.py`
     - The busy, can't-start, may-have-started and copy-failed texts as module constants, word for word from the design's Error Handling table: "All GPU machines are busy right now, so your job didn't start. Try again later.", "The website can't start jobs right now.", "Your job may or may not have started. Its status below will show which." and "The video couldn't be copied for the job, so it didn't start. Press Start again."
     - `Started(job_id, outcome)`, where `outcome` is `"launched"` or `"unknown"`.
     - `precheck(deps, session, preset, now)` takes no Reservation and starts nothing: the Stop_Time; `check_preset`; `limits.check_room` for the Preset's Worst_Case_Cost, `worst_case_cents(preset, cc, wc)`; then `stack_for`, `require_step_list()`, `check_image(aws, config, deps.baked.code())` and `choose_machine(...)`, refusing an empty launch plan.
     - Its mapping: `QuotaFull` is a 409 `busy` with the busy text. Every other `CloudError` or `PipelineError` from those calls (`NoGpuQuota`, no available Machine_Image, a lock-hash drift, no Smoke_Marker, an empty Step_List, no type that fits, a missing Stack value, an empty plan) is a 503 `cant_start` with the can't-start text, after logging its own message through `account_redaction`.
     - _Requirements: 7.2, 11.1, 11.2, 11.3, 11.4_
 
-  - [ ] 8.4 Write the checks and the Job_Record of `start` in `app/website_start.py`
+  - [x] 8.4 Write the checks and the Job_Record of `start` in `app/website_start.py`
     - `start(deps, session, upload_id, preset, now)`, the Website_Caller, steps 1 to 5 of the design. First the Stop_Time, `check_preset`, and the Account's own Upload, a 404 when the Account has none with that id and a 400 when it isn't `complete` or is already used.
     - Then `entries = require_step_list()`, `code = deps.baked.code()` and `gate = check_image(aws, config, code)`, so the Baked_Commit's hashes meet the Machine_Image's tags.
     - Then `check_video` with `read = lambda offset, length: aws.s3_read_range(key, offset, length)` over `uploads/<id>` and `aws.s3_size(key)`, so a gone object gives "That upload isn't there any more. Upload the video again."
@@ -610,7 +610,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Then `choice = choose_machine(aws, gate, entries, preset, config, cc)`. An empty launch plan is the can't-start refusal, before any Reservation. Refusals before the Reservation map as in `precheck`, and a Video_Check refusal is shown as it is.
     - _Requirements: 8.1, 9.4, 9.6, 9.7, 9.8, 9.9, 11.4, 11.5_
 
-  - [ ] 8.5 Write the Reservation, the launch and the second clock read of `start` in `app/website_start.py`
+  - [x] 8.5 Write the Reservation, the launch and the second clock read of `start` in `app/website_start.py`
     - Steps 6 to 8 of the design. First `reservation = limits.take(aws, draft, len(entries), deps.clock, wc)`, where `draft` carries `worst_case_cents(preset, cc, wc)`. `take` reads the clock right before its transaction, for the Stop_Time and the UTC_Day, and returns the day-stamped Reservation that every give-back below uses (Req 9.10, 10.1).
     - Then `launch_job(aws, gate, choice, job_id, code, place_inputs, config, cc, environ={aws_setting(config, "spend_variable"): "1"})`, with an environment built in code for this one call and never read from the process (Req 16.3). `launch_job` calls the module-global `check_spend` as its first statement, so the Spend_Guard runs right after the Reservation and before `place_inputs`. There's no `approve` step (Req 9.11).
     - The Website's `place_inputs` runs `s3_copy("uploads/<id>", "jobs/<Job_Id>/input/<video_file>", part_bytes=copy_part_bytes)`, uploads the Baked_Commit's `code.tar` and uploads `job.json` (Req 9.5). Then it reads `deps.clock()` again, the design's D2: at or after the Stop_Time it raises the `stopped` refusal with `stop_line(wc)`, so nothing launches; otherwise it sets a local `placed` flag (Req 10.14).
@@ -619,20 +619,20 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Never retry, relaunch or queue a start. Each start runs the fallback loop at most once.
     - _Requirements: 9.5, 9.10, 9.11, 10.1, 10.7, 10.8, 10.14, 11.1, 11.3, 11.6, 11.7, 16.3, 16.4_
 
-  - [ ] 8.6 Add the upload, precheck, start and download routes to `app/web.py`
+  - [x] 8.6 Add the upload, precheck, start and download routes to `app/web.py`
     - Script routes, all POST with JSON bodies as the design's "Script_Requests' bodies" table gives them: `/api/precheck`; `/api/uploads`, whose answer gives the Upload's id, its part count and `part_bytes`; `/api/uploads/<upload_id>/parts/<n>`; `/api/uploads/<upload_id>/complete`; `/api/uploads/<upload_id>/abort`; and `/api/jobs`, which answers `{"job": ..., "outcome": "launched"}`, or `"unknown"` with the may-have-started text. A malformed JSON body is a 400 `bad_request`.
     - `<upload_id>` must match `UPLOAD_ID` and `<n>` must be a decimal part number, or the answer is a 404.
     - The page route `GET /jobs/<job_id>/download` runs `check_job_id`, `may_see` and `job_view`, needs Done or Done with warnings and a Result_File, and answers a 303 to `s3_download_link("jobs/<Job_Id>/out/<file>", "<Job_Id>-<file>", download_link_seconds)`. Every other case is the same 404, and it never makes a link for any other key.
     - _Requirements: 7.2, 7.4, 7.6, 7.9, 12.9, 12.10, 12.12, 12.13_
 
-  - [ ] 8.7 Add the start and upload parts to `app/static/app.js`
+  - [x] 8.7 Add the start and upload parts to `app/static/app.js`
     - On the start page, pressing Start disables the button, sends `POST /api/precheck`, and shows its refusal or goes on to `POST /api/uploads` with the file's name and size. Every POST sends the CSRF_Token from `<meta name="csrf-token">` in `X-CSRF-Token`.
     - Then for each part in order: `POST .../parts/<n>` for a link, and `PUT` of `file.slice(a, b)` with no content type through `XMLHttpRequest`, setting no header, so the preflight asks for none. Keep each answer's `ETag`, and update the `<progress>` from the request's upload events.
     - A part whose `PUT` answers 403 gets a new link and is sent again, at most `data-part-retries` times. Then the Page_Script aborts the Upload with `POST .../abort` and shows a message.
     - Finish with `POST .../complete` with the parts and their `ETag`s, then `POST /api/jobs`, then open `/jobs/<Job_Id>`. A refusal is shown, and nothing is sent again by itself. A 401 opens `/signin`.
     - _Requirements: 7.2, 7.5, 7.7, 7.8, 11.7_
 
-  - [ ] 8.8 Write the unit tests for uploads in `tests/test_website_uploads.py`
+  - [x] 8.8 Write the unit tests for uploads in `tests/test_website_uploads.py`
     - A simulated browser, through `handle` and `FakeAws`: it begins an Upload, asks for each part's link, `PUT`s each part with `fake.put_part`, gets a 403 on a link whose time has passed by the fake's `now`, asks for a new link, sends the part again, and completes. The completed object is the joined parts (Req 7.5, 7.7, 7.9).
     - The Upload's key is `uploads/<32 hex digits>` and never holds the file's name, and its item holds the Account, the stated size and the cleaned name (Req 7.4).
     - `begin` refuses an `.avi` name, a stated size over `[jobs].max_video_bytes`, and any Upload after the Stop_Time (Req 7.3, 11.3).
@@ -641,7 +641,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `abort` marks an open Upload `aborted` and aborts it in the fake. No upload flow writes a `limits` item (Req 10.10).
     - _Requirements: 7.3, 7.4, 7.5, 7.6, 7.7, 7.9, 10.10, 11.3_
 
-  - [ ] 8.9 Write the unit tests for the precheck and a launched start in `tests/test_website_start.py`
+  - [x] 8.9 Write the unit tests for the precheck and a launched start in `tests/test_website_start.py`
     - The precheck refuses after the Stop_Time, for an unknown Preset, for a full Website_Limit, with the busy text for `QuotaFull`, and with the can't-start text for `NoGpuQuota`, no Smoke_Marker, a lock-hash drift and an empty plan, each logged with the account id redacted. It makes no `table_transact`, `s3_copy`, `s3_upload` or `run_instances` (Req 7.2, 11.1, 11.2, 11.4).
     - A launched start calls `FakeAws` in the Website_Caller's order: the Start_Core's image checks, the range reads of the Upload, the machine choice, the Reservation's `table_transact`, `check_spend`, `s3_copy` from `uploads/<id>` to `jobs/<Job_Id>/input/video.mov`, the upload of the Baked_Commit's `code.tar`, the upload of `job.json` and `run_instances`. The Reservation comes right before `check_spend`, which `launch_job` reaches first (Req 9.5, 9.11, 10.1, 18.7).
     - The video is copied inside S3 and never uploaded from the function. The uploaded `job.json` reads back under `splatpipe.jobs`' rules, with the whole video as the Used_Part, the cleaned `source_name` and `video_file` (Req 9.4, 9.6, 9.7).
@@ -650,14 +650,14 @@ Some files grow over several tasks, so each piece comes with the first task that
     - A start from another Account's Upload is a 404, and a second start from the same Upload is refused by the Reservation transaction (Req 9.8).
     - _Requirements: 7.2, 9.4, 9.5, 9.6, 9.7, 9.8, 9.10, 9.11, 10.1, 11.1, 11.2, 11.4, 16.3, 18.7_
 
-  - [ ] 8.10 Write the unit tests for each start refusal in `tests/test_website_start.py`
+  - [x] 8.10 Write the unit tests for each start refusal in `tests/test_website_start.py`
     - One flow per row of the design's "Why a start can fail" table, each checking its shown text against Requirement 11's words, the Reservation (none taken, given back or kept), the job item's state and `launch`, and the Limit_Counters: `QuotaFull`; `CapacityExhausted` after every attempt; `QuotaRefused` from `quota_refused`; `NoGpuQuota`; no available Machine_Image; a lock-hash drift; no Smoke_Marker; an empty Step_List; no type that fits; a missing Stack value; an empty launch plan; `LimitFull`; the Stop_Time; a Video_Check refusal; a gone Upload; a `TransactionConflict`; `SpendRefused`; the Stop_Time passing after the copy and the uploads; a failed copy; and another `CloudError` from the launch loop (Req 10.7, 10.8, 10.14, 11.1 to 11.6, 9.9).
     - The Stop_Time passing after the copy and the uploads (D2): with a test clock that `take` reads one second before `stop_starting_at` and that reaches `stop_starting_at` during the copy, the Reservation is given back to its own UTC_Day and the job item is `released`. The copy and both uploads are recorded, no `run_instances` is, and the answer is the 409 `stopped` refusal with `stop_line(wc)` (Req 10.14).
     - A kept Reservation's Job shows in the job list with the may-have-started text (Req 11.6).
     - No flow retries: each start makes at most one fallback loop of `run_instances` attempts and one Reservation `table_transact` (Req 11.7).
     - _Requirements: 9.9, 10.7, 10.8, 10.14, 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
 
-  - [ ] 8.11 Write the unit tests for downloads in `tests/test_website_start.py`
+  - [x] 8.11 Write the unit tests for downloads in `tests/test_website_start.py`
     - A Done Job with `out/clean.sog` answers a 303 to a link for `jobs/<Job_Id>/out/clean.sog` named `<Job_Id>-clean.sog`, valid for `download_link_seconds`. A Job with only `out/train.ply` gets that file. Done with warnings works the same (Req 12.9).
     - Another Account's Showcase_Entry can be downloaded. A Running Job, a Done Job with no Result_File, another Account's Job, a missing Job and a refused Job_Id all get the same 404, and no recorded call holds a key built from a refused Job_Id (Req 12.10, 12.12, 12.13).
     - No download writes a `limits` item. After the Stop_Time the job list, the Result_Pages and the downloads still work (Req 10.10, 16.7).
@@ -684,7 +684,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw `st.text()` names with separators and control characters mixed in, and skip the draws whose cleaned result is empty, which `clean_source_name` refuses.
     - _Requirements: 9.6_
 
-  - [ ] 8.15 Run the tests, commit and push
+  - [x] 8.15 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, the properties of task 7 included, which now draw this task's routes too.
     - Stage the task's files by name, `tests/test_website_imports.py` included, and commit them with the title "Website: uploads straight to the bucket, checked starts and downloads" and a body saying that the browser sends each part straight to the bucket with short links, a start checks the video and reserves its cost just before the shared launch function runs the spend guard, a second clock read stops a launch once the stop time has passed, and a download is a five-minute link to one result file.
     - Then run `git push origin feat/website`.
@@ -694,11 +694,11 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `tests/snapshots/stack_kept.json` and `tests/test_website_template.py` (new), `cloud/aws-setup.yaml` (changed).
   - _Requirements: 1.7, 2.9, 7.10, 10.11, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 14.7, 14.8, 14.9, 14.10, 14.11, 14.12, 14.13, 14.14, 14.15, 14.16, 14.17, 16.5, 16.6, 18.14_
 
-  - [ ] 9.1 Record the kept parts of today's template, before editing it
+  - [x] 9.1 Record the kept parts of today's template, before editing it
     - Read today's `cloud/aws-setup.yaml` with cfn-lint's own YAML decoder, which understands the short-form intrinsic functions, and write the `ReadPolicy`, `RunnerLaunchPolicy`, `RunnerManagePolicy`, `RunnerRole`, `AssumeRunnerPolicy`, `JobPolicy`, `JobRole` and `ProjectGroup` resources into `tests/snapshots/stack_kept.json` as sorted JSON. Task 9.6 compares the edited template against it.
     - _Requirements: 14.12, 18.14_
 
-  - [ ] 9.2 Add the parameters, the table, the log group and the role to `cloud/aws-setup.yaml`
+  - [x] 9.2 Add the parameters, the table, the log group and the role to `cloud/aws-setup.yaml`
     - The two Website_Code_Parameters, `WebsiteCodeBucket` and `WebsiteCodeKey`, both `""` by default, with the design's `AllowedPattern`s and descriptions, and the condition `HasWebsiteCode`. `WebsiteCodeKey`'s `AllowedPattern` is `^(website/[0-9a-f]{40}\.zip)?$`, so the key is only empty or `website/` plus 40 lowercase hex digits plus `.zip` (Req 14.17).
     - `WebsiteTable`: on-demand, string keys `pk` and `sk`, TTL on `expires_at`, point-in-time recovery on, `DeletionPolicy: RetainExceptOnCreate` and `UpdateReplacePolicy: Retain`, the Project_Tag, and the KMS suppression with its one-line reason.
     - `WebsiteLogGroup`: `/voxelis-kiroween/${AWS::StackName}/website`, kept 30 days, the Project_Tag, and its KMS suppression.
@@ -706,13 +706,13 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Keep the file's style: a comment above each resource and a `Description` on each role and policy.
     - _Requirements: 10.11, 14.1, 14.4, 14.5, 14.13, 14.15, 14.17_
 
-  - [ ] 9.3 Add `WebsitePolicy` to `cloud/aws-setup.yaml`
+  - [x] 9.3 Add `WebsitePolicy` to `cloud/aws-setup.yaml`
     - An `AWS::IAM::ManagedPolicy` that attaches itself with `Roles: [!Ref WebsiteRole]`, with every statement of the design's YAML word for word: the table, the log group, `cloudformation:DescribeStacks` on `!Ref AWS::StackId` alone, the G_Quota, the four EC2 describes limited to this region, `RunInstances` under the Runner's launch conditions with our own tagged Machine_Image only, `CreateTags` only when launching, `iam:PassRole` of the Job_Role to EC2 only, `s3:ListBucket` with the `s3:prefix` condition on `jobs/*` and `uploads/*`, `s3:GetObject` on `jobs/*` and `uploads/*`, and `s3:PutObject` and `s3:AbortMultipartUpload` on `uploads/*` and `jobs/????????-??????-??????/input/*`.
     - No `Delete*`, `TerminateInstances`, `StopInstances`, `CreateImage`, `DeregisterImage`, `DeleteSnapshot`, `ssm:StartSession`, `iam:Get*`, `iam:List*`, `dynamodb:DeleteItem`, `dynamodb:Scan` or `dynamodb:ConditionCheckItem`. `cloudformation:DescribeStacks` on its own Stack is the one CloudFormation right, which `resolve_stack` uses (Req 14.9).
     - Keep its suppression of the EC2 describe wildcard with its one-line reason.
     - _Requirements: 14.8, 14.9, 14.10, 14.11, 14.12_
 
-  - [ ] 9.4 Add the function, its URL, the bucket's new rules, the outputs and the header numbers to `cloud/aws-setup.yaml`
+  - [x] 9.4 Add the function, its URL, the bucket's new rules, the outputs and the header numbers to `cloud/aws-setup.yaml`
     - `WebsiteFunction`: Python 3.11, x86_64, 1024 MB, 300 seconds, `WebsiteRole`, the `Handler` and `Code` from `HasWebsiteCode` with the design's inline Placeholder_Function, `WEBSITE_TABLE` as its only environment variable, `LoggingConfig` pointing at `WebsiteLogGroup`, the Project_Tag, and the suppressions for a VPC, a dead-letter queue and reserved concurrency with their reasons.
     - `WebsiteFunctionUrl` with `AuthType: NONE` and `InvokeMode: BUFFERED`, `WebsiteUrlPermission` for `lambda:InvokeFunctionUrl` with `FunctionUrlAuthType: NONE`, and `WebsiteInvokePermission` for `lambda:InvokeFunction` with `InvokedViaFunctionUrl: true`, each permission with its public-access suppression and reason.
     - On `JobBucket`, the CORS rule `website-part-uploads` allowing only `PUT` from `https://` plus the host part of `WebsiteFunctionUrl.FunctionUrl`, exposing only `ETag` and listing no `AllowedHeaders`, and after the two existing lifecycle rules, `delete-uploads-after-1-day` on the `uploads/` prefix, which expires objects and aborts unfinished uploads after 1 day.
@@ -727,7 +727,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - If the tool isn't available, or a rule fails that isn't on that list and can't be fixed, stop and ask the user before suppressing anything.
     - _Requirements: 14.15, 14.16_
 
-  - [ ] 9.6 Write the unit tests for the template in `tests/test_website_template.py`
+  - [x] 9.6 Write the unit tests for the template in `tests/test_website_template.py`
     - Read the template with cfn-lint's YAML decoder. The new resource types are exactly the table, the log group, the role, the managed policy, the function, the URL and two permissions, and no API Gateway, CloudFront, App Runner, load balancer or EC2 web server (Req 14.1).
     - The URL's auth type is `NONE`, and both permissions are there with their conditions. The outputs include `WebsiteUrl` and `WebsiteTableName` (Req 14.2, 14.3).
     - The table is on demand with TTL on `expires_at`, point-in-time recovery and the two keep policies. The log group keeps 30 days. The lifecycle rule's prefix is `uploads/`, with 1-day expiry and abort, and the two existing rules are unchanged (Req 7.10, 14.4, 14.5, 14.6).
@@ -746,7 +746,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw Job_Ids from the Job_Id pattern, relative paths, image ids and commit ids, and match them with an IAM-style matcher written in the test against the write resources read from the template, after their `${JobBucket.Arn}/` part.
     - _Requirements: 14.10_
 
-  - [ ] 9.8 Run the tests, commit and push
+  - [x] 9.8 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, `tests/test_aws_setup.py` included.
     - Stage the task's files by name and commit them with the title "Website: the website parts of the stack template" and a body saying that it adds the function with its URL, the kept and backed-up table, the log group, a least-rights role that can only launch tagged job machines and write job inputs and uploads, one CORS rule and the uploads lifecycle rule, with a bundle key that can only name a website bundle, no cycle and the existing roles unchanged.
     - Then run `git push origin feat/website`.
@@ -756,19 +756,19 @@ Some files grow over several tasks, so each piece comes with the first task that
   - Files: `app/lockfile.py`, `app/deploy.py`, `tests/test_website_deploy.py` and `tests/test_website_docs.py` (new), `docs/aws-setup.md`, `.kiro/steering/rules.md`, `.kiro/steering/cloud.md`, `.kiro/steering/tech.md`, `.kiro/steering/structure.md`, `.kiro/steering/product.md`, `.kiro/skills/aws-jobs/SKILL.md`, `docs/third-party-licences.md`, `README.md`, `docs/pipeline.md` and `tests/test_website_imports.py` (changed).
   - _Requirements: 1.7, 1.8, 1.9, 3.1, 10.11, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.10, 15.11, 15.12, 15.13, 15.14, 16.1, 16.2, 17.1, 17.2, 17.3, 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.10, 17.11, 17.12, 17.13, 17.14, 17.15, 17.16, 17.17, 18.15_
 
-  - [ ] 10.1 Write `app/lockfile.py`
+  - [x] 10.1 Write `app/lockfile.py`
     - `export_requirements(lock_text)` and `main(argv=None)` for `python3.11 -m app.lockfile app/uv.lock`, with the standard library only, so it runs in CloudShell before boto3 is installed.
     - It reads the lock with `tomllib` and writes one `name==version` line per registry package, with a `--hash=sha256:...` for every wheel. It skips the App_Project, whose source is `virtual` or `editable`. It refuses a lock that holds a package twice, and a package with no wheel, because the install takes wheels only. `main` prints the requirements to stdout.
     - _Requirements: 15.3_
 
-  - [ ] 10.2 Write the guards, `spend_strings` and `pip_installer` in `app/deploy.py`
+  - [x] 10.2 Write the guards, `spend_strings` and `pip_installer` in `app/deploy.py`
     - `Installer`, `Bundle` and `deploy_main(argv, *, environ, make_aws, repo_root, install, out, now, folder=None)`, with the design's signatures. `folder` is the real folder that stands for `[website].deploy_folder`, `None` meaning that folder itself, and `deploy_main` passes it to `build_bundle`, so the tests build under `tmp_path` rather than `/tmp`, which a Windows laptop lacks.
     - Steps 1 to 3 of the design, in order: `require_cloudshell(environ)` before any AWS client; load `repo_root / "config.toml"` and its `[website]`, and refuse unless `repo_root` resolves inside the deploy folder; and refuse uncommitted changes under `app/`, `splatpipe/`, `cloud/` or `config.toml` with `cloud.repo.uncommitted`, naming the paths, before building anything.
     - `spend_strings(wc)` gives Requirement 15.7's three fields for `check_spend`, each written from `[website]`, with whole dollars printed without cents: "website GPU jobs (up to 10 and $52 a UTC day)", "every day until 2027-02-04 08:00 UTC" and "at most $500 in total".
     - `pip_installer(python)` runs `python -m pip install --target <target> --no-deps --require-hashes --only-binary=:all: --no-compile --no-cache-dir --disable-pip-version-check -r <requirements>`, with `XDG_CACHE_HOME` and `PIP_CACHE_DIR` pointed under the deploy folder, so no cache goes in the home folder. `--no-compile` keeps pip from writing `.pyc` files, so the bundle's bytes don't change from build to build. Nothing runs a `uv sync` of the root project.
     - _Requirements: 1.9, 15.1, 15.2, 15.3, 15.4, 15.7, 15.11_
 
-  - [ ] 10.3 Write `build_bundle` in `app/deploy.py`
+  - [x] 10.3 Write `build_bundle` in `app/deploy.py`
     - `build_bundle(repo_root, wc, install, folder)` works in a fresh `<folder>/build/`, with the `folder` that `deploy_main` passes: `head_commit`, `archive_head` to `baked/code.tar` and `lock_hashes`, all from `HEAD`.
     - From that archive, extract `app/` without `app/uv.lock` and `app/pyproject.toml`, the top-level `cloud/*.py`, the top-level `splatpipe/*.py` and `config.toml` into the build folder, and read `cloud/aws-setup.yaml` from it as the template body, so every file comes from the commit and none from the working tree.
     - Write `baked/commit.json` with `app.baked.write_baked`. Turn the archive's `app/uv.lock` into `<folder>/requirements.txt` with `export_requirements`, and `install` it into the build folder, which `pip_installer` does with `--no-compile`.
@@ -777,7 +777,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Add the zip's fixed date parts and mode to the allow list in `tests/test_website_imports.py`, citing the zip format's earliest date.
     - _Requirements: 15.2, 15.3, 15.5, 15.6_
 
-  - [ ] 10.4 Write the spend check, the change set and its table guard in `deploy_main`, in `app/deploy.py`
+  - [x] 10.4 Write the spend check, the change set and its table guard in `deploy_main`, in `app/deploy.py`
     - Steps 5 and 6 of the design, after `build_bundle`: `check_spend(machine=..., expected_time=..., rough_cost=..., environ=environ)` with `spend_strings(wc)`, before any AWS client, upload or change set; then `aws = make_aws(aws_setting(config, "region"))`, the Stack's outputs with `aws.stack_outputs(stack_name)` and `aws.bucket` from `BucketName`, refusing a Stack with no `BucketName` output. It never sets `aws.table` and makes no table call.
     - Still before the upload, build the request with `change_set_request(stack_name, change_set_name, bundle, bucket, key, project_tag)`, passing the `BucketName` output as `bucket` and never another value, and `website/<commit>.zip` as `key`, so its refusals come before anything is uploaded. It refuses a template body over 51,200 bytes, the most `--template-body` takes, held as a named constant with its AWS source (Req 15.13). It refuses an empty `bucket`, and a `key` other than `website/<bundle.commit>.zip` with a 40-character lowercase hex commit id (Req 15.12).
     - The request is the design's dict exactly: `ChangeSetType` `UPDATE`, the template inline as `TemplateBody` and never a `TemplateURL`, `CAPABILITY_IAM`, `DefaultVpcId` with `UsePreviousValue`, the two code parameters, the Project_Tag from `[aws].project_tag` and the description. The change set's name is `website-<commit[:12]>-<now:%Y%m%d%H%M%S>`.
@@ -787,7 +787,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - The module's `__main__` block runs `run_cloudshell_cli` with `os.environ`, `cloudshell_aws`, the current folder as `repo_root`, `pip_installer(sys.executable)`, `sys.stdout` and the time now. It never prompts.
     - _Requirements: 1.7, 1.8, 10.11, 15.7, 15.8, 15.9, 15.10, 15.12, 15.13, 15.14, 16.1, 16.2_
 
-  - [ ] 10.5 Write the website parts of `docs/aws-setup.md`
+  - [x] 10.5 Write the website parts of `docs/aws-setup.md`
     - A new section, "The website", as the design's "What task 10 writes in the docs" says. Its CloudShell_Steps put a clone, Python 3.11 and boto3 under `/tmp`, and run again in each CloudShell session, because CloudShell keeps only the 1 GB home folder. Before any CloudShell_Command, they check that `echo $AWS_EXECUTION_ENV` prints `CloudShell`.
     - The section also covers deploying with `APPROVED_SPEND=1 python3.11 -m app.deploy` and reviewing and executing its change set; making the judges' one shared Account with the Account_Command; adding and removing Showcase_Entries; the Website_Limits, the Stop_Time and the one yes; what the Website costs; that the Project_Group's Read_Policy, and so the Read_Profile that Kiro uses, can read `uploads/` and the Website_Jobs' inputs; clearing the Website_Jobs' `jobs/<Job_Id>/` and `work/<Job_Id>/` after judging; and taking the Website down after the Stop_Time.
     - The change-set review covers every stack update after the first website deploy, as the Deploy_Command does. It looks for a change that removes, adds or replaces `WebsiteTable`, or that removes or replaces `WebsiteFunction` or `WebsiteFunctionUrl`. A replacement of `True` or `Conditional` counts as a replace, as the review already reads `JobBucket`'s, and on any such change the guide says to delete the change set rather than execute it. This follows Requirement 17.2, where the design's docs bullet names only a replacement.
@@ -796,7 +796,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - "Removing the setup" says the function, its URL, its permissions, the Website_Role, its policy and the log group are deleted with the Stack. Deleting the Stack keeps the table, as it keeps the Job_Bucket, with its Accounts, Limit_Counters and Showcase_Entries, and the bundles under `website/` stay in the kept bucket (Req 17.3).
     - _Requirements: 3.1, 17.1, 17.2, 17.3, 17.16_
 
-  - [ ] 10.6 Update the steering and the AWS_Jobs_Skill
+  - [x] 10.6 Update the steering and the AWS_Jobs_Skill
     - `.kiro/steering/rules.md`: the exception for Jobs started through the app gets its numbers, 10 Jobs and $52 a UTC_Day and $500 in total until the Stop_Time, set in `[website]`. It says the Account_Owner's `APPROVED_SPEND=1` on the Deploy_Command is the one yes for them, that they count against the Website_Limits whoever starts them, the team included, while a Job started by hand with `cloud.start` still needs its own yes, that a limit change needs a redeploy and a new yes, and that the Website never holds the Spend_Variable. It says the CloudShell_Commands are the Account_Owner's alone, run in CloudShell with the Admin_Login, and that Kiro never runs them.
     - `.kiro/steering/cloud.md` gains a line that the Website takes its Reservation, a free write to the Website_Table, just before the Spend_Guard, which still comes before any upload, copy or launch.
     - `.kiro/steering/tech.md` describes the Website: one Lambda function on Python 3.11 with a function URL, one on-demand DynamoDB table, the standard library for the web parts, AWS only through `cloud/`, the App_Project with only boto3, and the Start_Core shared with `cloud.start`.
@@ -806,13 +806,13 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `.kiro/steering/rules.md` and `.kiro/skills/aws-jobs/SKILL.md` each gain the sentence on the judges' and users' videos that the design's "What task 10 writes in the docs" gives, copied word for word into both, so the two files hold the same line, which says that Kiro never opens or downloads anything under `uploads/` or any job's `input/` and never needs them (Req 17.17).
     - _Requirements: 17.4, 17.5, 17.6, 17.7, 17.8, 17.9, 17.15, 17.17_
 
-  - [ ] 10.7 Update the Licence_List, the README and the Pipeline_Doc
+  - [x] 10.7 Update the Licence_List, the README and the Pipeline_Doc
     - `docs/third-party-licences.md` updates "How we use it" for boto3, botocore, s3transfer, jmespath, python-dateutil, six and urllib3, which the Website_Bundle now ships to the Website_Function. It adds two new rows: Python (PSF-2.0), whose `python3.11` in CloudShell runs the CloudShell_Commands and whose Lambda runtime runs the Website, and pip (MIT), which installs the Website_Bundle's packages in CloudShell. The list has no Python or pip row today. uv isn't used in CloudShell, so its row stays as it is.
     - `README.md` says the Website exists, that the Setup_Guide documents its deploy, and that the CloudShell_Commands are the Account_Owner's.
     - `docs/pipeline.md`'s "Running a job in the cloud" says the Website starts Jobs through the same Start_Core as `cloud.start`, reads a Job's Website_Status from its Job_Summary and Step_Reports and its Result_File by the names in `[clean]`, and that the Viewer_Spec decides the splat-transform version the viewer is pinned to.
     - _Requirements: 17.10, 17.11, 17.12, 17.13_
 
-  - [ ] 10.8 Write the unit tests for the Deploy_Command in `tests/test_website_deploy.py`
+  - [x] 10.8 Write the unit tests for the Deploy_Command in `tests/test_website_deploy.py`
     - Build a temporary git repo inside a folder under `tmp_path`, which the test passes as `folder`, holding small copies of `app/`, `cloud/`, `splatpipe/`, `config.toml`, `uv.lock`, `package-lock.json` and `app/uv.lock`, committed with `git -c user.name=test -c user.email=test@example.invalid commit`, so no git config changes. Every git call passes `timeout=60` and `PYTHONIOENCODING=utf-8` and reads UTF-8. Pass a fake installer that writes a tiny fake package, `FakeAws` and an environment dict.
     - Outside CloudShell the command is refused before `make_aws` is called. A `repo_root` outside the deploy folder is refused. An uncommitted change under `app/` is refused, naming the path, before the build folder exists (Req 1.9, 15.1, 15.4).
     - The zip holds exactly `config.toml` at its root, `app/` without `pyproject.toml` and `uv.lock`, the top-level `cloud/*.py` and `splatpipe/*.py`, `baked/commit.json` with `HEAD`'s commit and lock hashes, `baked/code.tar`, and the fake package, with no test, doc or Step package. Building twice from one commit gives the same bytes (Req 15.5, 15.6).
@@ -824,7 +824,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - `pip_installer`, with `subprocess.run` patched, builds the design's command line, `--no-compile` included, with both caches under the deploy folder (Req 15.3).
     - _Requirements: 1.9, 10.11, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.10, 15.11, 15.12, 15.13, 15.14, 16.1, 18.15_
 
-  - [ ] 10.9 Write the unit tests for the docs in `tests/test_website_docs.py`
+  - [x] 10.9 Write the unit tests for the docs in `tests/test_website_docs.py`
     - The way `tests/test_cloud_docs.py` checks the cloud-jobs spec's lines, check the lines each file gains. In `docs/aws-setup.md`: the website section, with the `echo $AWS_EXECUTION_ENV` check before any CloudShell_Command and the note that the Read_Policy, and so the Read_Profile, can read `uploads/` and the Website_Jobs' inputs; the change-set review's remove, add and replace of `WebsiteTable` and remove and replace of `WebsiteFunction` and `WebsiteFunctionUrl`; the two "Updating the stack" commands; and "Removing the setup", which says deleting the Stack keeps the table (Req 17.1, 17.2, 17.3).
     - No command in `docs/aws-setup.md` types a bucket name: `WebsiteCodeBucket` appears only with `UsePreviousValue=true`, and every `s3://` path names its bucket through a shell variable (Req 17.16).
     - In the steering and the skill: the numbers, $52 a UTC_Day among them, the one yes, the rule for Jobs the team starts and the CloudShell line in `.kiro/steering/rules.md` and `.kiro/skills/aws-jobs/SKILL.md`, and the design's sentence on the judges' and users' videos, word for word in both files (Req 17.17); the Reservation line in `.kiro/steering/cloud.md` (Req 17.15); and the Website's lines in `tech.md`, `structure.md` and `product.md`, with "comes later" gone from `product.md`. Then the updated Licence_List rows with the new Python and pip rows, and the README and `docs/pipeline.md` lines.
@@ -839,7 +839,7 @@ Some files grow over several tasks, so each piece comes with the first task that
     - Draw random small trees of names and bytes, written under a temporary folder, and random lock files built as TOML text.
     - _Requirements: 15.3, 15.6_
 
-  - [ ] 10.11 Run the tests, commit and push
+  - [x] 10.11 Run the tests, commit and push
     - Run `uv run pytest` until every test passes, `tests/test_cloud_docs.py` included. Deploy nothing and run no CloudShell_Command.
     - Stage the task's files by name, `.kiro/steering/cloud.md` included, and commit them with the title "Website: the deploy command, the bundle and the docs" and a body saying that the account owner builds the website from a clean commit under /tmp in CloudShell, gives the one yes for the website limits through the spend guard, and reviews the change set it makes, which the command deletes when it would lose the table or the address, and that the docs, the steering and the skill now say so.
     - Then run `git push origin feat/website`.
