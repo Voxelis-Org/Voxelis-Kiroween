@@ -83,6 +83,23 @@ def test_a_job_without_a_splat_says_so_and_has_an_empty_viewer_slot() -> None:
             '<h2 id="viewer-label">3D viewer</h2></section>') in html
 
 
+def test_the_copy_button_appears_only_with_a_new_share_link() -> None:
+    new_link = "https://example.test/shared/new"
+    for share in (None, pages.ShareState(on=False), pages.ShareState(on=True),
+                  pages.ShareState(on=True, new_link=new_link)):
+        html = pages.result_page(view(), csrf="c", poll_seconds=20, viewer=None, download=True,
+                                 share=share)
+        if share is None or share.new_link is None:
+            assert 'id="copy-share-link"' not in html
+        else:
+            assert ('<label for="share-link">Room tour link</label><div class="share-link-row">'
+                    f'<input id="share-link" readonly value="{new_link}">'
+                    '<button id="copy-share-link" type="button">Copy link</button></div>') in html
+            assert '<p id="share-copy-status" role="status"></p>' in html
+            assert '<script src="/static/app.js" defer></script>' in html
+            assert "<script>" not in html and "onclick=" not in html
+
+
 def test_the_static_files_are_small_and_the_favicon_is_an_icon() -> None:
     icon = (REPO_ROOT / "app" / "static" / "favicon.ico").read_bytes()
     assert icon[:4] == b"\x00\x00\x01\x00" and len(icon) < 1024

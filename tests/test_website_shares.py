@@ -57,6 +57,8 @@ def test_the_owner_makes_a_link_that_shows_the_result_and_viewer_without_signing
     shared = call(deps, "GET", f"/shared/{token}")
     html = body(shared)
     assert shared["statusCode"] == 200 and JOB_ID in html
+    assert "<title>Room tour · Voxelis</title>" in html
+    assert '<h1>Room tour</h1>' in html
     assert 'data-splat-url="https://voxelis-kiroween-jobs-fake.s3.us-east-1.amazonaws.com/' in html
     assert f'<script type="module" src="/shared/{token}/viewer/embed.js"></script>' in html
     # Read-only: no sign-out, no CSRF token, no Page_Script, no download, no share controls.

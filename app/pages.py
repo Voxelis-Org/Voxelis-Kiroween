@@ -143,6 +143,8 @@ def result_page(view: JobView, *, csrf: str | None, poll_seconds: int, viewer: V
         parts.append(f'<p class="error">{esc(view.readable_error)}</p>')
     for step, error in view.warnings:
         parts.append(f'<p class="warning">The {esc(step)} step failed: {esc(error)}</p>')
+    if view.capture_warning:
+        parts.append(f'<p class="warning">{esc(view.capture_warning)}</p>')
     if view.step_times:
         rows = "".join(f"<li>{esc(t.step)}: {esc(t.outcome)}, {esc(duration(t.seconds))}</li>"
                        for t in view.step_times)
@@ -152,13 +154,16 @@ def result_page(view: JobView, *, csrf: str | None, poll_seconds: int, viewer: V
     if download and view.result_file:
         parts.append(f'<p><a class="button" href="/jobs/{esc(view.job_id)}/download">Download '
                      f"{esc(view.result_file)}</a></p>")
-    parts.append(_viewer_slot(viewer))
+    if shared:
+        parts.insert(0, _viewer_slot(viewer))
+    else:
+        parts.append(_viewer_slot(viewer))
     if share is not None:
         parts.append(_share_controls(view.job_id, share, csrf or ""))
     data: dict[str, object] = {}
     if view.status not in FINAL and not shared:
         data = {"job-id": view.job_id, "poll-seconds": poll_seconds}
-    heading = title or (f"Shared splat {view.job_id}" if shared else f"Job {view.job_id}")
+    heading = "Room tour" if shared else title or f"Job {view.job_id}"
     return layout(heading, "\n".join(parts), csrf=csrf, signed_in=not shared, data=data,
                   viewer_base=viewer.base if viewer else None)
 
@@ -176,9 +181,12 @@ def _share_controls(job_id: str, share: ShareState, csrf: str) -> str:
     hidden = f'<input type="hidden" name="csrf" value="{esc(csrf)}">'
     parts = ['<section id="share"><h2>Share</h2>']
     if share.new_link:
-        parts.append('<p>Anyone with this link sees this job\'s result and 3D viewer, without signing '
-                     'in. Copy it now: it\'s shown only once. Making a new link turns this one off.</p>'
-                     f'<input id="share-link" readonly value="{esc(share.new_link)}">')
+        parts.append('<p>Anyone with this link can open the room tour without signing in. '
+                     'Copy it now: it\'s shown only once. Making a new link turns this one off.</p>'
+                     '<label for="share-link">Room tour link</label><div class="share-link-row">'
+                     f'<input id="share-link" readonly value="{esc(share.new_link)}">'
+                     '<button id="copy-share-link" type="button">Copy link</button></div>'
+                     '<p id="share-copy-status" role="status"></p>')
     elif share.on:
         parts.append("<p>A share link is on. Anyone with it sees this job's result and 3D viewer.</p>")
     else:

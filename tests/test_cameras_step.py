@@ -128,6 +128,7 @@ The tests check:
 import errno
 import hashlib
 import json
+import math
 import shutil
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -210,6 +211,8 @@ FISHEYE_WARNING = ("The camera model is RADIAL_FISHEYE, so the focal length cali
                    "The fisheye camera starts from fisheye_fov_degrees = "
                    f"{REAL_CAMERAS['fisheye_fov_degrees']} in [cameras].")
 NO_MODEL_WARNING = "The global mapper wrote no model, so the incremental mapper ran instead."
+LOOK_UP_WARNING = ("The video never looked up, so the ceiling and the top of the walls will be "
+                   "missing. Film a second slow loop with the phone tilted up about 30 degrees.")
 REJECTED = "rejected its focal length estimate and kept the starting one"
 
 
@@ -518,7 +521,7 @@ def test_cameras_that_dont_agree_on_up_keep_colmaps_frame_bit_for_bit_with_the_w
     assert length < up_agreement
     # The report holds the Req 9.3 warning, and levelled is 0 (Req 9.3, 13.1, 13.5).
     warning = disagreement_warning(length, up_agreement)
-    assert done.report["warnings"] == [warning]
+    assert done.report["warnings"] == [warning, LOOK_UP_WARNING]
     assert done.report["counts"]["levelled"] == 0
     # solve.json gives the reason, no Scene_Centre and no Heading_Camera, and the identity as the
     # Level_Move (Req 11.7). json.dumps compares the kinds too, so 1.0 isn't 1.
@@ -630,12 +633,12 @@ def test_solve_json_and_cameras_json_hold_every_field_of_the_designs_tables(
 # Each run's settings for set_cameras, whether the Job uses the Mask, its FakeColmap script, the
 # runs it makes in order, its fallback_ran, and the warnings that apply.
 REPORT_RUNS = [
-    pytest.param({}, False, {}, RADIAL_RUNS, 0, [], id="the global mapper"),
+    pytest.param({}, False, {}, RADIAL_RUNS, 0, [LOOK_UP_WARNING], id="the global mapper"),
     pytest.param({}, True, {"global_models": None},
                  (EXTRACT, NEAR, FAR, CALIBRATE, GLOBAL, INCREMENTAL, UNDISTORT, WARP), 1,
-                 [NO_MODEL_WARNING], id="the fallback with the mask"),
+                 [NO_MODEL_WARNING, LOOK_UP_WARNING], id="the fallback with the mask"),
     pytest.param({"camera_model": "RADIAL_FISHEYE"}, False, {},
-                 (EXTRACT, NEAR, FAR, GLOBAL, UNDISTORT), 0, [FISHEYE_WARNING],
+                 (EXTRACT, NEAR, FAR, GLOBAL, UNDISTORT), 0, [FISHEYE_WARNING, LOOK_UP_WARNING],
                  id="the fisheye camera"),
 ]
 
@@ -672,6 +675,29 @@ def test_the_report_holds_every_count_as_an_int_the_timings_of_what_ran_and_the_
     # (Req 13.6).
     assert sorted(report["settings"]) == sorted([*SHARED_KEYS, "near_overlap"])
     assert report["settings"] == load_config().step_settings("cameras", "fast")
+
+
+@pytest.mark.parametrize(("last_pitch", "threshold", "warns"), [
+    (0.0, 40.0, True),
+    (35.0, 40.0, False),
+    (0.0, 5.0, False),
+])
+def test_upward_coverage_uses_the_highest_view_and_the_configured_threshold(
+        cameras_job: Callable[..., str], fake_colmap: type[FakeColmap],
+        set_cameras: Callable[..., None], monkeypatch: pytest.MonkeyPatch,
+        last_pitch: float, threshold: float, warns: bool) -> None:
+    def edit(model: Model) -> Model:
+        half_pitch = math.radians(last_pitch) / 2
+        images = [replace(image, qvec=(1.0, 0.0, 0.0, 0.0)) for image in model.images]
+        images[-1] = replace(images[-1], qvec=(math.cos(half_pitch), -math.sin(half_pitch), 0.0, 0.0))
+        return replace(model, images=tuple(images))
+
+    set_cameras(min_highest_ray_degrees=threshold)
+    job_id = cameras_job()
+    edit_models(monkeypatch, fake_colmap(), edit)
+    done = run_done(job_id)
+    assert done.viewer()["levelled"] is True
+    assert done.report["warnings"] == ([LOOK_UP_WARNING] if warns else [])
 
 
 # out/, work/frames/ and running the step again (Req 1.7, 11.8, 11.11, 11.13)

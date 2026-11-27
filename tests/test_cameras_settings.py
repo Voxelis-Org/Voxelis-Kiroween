@@ -48,8 +48,7 @@ TIME_LIMIT_KEYS = {
 }
 TIME_LIMIT_COMMANDS = {key: command for command, key in TIME_LIMIT_KEYS.items()}
 
-# The 17 Shared_Settings of the real [cameras] that aren't Option_Keys, with the values of O1 to
-# O4 and Req 12.3, each an int or a float as the design writes it.
+# The shared settings of the real [cameras] that aren't COLMAP options.
 REAL_OWN = {
     "fisheye_fov_degrees": 120.0,  # O2
     "far_overlap": 10,  # O4
@@ -59,6 +58,7 @@ REAL_OWN = {
     "axis_point_min_eigen_share": 0.1,  # O3
     "axis_point_min_front_share": 0.5,  # A5
     "heading_min_degrees": 10.0,  # O3
+    "min_highest_ray_degrees": 40.0,
     "feature_extractor_timeout_seconds": 900,  # the Time_Limits of O1
     "sequential_matcher_timeout_seconds": 1800,
     "view_graph_calibrator_timeout_seconds": 600,
@@ -281,6 +281,7 @@ OWN_RANGES = {
     "axis_point_min_eigen_share": ABOVE_0_AT_MOST_1,
     "axis_point_min_front_share": ZERO_TO_1,
     "heading_min_degrees": ABOVE_0_BELOW_90,
+    "min_highest_ray_degrees": DEGREES_0_TO_180,
     **dict.fromkeys(TIME_LIMIT_KEYS.values(), ABOVE_0),
     "min_vcpus": WHOLE_ABOVE_0,
     "min_memory_gb": WHOLE_ABOVE_0,
@@ -379,7 +380,7 @@ def same_value(value: object, text: str) -> bool:
 
 # The real config.toml
 
-def test_the_real_cameras_section_has_exactly_the_designs_190_keys_and_near_overlap(
+def test_the_real_cameras_section_has_exactly_the_expected_keys_and_near_overlap(
         colmap_options: Mapping[str, Sequence[Any]]) -> None:
     section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["cameras"]
     tables = {key: value for key, value in section.items() if isinstance(value, dict)}
@@ -388,7 +389,7 @@ def test_the_real_cameras_section_has_exactly_the_designs_190_keys_and_near_over
     assert set(OPTION_RANGES) == set(option_names(colmap_options))
     assert sum(len(keys) for _, keys in OPTION_ROWS) == len(OPTION_RANGES) == 173
     assert set(shared) == set(OPTION_RANGES) | set(REAL_OWN)  # Req 12.1 to 12.3
-    assert len(shared) == 190
+    assert len(shared) == 191
     assert set(RANGES) == set(shared) | {"near_overlap"}  # so the checks below cover every key
     assert {name: typed(table) for name, table in tables.items()} == {
         preset: typed({"near_overlap": value}) for preset, value in NEAR_OVERLAP.items()}  # 12.4
@@ -567,6 +568,7 @@ def test_read_settings_on_the_test_config_gives_the_presets_near_overlap_and_eve
     assert cameras.level == LevelSettings(up_agreement=0.5, heading_min_degrees=10.0,
                                           axis_point_min_eigen_share=0.1,
                                           axis_point_min_front_share=0.5)
+    assert cameras.min_highest_ray_degrees == 40.0
     assert (cameras.camera_model, cameras.fisheye_fov_degrees, cameras.far_overlap,
             cameras.min_placed_frames, cameras.min_placed_share, cameras.min_vcpus,
             cameras.min_memory_gb) == ("RADIAL", 120.0, 10, 1, 0.5, 16, 16)
