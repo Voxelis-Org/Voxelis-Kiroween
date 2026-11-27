@@ -88,10 +88,23 @@ the Observed_Points on the surfaces, and BOX_PLANES holds the surfaces' true wor
 helpers, box_camera, box_pose, box_depth, box_normal, box_covered, box_surface, box_frame,
 box_candidate and box_score_source, work like the textured plane's, and box_surface says which
 surface each pixel sees, for the tests' oracles. The section above BOX_FRAMES gives its numbers.
+
+TEXTURED_POINT_IMAGES and TEXTURED_POINTS give the textured plane Observed_Points, a grid of 30
+points around the wall's middle that every frame sees, for the Scene_Scale. TEXTURED_IMAGES keep
+no keypoints, so the scoring tests see the scene as before.
+
+write_walls_job(job_folder, scene, scale, prior_size, masked, jpeg_quality) writes the textured
+plane, its plain variant or the box room into a Job as the Walls_Step's inputs (walls spec,
+Req 22.5, 22.12): work/frames/frames.json with a Pick per frame, work/cameras/ with the frames as
+JPEGs at quality 100, the Sparse_Model and, for the frames in `masked`, Mask_Files, and
+work/depth/ with a Depth_Prior per frame whose depth is `scale` × the true depth, written with
+the Prior_Writer. It gives back a WallsJob with the model, the priors, the index and the scale.
+The section above WALLS_SCENES gives the details.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import struct
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -106,7 +119,8 @@ import numpy as np
 # the tests that call it import splatpipe.depth.
 if TYPE_CHECKING:
     from splatpipe.depth.gpu_api import MoGeOutput
-    from splatpipe.train.colmap import Camera
+    from splatpipe.train.colmap import Camera, SparseModel
+    from splatpipe.train.priors import Prior, PriorIndex
     from splatpipe.walls.scoring import ScoreSource
     from splatpipe.walls.sources import Candidate
 
@@ -300,9 +314,10 @@ def _mask(width: int, height: int, *, every_pixel: bool) -> np.ndarray:
     return mask
 
 
-def _encoded(extension: str, pixels: np.ndarray) -> bytes:
-    """`pixels` encoded by cv2.imencode as a ".jpg" or ".png" file's bytes."""
-    ok, data = cv2.imencode(extension, pixels)
+def _encoded(extension: str, pixels: np.ndarray, *params: int) -> bytes:
+    """`pixels` encoded by cv2.imencode as a ".jpg" or ".png" file's bytes, with cv2's encoder
+    `params`, like (cv2.IMWRITE_JPEG_QUALITY, 100), or its defaults when none are given."""
+    ok, data = cv2.imencode(extension, pixels, list(params))
     if not ok:
         raise ValueError(f"OpenCV couldn't encode a {extension} of shape {pixels.shape}")
     return data.tobytes()
@@ -608,6 +623,43 @@ def _textured_image(index: int) -> ImageRecord:
 
 TEXTURED_IMAGES = tuple(_textured_image(index) for index in range(TEXTURED_FRAMES))
 
+# The textured plane's Observed_Points, for write_walls_job, whose Scene_Scale needs at least
+# scale_min_points (10) of them in every frame (Req 7.2). TEXTURED_IMAGES stay without keypoints,
+# so the scoring tests that use them see the scene as before. The points are a 6 x 5 grid on the
+# wall around its middle, 0.3 apart in x and 0.25 in y, row by row, ids from 1: |x| ≤ 0.75 and
+# |y| ≤ 0.5, which every camera sees, the end ones at about 8° from their optical axes, inside
+# their half-views of 18° x 14°. TEXTURED_POINT_IMAGES are TEXTURED_IMAGES with a keypoint at
+# each point a frame sees, in id order, and TEXTURED_POINTS hold the points with their tracks and
+# the texture's grey as their colour.
+TEXTURED_POINT_GRID = tuple((0.3 * (i - 2.5), 0.25 * (j - 2), TEXTURED_Z)
+                            for j in range(5) for i in range(6))
+
+
+def _textured_point_model() -> tuple[tuple[ImageRecord, ...], tuple[PointRecord, ...]]:
+    """TEXTURED_IMAGES with a keypoint at every point of TEXTURED_POINT_GRID that lands inside
+    the frame in front of the camera, and the points with their tracks. The wall hides nothing,
+    so a point in front of a camera and inside its frame is seen."""
+    grid = np.array(TEXTURED_POINT_GRID)
+    camera = TEXTURED_CAMERA
+    images = []
+    tracks: list[list[tuple[int, int]]] = [[] for _ in TEXTURED_POINT_GRID]
+    for image in TEXTURED_IMAGES:
+        z, u, v = _project_points(camera, image.quaternion, image.translation, grid)
+        inside = (z > 0) & (u >= 0) & (u < camera.width) & (v >= 0) & (v < camera.height)
+        keypoints = tuple((float(u[row]), float(v[row]), row + 1)
+                          for row in np.flatnonzero(inside).tolist())
+        for place, (_, _, point_id) in enumerate(keypoints):
+            tracks[point_id - 1].append((image.image_id, place))
+        images.append(ImageRecord(image_id=image.image_id, quaternion=image.quaternion,
+                                  translation=image.translation, camera_id=image.camera_id,
+                                  name=image.name, keypoints=keypoints))
+    greys = _texture(grid[:, 0], grid[:, 1])
+    points = tuple(PointRecord(point_id=row + 1, position=TEXTURED_POINT_GRID[row],
+                               colour=(int(round(float(greys[row]))),) * 3, error=0.5,
+                               track=tuple(tracks[row]))
+                   for row in range(len(TEXTURED_POINT_GRID)) if tracks[row])
+    return tuple(images), points
+
 
 def _as_camera(record: CameraRecord) -> Camera:
     """`record` as the Model_Reader gives a Shared_Camera."""
@@ -710,6 +762,10 @@ def _texture(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     top = TEXTURE_NODES[row, column] * (1 - fx) + TEXTURE_NODES[row, column + 1] * fx
     bottom = TEXTURE_NODES[row + 1, column] * (1 - fx) + TEXTURE_NODES[row + 1, column + 1] * fx
     return top * (1 - fy) + bottom * fy
+
+
+# Built here, once _texture, which gives the points their colour, is defined.
+TEXTURED_POINT_IMAGES, TEXTURED_POINTS = _textured_point_model()
 
 
 def textured_frame(index: int, size: tuple[int, int] | None = None, *,
@@ -1153,3 +1209,142 @@ def box_score_source(index: int, half: str, *, prior_size: tuple[int, int],
                          start_depth=box_depth(index, prior_size),
                          covered=box_covered(index, prior_size),
                          high_pass_sigma=high_pass_sigma, band_sigmas=band_sigmas)
+
+
+# The walls Job writer (walls spec, Req 22.5, 22.12, "Priors off by one scale"): one of the
+# Walls_Step's scenes written into a Job as the inputs the steps before it leave there.
+#
+#   "textured"  the textured plane, TEXTURED_POINT_IMAGES and TEXTURED_POINTS, 12 frames
+#   "plain"     the same wall and points in one flat grey, so no Prior_Frame passes
+#   "box"       the box room, BOX_IMAGES and BOX_POINTS, 10 frames
+#
+# Frame i is the image named f"{i:06d}.jpg", at Pick_Number i and Frame_Time i × the scene's
+# seconds. Its Depth_Prior is the scene's true geometry with every depth WALLS_PRIOR_SCALE times
+# the true one: inverse_depth float32(1 / (scale × the true depth)) on the Covered_Pixels and 0
+# elsewhere, the true normal facing the camera, and a mask that is the Covered mask. The
+# Observed_Points are true, so each frame's Scene_Scale comes out at about 1 / scale and every
+# Start_Depth near the true depth. WALLS_PRIOR_SCALE is inside the First_Pass's range of 0.5 to 2.
+#
+# The frames are JPEGs at WALLS_JPEG_QUALITY, 100, so the texture's 4-level steps survive the
+# encoding: a decoded pixel is at most a level or two off the rendered one. A masked frame's
+# Mask_File leaves out its first WALLS_MASK_COLUMNS columns and keeps the rest.
+WALLS_SCENES = ("textured", "plain", "box")
+WALLS_PRIOR_SCALE = 1.25
+WALLS_JPEG_QUALITY = 100
+WALLS_MASK_COLUMNS = 16
+
+
+@dataclass(frozen=True)
+class WallsJob:
+    """What write_walls_job wrote, for a test's oracles."""
+
+    folder: Path                 # the Job_Folder
+    scene: str                   # one of WALLS_SCENES
+    names: tuple[str, ...]       # every image's name, frame 0 first
+    model: SparseModel           # the Sparse_Model, as read_model reads it back
+    priors: dict[str, Prior]     # each Depth_Prior, by image name
+    index: PriorIndex            # the Depth_Index written to work/depth/depth.json
+    scale: float                 # each Depth_Prior's depth over the true depth
+    prior_size: tuple[int, int]  # (width, height)
+    masked: tuple[str, ...]      # the images that have a Mask_File
+
+
+@dataclass(frozen=True)
+class _WallsScene:
+    """One scene of WALLS_SCENES: its records, its seconds between frames and its oracles, each
+    taking a frame's index and, but for `frame`, a size (w, h)."""
+
+    camera: CameraRecord
+    images: tuple[ImageRecord, ...]
+    points: tuple[PointRecord, ...]
+    seconds: float
+    frame: Callable[[int], np.ndarray]
+    depth: Callable[[int, tuple[int, int]], np.ndarray]
+    normal: Callable[[int, tuple[int, int]], np.ndarray]
+    covered: Callable[[int, tuple[int, int]], np.ndarray]
+
+
+def _walls_scene(scene: str) -> _WallsScene:
+    """The records and oracles of `scene`, one of WALLS_SCENES."""
+    if scene == "box":
+        return _WallsScene(BOX_CAMERA, BOX_IMAGES, BOX_POINTS, BOX_SECONDS, box_frame, box_depth,
+                           box_normal, box_covered)
+    if scene not in WALLS_SCENES:
+        raise ValueError(f"write_walls_job has the scenes {WALLS_SCENES}, not {scene!r}")
+    plain = scene == "plain"
+    return _WallsScene(TEXTURED_CAMERA, TEXTURED_POINT_IMAGES, TEXTURED_POINTS, TEXTURED_SECONDS,
+                       lambda index: textured_frame(index, plain=plain), textured_depth,
+                       textured_normal, textured_covered)
+
+
+def write_walls_job(job_folder: Path, scene: str = "textured", *,
+                    scale: float = WALLS_PRIOR_SCALE, prior_size: tuple[int, int] | None = None,
+                    masked: Collection[int] = (),
+                    jpeg_quality: int = WALLS_JPEG_QUALITY) -> WallsJob:
+    """Write `scene`, one of WALLS_SCENES, into `job_folder` as the Walls_Step's inputs, and give
+    back what was written.
+
+    - work/cameras/: sparse/ with write_model, images/<name> with each frame as a JPEG at
+      `jpeg_quality`, and masks/<stem>.png for the frames whose indices are in `masked`, leaving
+      out their first WALLS_MASK_COLUMNS columns.
+    - work/depth/: a Depth_Prior per image, written with write_prior, and the Depth_Index with
+      write_index, whose camera is cameras.bin's and whose poses are images.bin's as read_model
+      reads them back. Each Depth_Prior's depth is `scale` × the true depth, at `prior_size`
+      (w, h), the camera's own size when not given: the Depth_Step's Prior_Size with [depth]'s
+      long_edge of 512, which keeps both scenes' 128 x 96.
+    - work/frames/frames.json: a Pick per image, frame i at number i and seconds i × the scene's
+      seconds between frames.
+
+    It imports splatpipe.train's colmap and priors modules when it's called, so the other tests
+    that use this module don't import them.
+    """
+    from splatpipe.train.colmap import read_model
+    from splatpipe.train.priors import Prior, PriorEntry, PriorIndex, write_index, write_prior
+
+    chosen = _walls_scene(scene)
+    camera = chosen.camera
+    size = prior_size or (camera.width, camera.height)
+    names = tuple(str(image.name) for image in chosen.images)
+    cameras = job_folder / CAMERA_SOLVE
+    write_model(cameras / SPARSE_FOLDER, camera, chosen.images, chosen.points)
+    quality = (cv2.IMWRITE_JPEG_QUALITY, jpeg_quality)
+    for index, name in enumerate(names):
+        _write(cameras / IMAGES_FOLDER / name, _encoded(".jpg", chosen.frame(index), *quality))
+    masked_names = tuple(names[index] for index in sorted(set(masked)))
+    for name in masked_names:
+        mask = np.full((camera.height, camera.width), KEPT, dtype=np.uint8)
+        mask[:, :WALLS_MASK_COLUMNS] = MASKED
+        _write(cameras / MASKS_FOLDER / (name.removesuffix(".jpg") + ".png"),
+               _encoded(".png", mask))
+    model = read_model(cameras / SPARSE_FOLDER)
+    depth_folder = job_folder / "work" / "depth"
+    depth_folder.mkdir(parents=True, exist_ok=True)
+    priors: dict[str, Prior] = {}
+    entries = []
+    for image in model.images:   # images.bin's order, the Depth_Index's
+        index = names.index(image.name)
+        covered = chosen.covered(index, size)
+        with np.errstate(invalid="ignore"):   # NaN off the Covered mask
+            inverse = np.where(covered, 1.0 / (scale * chosen.depth(index, size)), 0.0)
+        prior = Prior(inverse_depth=inverse.astype(np.float32),
+                      normal=chosen.normal(index, size).astype(np.float32), mask=covered)
+        write_prior(depth_folder / f"{image.name.removesuffix('.jpg')}.npz", prior)
+        priors[image.name] = prior
+        observed = len(chosen.images[index].keypoints)
+        entries.append(PriorEntry(name=image.name, quaternion=tuple(image.quaternion.tolist()),
+                                  translation=tuple(image.translation.tolist()), scale=1.0,
+                                  offset=0.0, fit_points=observed, kept_points=observed,
+                                  median_error=0.0, metres_per_unit=1.0))
+    shared = model.camera
+    index_record = PriorIndex(
+        camera=(shared.width, shared.height, shared.fx, shared.fy, shared.cx, shared.cy),
+        prior_width=size[0], prior_height=size[1], metres_per_unit=1.0, priors=tuple(entries))
+    write_index(depth_folder, index_record)
+    record = {"target_picks": len(names),
+              "picks": [{"number": index, "file": name, "frame_number": index,
+                         "seconds": index * chosen.seconds, "sharpness": 100.0}
+                        for index, name in enumerate(names)]}
+    _write(job_folder / "work" / "frames" / "frames.json",
+           json.dumps(record, indent=2).encode("utf-8"))
+    return WallsJob(folder=job_folder, scene=scene, names=names, model=model, priors=priors,
+                    index=index_record, scale=scale, prior_size=size, masked=masked_names)

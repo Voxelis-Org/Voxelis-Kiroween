@@ -8,7 +8,9 @@ fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffm
 which gives FakeColmap, a stand-in for the colmap program, and puts each one it builds in place
 of the Cameras_Step's tools, fake_gpu, which puts a FakeGpu in place of the Train_Step's
 GPU_Module, fake_depth_gpu, which puts a FakeDepthGpu in place of the Depth_Step's
-Depth_GPU_Module, and no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out of every test.
+Depth_GPU_Module, walls_pool, which puts splatpipe/walls/pool.py's InlinePool in place of the
+Walls_Step's Worker_Pool, dead_worker_pool, which puts in its place a pool whose worker stops at
+the frame a test names, and no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out of every test.
 
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
@@ -78,6 +80,12 @@ the test handed it, or by default plane_moge_output of tests/camera_files.py's p
 records every call in order. It can also raise from import_moge, from load_model or from the
 n-th infer. So the Depth_Step's tests run it through splatpipe.depth.run on a machine with no
 GPU, no torch and no MoGe (depth-priors spec, Req 1.8, 18.4).
+
+walls_pool and dead_worker_pool monkeypatch splatpipe.walls.WALLS_POOL, which the Walls_Step
+reads each time it runs, so a run through splatpipe.walls.run, run_step, the step's CLI or
+run_job runs every task in the test process, with no worker process (walls spec, Req 22.5, C6).
+InlinePool itself lives in splatpipe/walls/pool.py, beside the real pool, so both share one
+cutoff rule. Both fixtures import splatpipe.walls only when they're used.
 """
 
 from __future__ import annotations
@@ -1914,3 +1922,72 @@ def fake_depth_gpu(monkeypatch: pytest.MonkeyPatch) -> type[FakeDepthGpu]:
             monkeypatch.setattr("splatpipe.depth.DEPTH_GPU", lambda: self)
 
     return Installed
+
+
+@pytest.fixture
+def walls_pool(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Install InlinePool as the Walls_Step's Worker_Pool for this test, and give the list of the
+    worker counts the step asked for, one per pool it opened (walls spec, Req 22.5, C6).
+
+    Installing is monkeypatch.setattr("splatpipe.walls.WALLS_POOL", factory), where factory takes
+    the worker count, records it and gives a new InlinePool, which runs every task in this
+    process. The step reads WALLS_POOL each time it runs, so a run through splatpipe.walls.run,
+    run_step, the step's CLI or run_job in this process uses it. splatpipe.walls is imported here
+    and by monkeypatch, so only the tests that use this fixture import it.
+    """
+    from splatpipe.walls.pool import InlinePool
+
+    opened: list[int] = []
+
+    def factory(workers: int) -> InlinePool:
+        opened.append(workers)
+        return InlinePool()
+
+    monkeypatch.setattr("splatpipe.walls.WALLS_POOL", factory)
+    return opened
+
+
+@pytest.fixture
+def dead_worker_pool(monkeypatch: pytest.MonkeyPatch) -> Callable[[str], None]:
+    """Give dead_worker_pool(frame), which installs as the Walls_Step's Worker_Pool a pool whose
+    worker stops when it takes the task of the frame named `frame`, like "000003.jpg", for the
+    test of Req 5.7.
+
+    The pool is an InlinePool behind a wrapper. map_frames and map_frames_until run every task
+    as InlinePool does, cutoff included, until they reach a task whose `name` is `frame`, and
+    there raise WorkerStopped(frame), pool.py's own failure for a worker that exited with no
+    result, as the real pool does. A task with no `name` never stops the worker. Installing is
+    monkeypatch.setattr("splatpipe.walls.WALLS_POOL", ...), as walls_pool does, and like it only
+    the tests that use this fixture import splatpipe.walls.
+    """
+    from splatpipe.walls.pool import InlinePool, WorkerStopped
+
+    class DeadWorkerPool:
+        """An InlinePool whose worker stops at the task of `frame`."""
+
+        def __init__(self, frame: str) -> None:
+            self.frame = frame
+            self.inline = InlinePool()
+
+        def _dying(self, fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
+            def run(task: Any) -> Any:
+                if getattr(task, "name", None) == self.frame:
+                    raise WorkerStopped(self.frame)
+                return fn(task)
+
+            return run
+
+        def map_frames(self, fn: Callable[[Any], Any], tasks: Sequence[Any]) -> list[Any]:
+            return self.inline.map_frames(self._dying(fn), tasks)
+
+        def map_frames_until(self, fn: Callable[[Any], Any], tasks: Sequence[Any],
+                             cutoff: datetime, now: Callable[[], datetime]) -> Any:
+            return self.inline.map_frames_until(self._dying(fn), tasks, cutoff, now)
+
+        def close(self) -> None:
+            self.inline.close()
+
+    def install(frame: str) -> None:
+        monkeypatch.setattr("splatpipe.walls.WALLS_POOL", lambda workers: DeadWorkerPool(frame))
+
+    return install

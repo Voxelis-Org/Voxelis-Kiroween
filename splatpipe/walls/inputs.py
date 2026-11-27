@@ -31,10 +31,37 @@ read_training_image, scaled_down and read_keep_mask, so a Frame or a Mask_File i
 Train_Step's messages, the all-masked one naming [walls]. cv2 only decodes still images and
 scales them here, and never reads or writes video (Req 2.13).
 
-Task 9 of the walls spec adds the preparation pass and the scratch folder's file names here.
+The preparation pass (C3) and the scratch folder (C4). prepare_frame runs on the main process,
+once per Prior_Frame, before any Frame_Solve, so a Timed_Out_Frame has its arrays too (Req 4.8,
+7.6). It decodes the Frame at the Score_Size with score_image and score_mask, works out its Luma,
+High_Pass and Bands with images.py, its Scale_Points, Scene_Scale and both Start_Depths with
+sources.py, and writes them with np.save into work/walls/scratch/<stem>/, <stem> being the name
+without .jpg, as the Prior_Format names a Prior_File. The file names are the constants below,
+which solve.py's loaders read, so this module never imports splatpipe.walls.solve (C4).
 
-From splatpipe, this module imports only splatpipe.errors and splatpipe.train's colmap, files,
-priors and scene modules.
+    At the Score_Size:  luma.npy, high_pass.npy, bands.npy (B, h, w), score_mask.npy,
+                        start_depth_score.npy, depth_pixel.npy
+    At the Prior_Size:  prior_inverse.npy, prior_normal.npy, prior_mask.npy, start_depth.npy,
+                        covered.npy
+    scale_points.npy    (n, 3) float64: each Scale_Point's Prior_Size row, column and camera z
+    numbers.npy         (3,) float64: k, m and the Scale_Point count
+
+The stages after the Frame_Solves write one file name per stage, so a stage never overwrites a
+file another frame of the same stage may still read: every stage reads the depths as the stage
+before left them, whatever order the workers take the frames in (Req 14.4, A11). The names are
+here with the others, and solve.py's stage tasks use them:
+
+    current_depth.npy, current_normal.npy   the Solved_Depth and its normals (Trusted_Frames)
+    facets.npy, facet_numbers.npy           the Facets: a (ph, pw) int32 label image, −1 off every
+                                            Facet, and (F, 4) float64, each Facet's normal and m
+    fused_depth.npy                         the Fused_Depth (Trusted_Frames)
+    fallback_depth.npy, fallback_normal.npy the Fallback_Depth and its normals (Failed_Frames)
+    corrected_depth.npy                     after the correction
+    flat_depth.npy, walls_normal.npy        after the flatten, its normals the Walls_Depth's last
+    walls_depth.npy                         after the despeckle: the Walls_Depth
+
+From splatpipe, this module imports only splatpipe.errors, splatpipe.train's colmap, files,
+priors, prior_views and scene modules, and splatpipe.walls's geometry, images and sources.
 """
 
 from __future__ import annotations
@@ -43,7 +70,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -53,11 +80,43 @@ from splatpipe.train.files import (CAMERAS, IMAGES, MASKS, MODEL_FILES, SPARSE, 
                                    read_training_image, scaled_down)
 from splatpipe.train.priors import (PRIOR_FOLDER, PRIOR_INDEX, BrokenPriors, Prior, PriorEntry,
                                     PriorSet, read_prior_set)
+from splatpipe.train.prior_views import prior_taps
 from splatpipe.train.scene import training_size
+from splatpipe.walls.geometry import median_inverse_depth
+from splatpipe.walls.images import bands, high_pass, luma
+from splatpipe.walls.sources import scale_points, scene_scale, start_depth
 
 # Fixed_Constants: the Frames_Record's folder and name, the Frames_Step's contract (Req 2.1).
 FRAMES = "frames"  # the Frames_Step's folder in work/
 FRAMES_RECORD = "frames.json"  # the Frames_Record, in work/frames/
+
+# The scratch folder's file names, in work/walls/scratch/<stem>/ (C3, C4). The preparation pass.
+LUMA = "luma.npy"
+HIGH_PASS = "high_pass.npy"
+BANDS = "bands.npy"
+SCORE_MASK = "score_mask.npy"
+START_DEPTH_SCORE = "start_depth_score.npy"
+DEPTH_PIXEL = "depth_pixel.npy"
+PRIOR_INVERSE = "prior_inverse.npy"
+PRIOR_NORMAL = "prior_normal.npy"
+PRIOR_MASK = "prior_mask.npy"
+START_DEPTH = "start_depth.npy"
+COVERED = "covered.npy"
+SCALE_POINTS = "scale_points.npy"
+NUMBERS = "numbers.npy"
+# The Frame_Solve.
+CURRENT_DEPTH = "current_depth.npy"
+CURRENT_NORMAL = "current_normal.npy"
+FACETS = "facets.npy"
+FACET_NUMBERS = "facet_numbers.npy"
+# The cross-frame stages, one name per stage, so none overwrites what another frame still reads.
+FUSED_DEPTH = "fused_depth.npy"
+FALLBACK_DEPTH = "fallback_depth.npy"
+FALLBACK_NORMAL = "fallback_normal.npy"
+CORRECTED_DEPTH = "corrected_depth.npy"
+FLAT_DEPTH = "flat_depth.npy"
+WALLS_NORMAL = "walls_normal.npy"
+WALLS_DEPTH = "walls_depth.npy"
 
 _FRAMES_AGAIN = "Run the frames step on this job again."
 _RUN = "uv run python -m splatpipe.run --job"  # the Job's command, for the --fresh message
@@ -82,6 +141,79 @@ class FrameInput:
     image: ModelImage  # its image in images.bin, with its Image_Pose
     prior: Prior  # its Depth_Prior, at the Prior_Size
     entry: PriorEntry  # its object in the Prior_Index
+
+
+class PrepareSettings(Protocol):
+    """The [walls] settings the preparation pass reads. WallsSettings has them all."""
+
+    score_long_edge: int
+    mask_threshold: int
+    high_pass_sigma: float
+    band_sigmas: tuple[float, ...]
+    scale_mad_gate: float
+    scale_min_points: int
+
+
+@dataclass(frozen=True)
+class Prepared:
+    """What the preparation pass gives the main process for one Prior_Frame (Req 7.6, C3)."""
+
+    name: str
+    folder: Path  # its scratch folder, work/walls/scratch/<stem>/
+    k: float  # its Scene_Scale
+    scale_points: int  # its number of Scale_Points
+    m: float  # the Prior_Size Start_Depth's Median_Inverse_Depth over the Covered_Pixels
+
+
+def frame_folder(scratch: Path, name: str) -> Path:
+    """The scratch folder of the Prior_Frame `name` in `scratch`, work/walls/scratch/: <stem>/,
+    the name without .jpg, as the Prior_Format names a Prior_File."""
+    return scratch / name.removesuffix(".jpg")
+
+
+def prepare_frame(scratch: Path, cameras: Path, model: SparseModel, frame: FrameInput,
+                  settings: PrepareSettings) -> Prepared:
+    """Write the Prior_Frame `frame`'s scratch arrays to frame_folder(`scratch`, its name) with
+    np.save, and give its Scene_Scale, Scale_Point count and m (Req 7, C3).
+
+    `cameras` is work/cameras/ and `model` the Sparse_Model, whose camera is the Shared_Camera.
+    The Frame is decoded at the Score_Size with score_image and score_mask, so a missing, broken
+    or wrong-sized Frame or Mask_File is refused with the Train_Step's messages. Its Luma,
+    High_Pass and Bands come from images.py; its Scale_Points, from the Prior_Depth on its
+    Covered_Pixels, its Scene_Scale k and its two Start_Depths from sources.py, the Score_Size
+    one through prior_taps from the Prior_Size to the Score_Size.
+    """
+    camera = model.camera
+    size = score_size(camera, settings.score_long_edge)
+    grey = luma(score_image(cameras, frame.name, camera, size))
+    keep = score_mask(cameras, frame.name, camera, size, settings.mask_threshold)
+    prior = frame.prior
+    inverse = np.asarray(prior.inverse_depth, dtype=np.float32)
+    mask = np.asarray(prior.mask, dtype=bool)
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        prior_depth = np.where(mask, 1.0 / inverse.astype(np.float64), np.nan)
+    pixels, z, depth_at = scale_points(model, frame.image, camera, mask, prior_depth)
+    k, count = scene_scale(z, depth_at, settings.scale_mad_gate, settings.scale_min_points)
+    prior_height, prior_width = mask.shape
+    taps = prior_taps(prior_width, prior_height, *size)
+    prior_start, score_start, depth_pixel = start_depth(inverse, mask, taps, k)
+    m = median_inverse_depth(prior_start, mask) if mask.any() else float("nan")
+    points = np.stack([pixels[:, 1].astype(np.float64), pixels[:, 0].astype(np.float64),
+                       np.asarray(z, dtype=np.float64)], axis=-1).reshape(-1, 3)
+    arrays = {
+        LUMA: grey, HIGH_PASS: high_pass(grey, settings.high_pass_sigma),
+        BANDS: np.stack(bands(grey, settings.band_sigmas)), SCORE_MASK: keep,
+        START_DEPTH_SCORE: score_start, DEPTH_PIXEL: depth_pixel,
+        PRIOR_INVERSE: inverse, PRIOR_NORMAL: np.asarray(prior.normal, dtype=np.float32),
+        PRIOR_MASK: mask, START_DEPTH: prior_start, COVERED: mask, SCALE_POINTS: points,
+        NUMBERS: np.array([k, m, count], dtype=np.float64),
+    }
+    folder = frame_folder(scratch, frame.name)
+    folder.mkdir(parents=True, exist_ok=True)
+    for file_name, array in arrays.items():
+        np.save(folder / file_name, np.ascontiguousarray(array), allow_pickle=False)
+    return Prepared(name=frame.name, folder=folder, k=float(k), scale_points=int(count),
+                    m=float(m))
 
 
 def check_inputs(job_folder: Path) -> None:
