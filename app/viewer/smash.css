@@ -1,0 +1,90 @@
+/* Pumpkin smash: the score, the clock and the mute button at the top right while a round runs,
+   and the panel when the time is up. smash.js links this file; its button is styled in viewer.css. */
+
+.splat-viewer-smash-hud {
+  position: absolute;
+  z-index: 4;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0.3rem 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(24, 12, 4, 0.75);
+  box-shadow: 0 0 14px rgba(255, 140, 40, 0.35);
+  color: #ffe2b8;
+  font: 600 0.95rem/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.splat-viewer-smash-clock {
+  min-width: 2.6em;
+  text-align: right;
+}
+
+.splat-viewer-smash-clock.is-low {
+  color: #ff9b5a;
+}
+
+.splat-viewer-smash-mute {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: 1rem/1 system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.splat-viewer-smash-results {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  max-width: min(22rem, 85%);
+  padding: 1rem 1.4rem;
+  border-radius: 0.8rem;
+  background: rgba(24, 12, 4, 0.88);
+  box-shadow: 0 0 28px rgba(255, 140, 40, 0.45);
+  color: #ffe2b8;
+  text-align: center;
+  font: 0.95rem/1.35 system-ui, sans-serif;
+}
+
+.splat-viewer-smash-results p {
+  margin: 0 0 0.7rem;
+}
+
+.splat-viewer-smash-results .splat-viewer-smash-title {
+  color: #ffb347;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.splat-viewer-smash-results .splat-viewer-smash-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.splat-viewer-smash-again {
+  padding: 0.6rem 1.2rem;
+  border: 0;
+  border-radius: 999px;
+  background: #ff8a1f;
+  color: #1a0d03;
+  font: 700 0.95rem/1 system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.splat-viewer-smash-mute:focus-visible,
+.splat-viewer-smash-again:focus-visible {
+  outline: 2px solid #7aa7ff;
+  outline-offset: 2px;
+}

@@ -234,3 +234,30 @@ html:has(.splat-viewer-page),
   max-height: none;
   height: 100%;
 }
+
+/* Pumpkin smash's button, above the Tour button. The game's other styles are in smash.css. */
+.splat-viewer-smash {
+  position: absolute;
+  z-index: 4;
+  right: 0.75rem;
+  bottom: 3.4rem;
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(20, 20, 26, 0.75);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  color: inherit;
+  font: 600 0.85rem/1 system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.splat-viewer-smash[aria-pressed="true"] {
+  background: rgba(255, 138, 31, 0.9);
+  color: #1a0d03;
+}
+
+.splat-viewer-smash:focus-visible {
+  outline: 2px solid #7aa7ff;
+  outline-offset: 2px;
+}

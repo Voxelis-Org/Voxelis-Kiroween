@@ -10,6 +10,7 @@ import { WALK_KEYS, dolly, pinchLengths, turn, walk, wheelLengths } from './cont
 import { createHaunt, tapCounter } from './haunt.js';
 import { loadingProgress } from './loading.js';
 import { JOB_SPLATS, ViewerError, splatKind } from './params.js';
+import { createPumpkinSmash } from './smash.js';
 import { buildTourPath, createTour } from './tour.js';
 
 // Drawing at the screen's full pixel ratio costs a phone a lot for little gain on a splat, so a
@@ -135,6 +136,7 @@ export function mountViewer(container, sources) {
     let destroyed = false;
     let view = null;
     let tour = null;
+    let smash = null;
 
     let toastTimer = 0;
     const announce = (text) => {
@@ -170,7 +172,12 @@ export function mountViewer(container, sources) {
 
     // Haunted mode works from the start, even on the loading screen.
     const taps = tapCounter();
-    const toggleHaunt = () => haunt.toggle(view);
+    // Pumpkin smash turns haunted mode off while a round runs, so H waits until it ends.
+    const toggleHaunt = () => {
+        if (!smash?.active) {
+            haunt.toggle(view);
+        }
+    };
     listen(logo, 'click', () => {
         if (taps(performance.now())) {
             toggleHaunt();
@@ -309,6 +316,13 @@ export function mountViewer(container, sources) {
             hint.textContent += touch ? HINT_TOUR_TOUCH : HINT_TOUR_MOUSE;
         }
         bindInput(place);
+        if (path !== null) {
+            smash = createPumpkinSmash({
+                app, container, canvas, view, path, splat, resource: asset.resource, touch, announce,
+                stopTour: takeOver, haunt, before: play,
+            });
+            cleanups.push(() => smash.destroy());
+        }
         loading.hidden = true;
         hint.hidden = false;
     }

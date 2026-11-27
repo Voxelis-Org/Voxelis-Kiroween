@@ -23,6 +23,18 @@ A Halloween easter egg, off by default and never saved. Press H while the viewer
 
 It's plain HTML, CSS and JavaScript with no build step and no iframe. It runs on the PlayCanvas engine 2.24.3 (MIT), drawn with WebGL 2. Engine 2.11.0 was the first to read the SOG version 2 that splat-transform 3.8.0 writes, 2.11.1 to 2.11.7 fixed it, and 2.24.0 added reading each file's anti-aliasing flag. The engine also reads SOG version 3, but not the old version 3 layout of splat-transform 3.11.0 and 3.11.1, so if splat-transform ever moves past 3.8.0, skip those two.
 
+## Pumpkin smash
+
+A Halloween game for any filmed place: glowing pumpkins float in the room, and you smash them with candy corn. It needs the tour's path, so a job with no tour has no game.
+
+- **Starting:** the **Pumpkin smash** button above the Tour button, or P. It stops the tour, turns haunted mode off and starts a 60-second round, with the pumpkins smashed and the time left at the top right. When the time is up, a panel shows the score and **Play again**. The button (now **End smash**), P or Esc ends the game and puts the room back as it was, haunted mode included. H does nothing while a round runs.
+- **Throwing:** a tap or a click that doesn't drag throws a glowing candy corn from just below the view to where it lands, in 0.2 s. It smashes the nearest pumpkin its ray passes within the radius of. Dragging still turns, and pinch, scroll and WASD still move.
+- **The dark room:** the splat itself darkens, and each pumpkin throws warm, flickering orange light on the walls around it, through the engine's `gsplatModifyVS` shader chunk on the gsplat template material. Haunted mode's canvas filter isn't used, because it would dim the pumpkins too.
+- **The pumpkins:** 6 at a time, made in code with no model or image files: 8 ribbed wedges, a stem and a glowing carved face. They bob and sway, and they're real meshes in the scene, so a wall in front of one hides it. Each one goes near the filmed path, some way along where the phone looked from there, short of the first wall and clear of everything solid, spread out from the others, and far enough from the camera to be at most a quarter of the view's height. The walls come from counting the splat's centres into a grid of cubes. Sizes and distances are shares of the scene length the tour uses: a pumpkin's radius is 0.035 of it.
+- **A smash:** the wedges and the stem fly apart with spin and gravity, wrapped sweets and sparkles spray out, the pumpkin's light flashes and goes out, and everything is gone within 1.5 s. It scores 1, and a new pumpkin appears somewhere else a second later.
+- **Sound:** a whoosh for a throw and a splat for a smash, made with Web Audio in code, and a mute button at the top right.
+- **Phones:** each shape is one instanced draw. The pieces, sweets and sparkles come from pools made once, with at most 300 sweets and sparkles at a time. With `prefers-reduced-motion`, the pumpkins don't bob or sway and their light doesn't flicker.
+
 ## Files
 
 | File | What it is |
@@ -33,10 +45,16 @@ It's plain HTML, CSS and JavaScript with no build step and no iframe. It runs on
 | `controls.js` | How a drag, a pinch, the wheel and the keys move the camera |
 | `tour.js` | The tour's path from the cameras, and the player that walks it |
 | `haunt.js` | Haunted mode: the dimming, the ghost and the logo's three taps |
+| `smash.js` | Pumpkin smash: its button, the dark room, the meshes, input and the round on screen |
+| `smash-play.js` | Pumpkin smash's rules and motion: the round's clock and score, the throw and what it smashes, the pieces' gravity, spin and fading, and the pools |
+| `smash-place.js` | Where pumpkins go: the grid of open and solid space from the splat's centres, and the placement rules |
+| `smash-meshes.js` | The pumpkin's wedges, stem and face, the candy corn, the sweet and the sparkle, made in code |
+| `smash-sound.js` | The throw and smash sounds, made with Web Audio |
+| `smash.css` | Pumpkin smash's score, clock, mute button and end panel. `smash.js` links it from beside itself |
 | `loading.js` | The loading screen's percentage and megabytes |
 | `embed.js` | Starts a viewer in every element with a `data-splat-url`, for the website |
 | `page.js`, `index.html` | The standalone page, for testing on a laptop |
-| `viewer.css` | Styles only `.splat-viewer`, what's inside it and the standalone page |
+| `viewer.css` | Styles only `.splat-viewer`, what's inside it and the standalone page, and pumpkin smash's button |
 | `package.json` | Only tells Node that these `.js` files are ES modules, for the tests. No dependencies |
 | `vendor/playcanvas.min.mjs`, `vendor/PLAYCANVAS-LICENSE.txt` | The engine and its licence. Git ignores `vendor/`: `scripts/fetch_viewer_engine.py` downloads them |
 
@@ -61,14 +79,15 @@ The website serves these from the bundle, read into `Deps.static` like `app.js`:
 
 | Route | File | Content-Type |
 |---|---|---|
-| `GET /viewer/viewer.css` | `app/viewer/viewer.css` | `text/css; charset=utf-8` |
+| `GET /viewer/viewer.css`, `/viewer/smash.css` | the same names in `app/viewer/` | `text/css; charset=utf-8` |
 | `GET /viewer/embed.js` | `app/viewer/embed.js` | `text/javascript; charset=utf-8` |
-| `GET /viewer/viewer.js`, `/viewer/params.js`, `/viewer/cameras.js`, `/viewer/controls.js`, `/viewer/tour.js`, `/viewer/haunt.js`, `/viewer/loading.js` | the same names in `app/viewer/` | `text/javascript; charset=utf-8` |
+| `GET /viewer/viewer.js`, `/viewer/params.js`, `/viewer/cameras.js`, `/viewer/controls.js`, `/viewer/tour.js`, `/viewer/haunt.js`, `/viewer/loading.js`, `/viewer/smash.js`, `/viewer/smash-play.js`, `/viewer/smash-place.js`, `/viewer/smash-meshes.js`, `/viewer/smash-sound.js` | the same names in `app/viewer/` | `text/javascript; charset=utf-8` |
 | `GET /viewer/vendor/playcanvas.min.mjs` | the engine, 2,895,086 bytes | `text/javascript; charset=utf-8` |
 | `GET /viewer/vendor/PLAYCANVAS-LICENSE.txt` | the engine's MIT licence, which its terms ask us to keep with it | `text/plain; charset=utf-8` |
 
 - The scripts are ES modules, and browsers refuse a module with any other Content-Type under `nosniff`. They import each other by relative path, so they must sit side by side under `/viewer/`, with the engine under `/viewer/vendor/`.
 - `index.html` and `page.js` are only for the laptop. The website doesn't need to serve them.
+- Every other file here is in `VIEWER_FILES` in `app/handler.py`, which serves them under `/viewer/` and `/shared/<token>/viewer/`. `tests/test_viewer.py` checks that every file a viewer module imports or links is in it.
 - **The engine isn't in git**, so the Deploy_Command's `git archive` doesn't have it. After extracting `app/` into the build folder, the deploy runs `python3.11 scripts/fetch_viewer_engine.py --into <build>/app/viewer/vendor` from the same commit. It uses only the standard library, and it checks both files against their pinned sha256, so a commit still always builds the same bundle bytes.
 - A Lambda function URL answers at most 6 MB. The engine is 2.9 MB, about 3.9 MB once base64-encoded, so it fits. Sending it gzipped, 0.75 MB, is faster on a phone when the request's `Accept-Encoding` allows it.
 - `Cache-Control: no-store` would send the 2.9 MB engine again with every Result_Page. The viewer's files hold no Account data, so something like `Cache-Control: private, max-age=3600` suits them.
@@ -84,7 +103,7 @@ default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; w
 - `worker-src blob:`: the engine sorts the splats in a Web Worker that it starts from a `blob:` URL. Without `worker-src`, browsers fall back to `script-src 'self'`, which blocks it. Tested in Chrome: the worker is refused and nothing is drawn.
 - `img-src blob:`: Safari on WebGL decodes the `.sog`'s WebP images through a `blob:` URL in an `<img>`. Chrome and Firefox use `createImageBitmap` and don't need it. This comes from the engine's source and hasn't been tested in Safari yet.
 - `connect-src 'self' <s3_origin>` is already the website's. The viewer fetches the splat and `cameras.json` from the job bucket with `fetch()`, and nothing else.
-- There's no inline script or style, no `eval` and no WebAssembly, so nothing else is needed. The engine sets the canvas's size through `element.style`, and the viewer moves the loading bar and the ghost the same way, which the policy doesn't block. The ghost's SVG is built with `createElementNS`, with no `style` attributes.
+- There's no inline script or style, no `eval` and no WebAssembly, so nothing else is needed. The engine sets the canvas's size through `element.style`, and the viewer moves the loading bar and the ghost the same way, which the policy doesn't block. The ghost's SVG is built with `createElementNS`, with no `style` attributes. Pumpkin smash adds a `<link>` to `smash.css` on our own origin, which `style-src 'self'` allows, and Web Audio needs nothing from the policy.
 
 ### The job bucket's CORS
 

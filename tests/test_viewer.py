@@ -126,3 +126,21 @@ def test_git_ignores_the_engine_folder_and_the_viewer_imports_its_file() -> None
     assert ignored.returncode == 0
     assert fetch_engine.DEFAULT_FOLDER == VIEWER / "vendor"
     assert "from './vendor/playcanvas.min.mjs'" in (VIEWER / "viewer.js").read_text(encoding="utf-8")
+
+def test_the_website_serves_every_file_the_viewer_loads() -> None:
+    # Every module a viewer module imports, and every stylesheet one links from beside itself,
+    # must be in VIEWER_FILES, or the website and share links answer 404 for it.
+    from app.handler import VIEWER_FILES
+    import re
+    wanted: set[str] = set()
+    for module in VIEWER.glob("*.js"):
+        if module.name in ("page.js",):
+            continue
+        code = module.read_text(encoding="utf-8")
+        wanted.update(re.findall(r"""from\s+'\./([^']+)'""", code))
+        wanted.update(re.findall(r"""new URL\('\./([^']+)', import\.meta\.url\)""", code))
+    wanted.update(["embed.js", "viewer.css"])
+    assert "smash.js" in wanted and "smash.css" in wanted
+    assert sorted(wanted - set(VIEWER_FILES)) == []
+    for name in VIEWER_FILES:
+        assert name.startswith("vendor/") or (VIEWER / name).is_file(), name

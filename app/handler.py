@@ -54,7 +54,8 @@ STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; char
                 ".ico": "image/x-icon"}
 OPEN_STATIC = ("/static/style.css", "/favicon.ico")
 VIEWER_FILES = ("viewer.css", "embed.js", "viewer.js", "params.js", "cameras.js", "controls.js",
-                "tour.js", "haunt.js", "loading.js", "vendor/playcanvas.min.mjs",
+                "tour.js", "haunt.js", "loading.js", "smash.js", "smash-play.js", "smash-place.js",
+                "smash-meshes.js", "smash-sound.js", "smash.css", "vendor/playcanvas.min.mjs",
                 "vendor/PLAYCANVAS-LICENSE.txt")
 _TEXT_PREFIXES = ("text/", "application/json")
 
