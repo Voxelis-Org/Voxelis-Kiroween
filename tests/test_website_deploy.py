@@ -102,7 +102,7 @@ def test_a_deploy_uploads_the_bundle_and_makes_a_change_set(clone: Path) -> None
     assert {"ParameterKey": "WebsiteCodeKey", "ParameterValue": key} in request["Parameters"]
     assert {"ParameterKey": "WebsiteCodeBucket",
             "ParameterValue": STACK["BucketName"]} in request["Parameters"]
-    assert request["TemplateBody"] == (REPO_ROOT / "cloud" / "aws-setup.yaml").read_text()
+    assert request["TemplateBody"] == (clone / "cloud" / "aws-setup.yaml").read_bytes().decode("utf-8")
     assert request["Tags"] == [{"Key": "project", "Value": "voxelis-kiroween"}]
     assert "Add WebsiteTable False" in out and "execute-change-set" in out and "arn:" not in out
     with zipfile.ZipFile(io.BytesIO(fake.objects[key])) as bundle:
