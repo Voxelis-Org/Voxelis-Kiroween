@@ -513,3 +513,4 @@ What the test found, and how the rules block it:
 - 2026-11-27 23:58+05:30 | feat/walls | walls 2.1 Write the bas-relief change in `splatpipe/walls/geometry.py` | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/geometry.py
 - 2026-11-28 00:04+05:30 | feat/walls | walls 2.2 Write the projection and the warp in `splatpipe/walls/geometry.py` | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/geometry.py
 - 2026-11-28 00:10+05:30 | feat/walls | walls 2.3 Write unit tests for the geometry in `tests/test_walls_geometry.py` | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/geometry.py, tests/test_walls_geometry.py
+- 2026-11-28 00:12+05:30 | feat/walls | walls 2.4 Write the property test for Property 1 in `tests/test_walls_geometry.py`, with Hypothesis | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/geometry.py, tests/test_walls_geometry.py
