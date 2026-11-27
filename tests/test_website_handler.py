@@ -48,7 +48,7 @@ def assert_safe_headers(response: dict) -> None:
     headers = response["headers"]
     assert headers["Content-Security-Policy"].startswith("default-src 'none'; script-src 'self'")
     assert headers["X-Content-Type-Options"] == "nosniff"
-    assert headers["Referrer-Policy"] == "no-referrer"
+    assert headers["Referrer-Policy"] == "same-origin"
 
 
 def test_signing_in_through_the_handler(deps) -> None:
@@ -101,6 +101,25 @@ def test_csrf_is_checked_on_every_post(deps) -> None:
     assert deps.aws.items == before and deps.aws.multipart == {}
     out = call(deps, "POST", "/signout", cookies=cookies, body=f"csrf={csrf}")
     assert out["statusCode"] == 303 and out["headers"]["Location"] == "/signin"
+
+
+def test_a_form_post_with_a_null_origin_is_refused(deps) -> None:
+    # The origin check refuses Origin: null on purpose, because a sandboxed or file:// page sends it
+    # too. Browsers also send Origin: null on every form post from a page with
+    # Referrer-Policy: no-referrer, so the Website must never send that policy, or it refuses its own
+    # sign-in, sign-out and share link forms. It sends same-origin instead.
+    make_account_item(deps, "judges", "right-password")
+    token = call(deps, "GET", "/signin")["cookies"][0].split(";")[0].split("=", 1)[1]
+    signin = call(deps, "POST", "/signin", cookies={SIGNIN_COOKIE: token},
+                  body=f"csrf={token}&name=judges&password=right-password",
+                  headers={"origin": "null", "sec-fetch-site": "same-origin"})
+    assert signin["statusCode"] == 403 and not any(c.startswith(SESSION_COOKIE)
+                                                   for c in signin.get("cookies", []))
+    cookies, csrf = sign_in_as(deps, "judges")
+    out = call(deps, "POST", "/signout", cookies=cookies, body=f"csrf={csrf}",
+               headers={"origin": "null"})
+    assert out["statusCode"] == 403
+    assert call(deps, "GET", "/jobs", cookies=cookies)["statusCode"] == 200
 
 
 def test_not_found_is_the_same_for_a_missing_job_another_accounts_and_a_bad_id(deps) -> None:
