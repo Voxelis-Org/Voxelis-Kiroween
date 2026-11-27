@@ -526,3 +526,5 @@ What the test found, and how the rules block it:
 - 2026-11-28 01:11+05:30 | feat/walls | walls 4.1 Write `splatpipe/walls/sources.py` | .kiro/specs/walls/tasks.md, splatpipe/walls/geometry.py, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/sources.py
 - 2026-11-28 01:19+05:30 | feat/walls | walls 4.2 Write unit tests for the scene scale and the sources in `tests/test_walls_sources.py` | .kiro/specs/walls/tasks.md, splatpipe/walls/geometry.py, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/sources.py, tests/test_walls_sources.py
 - 2026-11-28 01:34+05:30 | feat/walls | walls 4.3 Run the tests and commit | splatpipe/walls/geometry.py, splatpipe/walls/sources.py, tests/test_walls_sources.py, .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json
+- 2026-11-28 01:43+05:30 | feat/walls | walls 5.1 Write `splatpipe/walls/fit.py` | .kiro/specs/walls/tasks.md, tests/camera_files.py, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/fit.py
+- 2026-11-28 01:43+05:30 | feat/walls | walls 5.3 Add the textured plane to `tests/camera_files.py` | .kiro/specs/walls/tasks.md, tests/camera_files.py, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/fit.py
