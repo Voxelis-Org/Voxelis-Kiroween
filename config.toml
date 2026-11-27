@@ -740,6 +740,192 @@ min_gpu_memory_gb = 16
 # Every [depth] setting is shared, so this preset table is empty.
 [depth.quality]
 
+[walls]
+# Long edge of the size the step scores at, in pixels. A smaller camera isn't scaled up.
+score_long_edge = 640
+# Sigma of the blur the high-pass takes away, in score-size pixels.
+high_pass_sigma = 3.0
+# Side of a score window, in score-size pixels, an odd whole number of at least 3.
+window_size = 31
+# Spacing of the score windows' centres, in score-size pixels.
+window_step = 4
+# A window whose high-pass variance is under this, in grey levels squared, is flat.
+flat_variance = 0.04
+# A window is occluded when the source frame's start depth disagrees by more than this share.
+occlusion_tolerance = 0.15
+# A mask pixel, from 0 to 255, below this is masked. It matches [train]'s mask_threshold.
+mask_threshold = 128
+# The scene scale keeps the scale points within this many median absolute deviations.
+scale_mad_gate = 3.0
+# Fewest scale points for a scene scale; with fewer, the scale is 1. Default untested on real footage.
+scale_min_points = 10
+# Most source frames per prior frame.
+max_sources = 32
+# Shortest time between a prior frame and its source frames, in seconds.
+source_min_seconds = 1.0
+# The shorter time used when source_min_seconds gives too few source frames, in seconds, at most source_min_seconds.
+source_fallback_seconds = 0.5
+# Fewest source frames a prior frame needs, at least 2 and at most max_sources.
+min_sources = 4
+# Fewest pick numbers between two source frames of one prior frame.
+source_min_gap = 2
+# Smallest overlap of a source frame, from 0 to 1.
+source_min_overlap = 0.3
+# The depth change the image motion is measured for, as a share: 0.01 is 1%.
+motion_depth_change = 0.01
+# Smallest image motion of a source frame, in score-size pixels.
+source_min_motion = 0.4
+# The image motion counts up to this in the source rank, in score-size pixels.
+source_motion_cap = 3.0
+# Smallest table scale of the first pass, above 0 and below 1.
+first_min_scale = 0.5
+# Largest table scale of the first pass, above 1.
+first_max_scale = 2.0
+# Largest step between the first pass's table scales, in ln(s).
+first_scale_step = 0.015
+# Smallest table scale of the second pass, above 0 and below 1.
+second_min_scale = 0.92
+# Largest table scale of the second pass, above 1.
+second_max_scale = 1.087
+# Largest step between the second pass's table scales, in ln(s).
+second_scale_step = 0.004
+# Smallest table scale of the third pass, above 0 and below 1.
+third_min_scale = 0.95
+# Largest table scale of the third pass, above 1.
+third_max_scale = 1.053
+# Largest step between the third pass's table scales, in ln(s).
+third_scale_step = 0.0025
+# Nelder-Mead starts of each change fit.
+fit_starts = 5
+# Largest |b|, |c| and |d| of a change fit's guess.
+fit_bound = 0.2
+# How far the starts other than the identity change are spread. Default untested on real footage.
+fit_start_spread = 0.05
+# Most Nelder-Mead iterations per start. Default untested on real footage.
+fit_max_iterations = 400
+# Nelder-Mead's tolerance on the four numbers. Default untested on real footage.
+fit_x_tolerance = 0.0001
+# Nelder-Mead's tolerance on the guess score. Default untested on real footage.
+fit_f_tolerance = 0.001
+# Blur sigmas of the octave bands, in score-size pixels, the first 0 (the luma itself), each above the one before.
+band_sigmas = [0, 1, 2, 4, 8]
+# Cap on a band's coherence, above 0 and below 1. Default untested on real footage.
+band_max_coherence = 0.95
+# The source halves agree when their difference is under this.
+halves_tolerance = 0.015
+# Side of a tile, in score-size pixels.
+tile_size = 32
+# Fewest score windows a tile needs to count in the tile score. Default untested on real footage.
+tile_min_windows = 16
+# The tile score compares the answer with the answer times and divided by this, above 1.
+z_scale = 1.2
+# A prior frame's two tile scores must be above this.
+min_z = 2.5
+# The tile score's standard error is multiplied by this.
+z_error_factor = 2.0
+# A facet's normals lie within this many degrees of its normal, at most 90.
+facet_normal_degrees = 6.0
+# Inverse depths that differ by more than this share make a jump pixel.
+facet_jump = 0.01
+# The distance across or down, in prior-size pixels, the jump test compares over.
+facet_jump_distance = 2
+# Fewest prior-size pixels of a facet.
+facet_min_pixels = 4000
+# Smallest table scale of a facet's refit, above 0 and below 1.
+facet_min_scale = 0.75
+# Largest table scale of a facet's refit, above 1.
+facet_max_scale = 1.333
+# Largest step between a facet's table scales, in ln(s).
+facet_scale_step = 0.006
+# The looser occlusion test of a facet's refit, as a share of depth.
+facet_occlusion_tolerance = 0.5
+# A facet's source halves must agree within this.
+facet_halves_tolerance = 0.03
+# A facet change must be more than this times its source halves' difference.
+facet_min_change_ratio = 2.5
+# A facet's two tile scores must be at least this.
+facet_min_z = 3.0
+# Facet planes merge when their normals are within this many degrees, at most 90...
+plane_merge_degrees = 3.0
+# ... and their offsets within this share of the camera distance.
+plane_merge_offset = 0.015
+# Fewest prior frames whose facets make a world plane.
+plane_min_frames = 3
+# Smallest share of the largest world plane's pixels a world plane needs, from 0 to 1.
+plane_min_share = 0.01
+# Most neighbour frames per prior frame.
+neighbour_frames = 12
+# Neighbour frames are within this many pick numbers.
+neighbour_window = 24
+# The fuse takes the projected values within this share of the pixel's depth.
+fuse_tolerance = 0.1
+# Fewest values, the pixel's own included, the fuse takes a median of.
+fuse_min_values = 3
+# Agreeing values are within this share of the nearest projected value.
+agree_tolerance = 0.03
+# Fewest agreeing values for the fallback and the correction.
+agree_min_frames = 2
+# Smallest share of covered pixels with agreeing values for the projection fallback, from 0 to 1.
+projection_min_coverage = 0.3
+# A pixel matches a world plane whose normal is within this many degrees of its own, at most 90.
+register_max_degrees = 45.0
+# The plane registration's depth tolerance in its first pass.
+register_start_tolerance = 0.5
+# The plane registration's depth tolerance in its last pass, at most register_start_tolerance.
+register_end_tolerance = 0.03
+# Passes of the plane registration.
+register_passes = 5
+# Fewest matched pixels in each plane registration pass. Default untested on real footage.
+register_min_pixels = 1000
+# Tukey's constant, in median absolute deviations, for every robust fit. Default untested on real footage.
+tukey_constant = 4.685
+# Reweighting rounds of every robust fit. Default untested on real footage.
+tukey_iterations = 10
+# The correction moves a pixel more than this off, in ln(depth).
+correction_tolerance = 0.03
+# A facet takes a world plane's normal within this many degrees, at most 90.
+flatten_degrees = 5.0
+# Only pixels within this share of the facet's plane move.
+flatten_tolerance = 0.03
+# Side of the despeckle's window, in prior-size pixels, an odd whole number of at least 3.
+despeckle_window = 5
+# Fewest valid pixels the despeckle's window needs, at most despeckle_window squared.
+despeckle_min_valid = 9
+# A pixel more than this share off its window's median takes the median.
+despeckle_tolerance = 0.03
+# A fallback depth whose sparse error is above this drops to the depth prior.
+fallback_max_sparse_error = 0.1
+# The solve cutoff comes this many minutes before the step's stop time, below every preset's max_minutes.
+finish_minutes = 3
+# Worker processes; 0 means every vCPU. Default untested on real footage.
+workers = 0
+# Before-and-after demo images written; 0 writes none. Default untested on real footage.
+demo_frames = 3
+# JPEG quality of the demo images, 1 to 100. Default untested on real footage.
+demo_jpeg_quality = 90
+# Fewest vCPUs the job's cloud machine should have for this step, a soft need. The step never checks it.
+min_vcpus = 16
+# Least memory the job's cloud machine needs for this step, in GB, a hard need. The step never checks it.
+min_memory_gb = 32
+
+[walls.fast]
+# Longest the step solves frames for, from its start, in minutes.
+max_minutes = 20
+# Minutes before the job's cap deadline the step leaves for the training step.
+train_reserve_minutes = 40
+
+[walls.default]
+# Longest the step solves frames for, from its start, in minutes.
+max_minutes = 40
+# Minutes before the job's cap deadline the step leaves for the training step.
+train_reserve_minutes = 60
+
+[walls.quality]
+# Longest the step solves frames for, from its start, in minutes.
+max_minutes = 60
+# Minutes before the job's cap deadline the step leaves for the training step.
+train_reserve_minutes = 110
+
 [train]
 # Longest edge of the images the step trains at, in pixels. A smaller camera isn't scaled up.
 long_edge = 1600

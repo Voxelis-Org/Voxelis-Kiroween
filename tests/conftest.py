@@ -1,8 +1,8 @@
 """Fixtures for every test: the temporary config, dir_link for the link tests, fake_probe and
 new_job, which make Jobs without ffprobe, cameras_job, which makes a Job with a tiny valid
 work/frames/ for the Cameras_Step, set_fail, which sets `fail` in the test config, set_frames,
-set_cameras, set_depth and set_train, which change its [frames], [cameras], [depth] and [train]
-settings, set_clean, which sets its [clean] settings, colmap_options, which gives the COLMAP
+set_cameras, set_depth, set_walls and set_train, which change its [frames], [cameras], [depth],
+[walls] and [train] settings, set_clean, which sets its [clean] settings, colmap_options, which gives the COLMAP
 options of the camera solve's options.md, work_calls, which records whose Fake_Step work runs,
 fake_tools, which puts a FakeTools in place of the Frames_Step's ffprobe and ffmpeg, fake_colmap,
 which gives FakeColmap, a stand-in for the colmap program, and puts each one it builds in place
@@ -13,15 +13,19 @@ Depth_GPU_Module, and no_cap_deadline, which keeps SPLATPIPE_CAP_DEADLINE out of
 The autouse fixture temp_config writes a test config into each test's tmp_path and points
 splatpipe.config.CONFIG_PATH at it. So load_config() with no path, and every CLI a test runs in
 its own process, reads the test config, whose Jobs_Folder is inside tmp_path. No test can make
-a Job in the real data/ folder (Req 14.2). The test config also has [frames], [cameras], [depth]
-and [train], each with its three Preset tables, so a test that runs the Frames_Step, the
-Cameras_Step, the Depth_Step or the Train_Step without a Config of its own gets settings (frames
-spec, Req 9.11; cameras spec, Req 12.15; depth-priors spec, Req 8.8; training spec, Req 9.15).
+a Job in the real data/ folder (Req 14.2). The test config also has [frames], [cameras], [depth],
+[walls] and [train], each with its three Preset tables, so a test that runs the Frames_Step, the
+Cameras_Step, the Depth_Step, the Walls_Step or the Train_Step without a Config of its own gets
+settings (frames spec, Req 9.11; cameras spec, Req 12.15; depth-priors spec, Req 8.8; walls
+spec, Req 3.10; training spec, Req 9.15).
 Its [cameras] is the real config's, read once, with min_placed_frames at 1 and every
 *_timeout_seconds at 60 on top (cameras spec, C5). set_cameras changes any of its keys, or leaves
 one out when given MISSING. [depth] holds DEPTH, the 8 real settings, and depth_text writes it
-with its three empty Preset tables. It has [clean] and its three Preset tables too, from
-CLEAN_SHARED and CLEAN_PRESETS.
+with its three empty Preset tables. [walls] holds WALLS, the 83 real Shared_Settings, and its
+three Preset tables hold WALLS_PRESETS, the real max_minutes and train_reserve_minutes of each
+Preset. walls_text writes them, and set_walls changes any of their keys, or leaves one out when
+given MISSING. It has [clean] and its three Preset tables too, from CLEAN_SHARED and
+CLEAN_PRESETS.
 
 The autouse fixture no_cap_deadline removes SPLATPIPE_CAP_DEADLINE from the environment before
 every test, so a Cap_Deadline left in the shell or by another test can't change one. A test that
@@ -230,6 +234,104 @@ DEPTH = {
     "min_gpu_memory_gb": 16,
 }
 
+# The test config's 83 [walls] Shared_Settings: the real values, in the order of the walls
+# spec's settings table (walls spec, Req 3.2). Each value has the TOML type it has in the real
+# config, so a whole number stays an int, a number with a point stays a float, and band_sigmas is
+# a list of ints.
+WALLS: dict[str, object] = {
+    "score_long_edge": 640,
+    "high_pass_sigma": 3.0,
+    "window_size": 31,
+    "window_step": 4,
+    "flat_variance": 0.04,
+    "occlusion_tolerance": 0.15,
+    "mask_threshold": 128,
+    "scale_mad_gate": 3.0,
+    "scale_min_points": 10,
+    "max_sources": 32,
+    "source_min_seconds": 1.0,
+    "source_fallback_seconds": 0.5,
+    "min_sources": 4,
+    "source_min_gap": 2,
+    "source_min_overlap": 0.3,
+    "motion_depth_change": 0.01,
+    "source_min_motion": 0.4,
+    "source_motion_cap": 3.0,
+    "first_min_scale": 0.5,
+    "first_max_scale": 2.0,
+    "first_scale_step": 0.015,
+    "second_min_scale": 0.92,
+    "second_max_scale": 1.087,
+    "second_scale_step": 0.004,
+    "third_min_scale": 0.95,
+    "third_max_scale": 1.053,
+    "third_scale_step": 0.0025,
+    "fit_starts": 5,
+    "fit_bound": 0.2,
+    "fit_start_spread": 0.05,
+    "fit_max_iterations": 400,
+    "fit_x_tolerance": 0.0001,
+    "fit_f_tolerance": 0.001,
+    "band_sigmas": [0, 1, 2, 4, 8],
+    "band_max_coherence": 0.95,
+    "halves_tolerance": 0.015,
+    "tile_size": 32,
+    "tile_min_windows": 16,
+    "z_scale": 1.2,
+    "min_z": 2.5,
+    "z_error_factor": 2.0,
+    "facet_normal_degrees": 6.0,
+    "facet_jump": 0.01,
+    "facet_jump_distance": 2,
+    "facet_min_pixels": 4000,
+    "facet_min_scale": 0.75,
+    "facet_max_scale": 1.333,
+    "facet_scale_step": 0.006,
+    "facet_occlusion_tolerance": 0.5,
+    "facet_halves_tolerance": 0.03,
+    "facet_min_change_ratio": 2.5,
+    "facet_min_z": 3.0,
+    "plane_merge_degrees": 3.0,
+    "plane_merge_offset": 0.015,
+    "plane_min_frames": 3,
+    "plane_min_share": 0.01,
+    "neighbour_frames": 12,
+    "neighbour_window": 24,
+    "fuse_tolerance": 0.1,
+    "fuse_min_values": 3,
+    "agree_tolerance": 0.03,
+    "agree_min_frames": 2,
+    "projection_min_coverage": 0.3,
+    "register_max_degrees": 45.0,
+    "register_start_tolerance": 0.5,
+    "register_end_tolerance": 0.03,
+    "register_passes": 5,
+    "register_min_pixels": 1000,
+    "tukey_constant": 4.685,
+    "tukey_iterations": 10,
+    "correction_tolerance": 0.03,
+    "flatten_degrees": 5.0,
+    "flatten_tolerance": 0.03,
+    "despeckle_window": 5,
+    "despeckle_min_valid": 9,
+    "despeckle_tolerance": 0.03,
+    "fallback_max_sparse_error": 0.1,
+    "finish_minutes": 3,
+    "workers": 0,
+    "demo_frames": 3,
+    "demo_jpeg_quality": 90,
+    "min_vcpus": 16,
+    "min_memory_gb": 32,
+}
+
+# The test config's two [walls] Preset_Settings, by Preset: the real values (walls spec,
+# Req 3.3), as whole numbers.
+WALLS_PRESETS: dict[str, dict[str, object]] = {
+    "fast": {"max_minutes": 20, "train_reserve_minutes": 40},
+    "default": {"max_minutes": 40, "train_reserve_minutes": 60},
+    "quality": {"max_minutes": 60, "train_reserve_minutes": 110},
+}
+
 # The test config's 50 [train] Shared_Settings: the real values (training spec, Req 9.2, and
 # depth-priors spec, Req 14.1 and 14.10). Each value has the TOML type it has in the real config.
 TRAIN = {
@@ -391,6 +493,22 @@ def depth_text(depth: Mapping[str, Any]) -> str:
             + "".join(f"\n[depth.{preset}]\n" for preset in BASE_PICKS))  # the three Presets
 
 
+def walls_text(walls: Mapping[str, Any]) -> str:
+    """[walls] and its three Preset tables as TOML, with each key in `walls` set to its value
+    and every other key at its value in WALLS or WALLS_PRESETS. A key set to MISSING is left out.
+
+    A Shared_Setting takes its new value in [walls], like {"tile_size": 8}. A Preset_Setting,
+    max_minutes or train_reserve_minutes, takes one value, which goes in all three Preset tables,
+    like {"max_minutes": 5} (walls spec, Req 3.10).
+    """
+    preset_keys = WALLS_PRESETS["fast"].keys()  # every Preset table has the same keys
+    shared = {**WALLS, **{key: value for key, value in walls.items() if key not in preset_keys}}
+    presets = {preset: {key: walls.get(key, value) for key, value in table.items()}
+               for preset, table in WALLS_PRESETS.items()}
+    return table_text("walls", shared) + "".join(table_text(f"walls.{preset}", table)
+                                                 for preset, table in presets.items())
+
+
 def train_text(train: Mapping[str, Any]) -> str:
     """[train] and its three Preset tables as TOML, with each key in `train` set to its value
     and every other key at its value in TRAIN or TRAIN_PRESETS.
@@ -434,20 +552,23 @@ def config_text(jobs_folder: Path, fail: Mapping[str, str] | None = None,
                 frames: Mapping[str, Any] | None = None,
                 cameras: Mapping[str, Any] | None = None,
                 depth: Mapping[str, Any] | None = None,
+                walls: Mapping[str, Any] | None = None,
                 train: Mapping[str, Any] | None = None,
                 clean: Mapping[str, object] | None = None) -> str:
     """The test config as TOML. Each Step_Name in `fail` gets that `fail` value, and every other
-    Fake_Step section gets fail = "none". [frames], [cameras], [depth] and then [train] come next,
-    in step order, with the keys in `frames`, `cameras`, `depth` and `train` changed as
-    frames_text, cameras_text, depth_text and train_text say. [clean] and its Preset tables come
-    last, with the changes in `clean` made, as clean_toml reads them. The Jobs_Folder is written
-    with forward slashes, so a Windows backslash can't become a TOML escape."""
+    Fake_Step section gets fail = "none". [frames], [cameras], [depth], [walls] and then [train]
+    come next, in step order, with the keys in `frames`, `cameras`, `depth`, `walls` and `train`
+    changed as frames_text, cameras_text, depth_text, walls_text and train_text say. [clean] and
+    its Preset tables come last, with the changes in `clean` made, as clean_toml reads them. The
+    Jobs_Folder is written with forward slashes, so a Windows backslash can't become a TOML
+    escape."""
     modes = fail or {}
     jobs = JOBS_TOML.format(jobs_folder=jobs_folder.as_posix())
     fakes = "".join(STEP_TOML.format(name=name, fail=modes.get(name, "none"))
                     for name in STEP_NAMES)
     return (jobs + fakes + frames_text(frames or {}) + cameras_text(cameras or {})
-            + depth_text(depth or {}) + train_text(train or {}) + clean_toml(clean or {}))
+            + depth_text(depth or {}) + walls_text(walls or {}) + train_text(train or {})
+            + clean_toml(clean or {}))
 
 
 @pytest.fixture(autouse=True)
@@ -542,6 +663,25 @@ def set_depth(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
     """
     def rewrite(**values: Any) -> None:
         temp_config.write_text(config_text(tmp_path / "jobs", depth=values), encoding="utf-8")
+
+    return rewrite
+
+
+@pytest.fixture
+def set_walls(tmp_path: Path, temp_config: Path) -> Callable[..., None]:
+    """Give set_walls(**values), which rewrites the test config with each [walls] key it names
+    set to the given value, like set_walls(tile_size=8), or left out when the value is MISSING
+    (walls spec, Req 3.10). max_minutes and train_reserve_minutes, the Preset_Settings, take one
+    value, which goes in all three Preset tables, like set_walls(max_minutes=5).
+
+    Like set_depth, each call writes the whole file again from config_text, so every key it
+    doesn't name is back to its value in WALLS or WALLS_PRESETS, [frames], [cameras], [depth],
+    [train] and [clean] are back to the test config's values too, and every fail is back to
+    "none". The next run that loads the config sees the change. Each test gets a new test config,
+    so the next test sees the test config's values again.
+    """
+    def rewrite(**values: Any) -> None:
+        temp_config.write_text(config_text(tmp_path / "jobs", walls=values), encoding="utf-8")
 
     return rewrite
 
