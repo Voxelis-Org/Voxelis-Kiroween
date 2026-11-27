@@ -518,3 +518,4 @@ What the test found, and how the rules block it:
 - 2026-11-28 00:18+05:30 | feat/walls | walls 2.6 Write the property test for Property 3 in `tests/test_walls_geometry.py`, with Hypothesis | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/geometry.py, tests/test_walls_geometry.py
 - 2026-11-28 00:22+05:30 | feat/walls | walls 2.7 Write the property test for Property 4 in `tests/test_walls_geometry.py`, with Hypothesis | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/geometry.py, tests/test_walls_geometry.py
 - 2026-11-28 00:33+05:30 | feat/walls | walls 2.8 Run the tests and commit | splatpipe/walls/geometry.py, tests/test_walls_geometry.py, .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json
+- 2026-11-28 00:42+05:30 | feat/walls | walls 3.1 Write `splatpipe/walls/images.py` | .kiro/specs/walls/tasks.md, .kiro/specs/walls/tasks.meta.json, splatpipe/walls/images.py
