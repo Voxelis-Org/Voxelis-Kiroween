@@ -70,6 +70,13 @@ Metres_Per_Unit is the one the test chose. Its projection and its quaternion tur
 module's own, so it shares no code with the Depth_Step, and it imports nothing from
 splatpipe.train.colmap. It imports splatpipe.depth.gpu_api's MoGeOutput when it's called, so the
 other tests that use this module never import splatpipe.depth.
+
+The textured plane is the Walls_Step's scene (walls spec, Req 22.2): a wall at z = TEXTURED_Z,
+seen by TEXTURED_FRAMES PINHOLE cameras of 128 x 96 pixels on a slow walk past it, each turned
+to keep the wall's middle in view, with a faint grey-level noise texture painted on it. Its
+helpers, given a frame's index and a size (width, height), work out on the CPU, by meeting each
+pixel's ray with the wall, its true depth, normal and Covered mask, its BGR frame, and, for the
+scoring, its ScoreSource and its Candidate. The section above textured_camera gives its numbers.
 """
 
 from __future__ import annotations
@@ -88,6 +95,9 @@ import numpy as np
 # the tests that call it import splatpipe.depth.
 if TYPE_CHECKING:
     from splatpipe.depth.gpu_api import MoGeOutput
+    from splatpipe.train.colmap import Camera
+    from splatpipe.walls.scoring import ScoreSource
+    from splatpipe.walls.sources import Candidate
 
 CAMERAS_BIN = "cameras.bin"
 IMAGES_BIN = "images.bin"
@@ -494,3 +504,236 @@ def _facing_normal(quaternion: np.ndarray, translation: np.ndarray) -> np.ndarra
     centre = _rotate(_inverse(quaternion), -translation[np.newaxis])[0]
     side = (0.0, 0.0, -1.0) if centre[2] < PLANE_Z else (0.0, 0.0, 1.0)
     return _rotate(quaternion, np.array([side]))[0]
+
+
+# The textured plane, the Walls_Step's scene (walls spec, Req 22.2, D24, A1, A8).
+#
+# A wall, the plane z = TEXTURED_Z = 4, faces TEXTURED_FRAMES = 12 PINHOLE cameras of 128 x 96
+# pixels with fx = fy = TEXTURED_FOCAL = 192, a view of about 37° x 28°. The cameras walk past it
+# along x at y = 0 and z = 0, TEXTURED_STEP = 0.5 apart, from x = −2.75 to +2.75, one frame every
+# TEXTURED_SECONDS = 0.5 s, frame i at Pick_Number i and Frame_Time 0.5·i. Each is turned about y
+# to look at the wall's middle (0, 0, TEXTURED_Z), so the end cameras look about 34.5° to the
+# side, and each sees the wall at a depth of about 3.9 to 5.3. Every camera's whole view lies on
+# the textured part of the wall, so every pixel is a Covered_Pixel at every size.
+#
+# A 1% depth change (motion_depth_change) moves a point, as the median over a frame's pixels, by
+# 0.16 to 0.24 pixels in a frame 1 pick away, 0.32 to 0.48 in one 2 picks away, and at least 0.49
+# in one 3 or more picks away, against [walls]'s source_min_motion of 0.4: the wall's parallax
+# between two frames 3 picks apart is above 40 of the 128 pixels. Because every camera looks at
+# the wall's middle, the Overlap of any two frames is at least 0.58, against source_min_overlap's
+# 0.3, the two end frames' 0.79. So under the real time (1 s), spacing (2 picks), Overlap and
+# Image_Motion rules, choose_sources gives every frame, the first and the last included, 4 or 5
+# Source_Frames at source_min_seconds, against min_sources' 4: the middle frames take two or
+# three on each side, the end frames four or five on one side.
+#
+# The texture is grey noise at TEXTURE_LEVELS = 5 levels TEXTURE_LEVEL_STEP = 4 apart around
+# mid-grey, 120 to 136, drawn once with the fixed seed TEXTURE_SEED at the nodes of a square grid
+# TEXTURE_CELL = 0.07 apart in the wall's own (x, y), and sampled bilinearly, so every camera sees
+# the same texture. A cell is about 3 pixels wide at the wall's middle. A frame's grey has a
+# spread of about 3.6 levels, and its High_Pass at σ 3 is far above flat_variance (0.04) in every
+# window, so all 425 Score_Windows of a 128 x 96 frame (window_size 31, window_step 4) count, in
+# 12 Tiles of 32 pixels. The windowed NCC of the High_Pass at the true depth is about 0.98, about
+# 0.6 to 0.9 at 1.01 × it, and about 0 to 0.4 at 1.03 × it. Each pixel is the mean of TEXTURE_SAMPLES ×
+# TEXTURE_SAMPLES rays spread evenly over it, worked out in float64 and rounded to uint8 only at
+# the end, with the same grey in B, G and R. The plain variant is the same wall in one flat grey,
+# TEXTURE_GREY, so its High_Pass is 0 everywhere and every window is flat.
+#
+# For a 128 x 96 Shared_Camera the Score_Size is the camera's own size, because a camera below
+# score_long_edge (640) isn't scaled up, and the Depth_Step's Prior_Size rule with long_edge 512
+# keeps 128 x 96 too. Each helper takes the size it works at, so a test may use a smaller
+# Prior_Size. A pixel (i, j) of a w x h size is the ray through (u, v) = ((i + 0.5)·W / w,
+# (j + 0.5)·H / h) of the camera's W x H pixels, the Prior_Format's rule. The scene's oracle, its
+# quaternion turn and its rays, is this module's own and shares no code with the Walls_Step.
+TEXTURED_Z = 4.0
+TEXTURED_FRAMES = 12
+TEXTURED_STEP = 0.5           # world units between neighbouring cameras
+TEXTURED_SECONDS = 0.5        # seconds between neighbouring frames
+TEXTURED_FOCAL = 192.0        # pixels
+TEXTURED_CAMERA = CameraRecord(camera_id=1, width=128, height=96, fx=TEXTURED_FOCAL,
+                               fy=TEXTURED_FOCAL, cx=64.0, cy=48.0)
+
+# The textured part of the wall, |x| ≤ TEXTURED_HALF_WIDTH and |y| ≤ TEXTURED_HALF_HEIGHT: wider
+# than every camera's view of it.
+TEXTURED_HALF_WIDTH = 6.0
+TEXTURED_HALF_HEIGHT = 4.0
+
+TEXTURE_SEED = 22
+TEXTURE_GREY = 128.0
+TEXTURE_LEVELS = 5            # the levels 120, 124, 128, 132 and 136
+TEXTURE_LEVEL_STEP = 4.0
+TEXTURE_CELL = 0.07          # world units, about 3 pixels at the wall's middle
+TEXTURE_SAMPLES = 2           # rays per pixel across and down
+
+
+def _texture_nodes() -> np.ndarray:
+    """The texture's grey at each node of its grid, (rows, columns) float64, row j at
+    y = −TEXTURED_HALF_HEIGHT + j·TEXTURE_CELL and column i at x = −TEXTURED_HALF_WIDTH +
+    i·TEXTURE_CELL, from the fixed seed TEXTURE_SEED."""
+    columns = math.ceil(2 * TEXTURED_HALF_WIDTH / TEXTURE_CELL) + 2
+    rows = math.ceil(2 * TEXTURED_HALF_HEIGHT / TEXTURE_CELL) + 2
+    level = np.random.default_rng(TEXTURE_SEED).integers(0, TEXTURE_LEVELS, size=(rows, columns))
+    return TEXTURE_GREY + TEXTURE_LEVEL_STEP * (level - (TEXTURE_LEVELS - 1) / 2)
+
+
+TEXTURE_NODES = _texture_nodes()
+
+
+def _textured_view(index: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Frame `index`'s world-to-camera quaternion and translation: its camera at
+    ((index − (TEXTURED_FRAMES − 1) / 2)·TEXTURED_STEP, 0, 0), looking at the wall's middle."""
+    if not 0 <= index < TEXTURED_FRAMES:
+        raise ValueError(f"The textured plane has frames 0 to {TEXTURED_FRAMES - 1}, not {index}")
+    centre = ((index - (TEXTURED_FRAMES - 1) / 2) * TEXTURED_STEP, 0.0, 0.0)
+    return _looking_at(centre, (0.0, 0.0, TEXTURED_Z))
+
+
+def _textured_image(index: int) -> ImageRecord:
+    """Image `index` of the textured plane, named like the Frames_Step's picks, with no
+    keypoints."""
+    quaternion, translation = _textured_view(index)
+    return ImageRecord(image_id=index + 1, quaternion=quaternion, translation=translation,
+                       camera_id=TEXTURED_CAMERA.camera_id, name=f"{index:06d}.jpg")
+
+
+TEXTURED_IMAGES = tuple(_textured_image(index) for index in range(TEXTURED_FRAMES))
+
+
+def textured_camera() -> Camera:
+    """The textured plane's Shared_Camera, as the Model_Reader gives it."""
+    from splatpipe.train.colmap import Camera
+
+    record = TEXTURED_CAMERA
+    return Camera(camera_id=record.camera_id, width=record.width, height=record.height,
+                  fx=record.fx, fy=record.fy, cx=record.cx, cy=record.cy)
+
+
+def textured_pose(index: int) -> np.ndarray:
+    """Frame `index`'s world-to-camera Image_Pose, (4, 4) float64 [[R, t], [0, 0, 0, 1]], with R
+    from this module's own quaternion turn."""
+    image = TEXTURED_IMAGES[index]
+    pose = np.eye(4)
+    pose[:3, :3] = _rotate(image.quaternion, np.eye(3)).T   # row j of _rotate's output is R e_j
+    pose[:3, 3] = image.translation
+    return pose
+
+
+def _wall_hits(index: int, u: np.ndarray,
+               v: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Where the rays of frame `index` through the camera's full-size pixel positions (u, v) meet
+    the wall, as (z, x, y, covered): the camera-space z, the wall's own x and y, and whether the
+    ray meets the textured part in front of the camera."""
+    image = TEXTURED_IMAGES[index]
+    camera = TEXTURED_CAMERA
+    shape = np.shape(u)
+    rays = np.stack([((np.asarray(u, dtype=np.float64) - camera.cx) / camera.fx).ravel(),
+                     ((np.asarray(v, dtype=np.float64) - camera.cy) / camera.fy).ravel(),
+                     np.ones(int(np.prod(shape)))], axis=-1)  # camera-space z of 1
+    turned = _inverse(image.quaternion)
+    centre = _rotate(turned, -np.asarray(image.translation, dtype=np.float64)[np.newaxis])[0]
+    direction = _rotate(turned, rays)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z = (TEXTURED_Z - centre[2]) / direction[:, 2]
+    x = centre[0] + z * direction[:, 0]
+    y = centre[1] + z * direction[:, 1]
+    covered = (np.isfinite(z) & (z > 0) & (np.abs(x) <= TEXTURED_HALF_WIDTH)
+               & (np.abs(y) <= TEXTURED_HALF_HEIGHT))
+    return z.reshape(shape), x.reshape(shape), y.reshape(shape), covered.reshape(shape)
+
+
+def _pixel_positions(size: tuple[int, int],
+                     offset: float = 0.5) -> tuple[np.ndarray, np.ndarray]:
+    """The camera's full-size (u, v) of each pixel of a `size` (w, h) grid, at `offset` across and
+    down inside the pixel, 0.5 being its centre, as two (h, w) arrays."""
+    width, height = size
+    u = (np.arange(width, dtype=np.float64) + offset) * TEXTURED_CAMERA.width / width
+    v = (np.arange(height, dtype=np.float64) + offset) * TEXTURED_CAMERA.height / height
+    return np.meshgrid(u, v)
+
+
+def textured_covered(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s Covered mask at `size` (w, h), (h, w) bool: where the ray through a pixel's
+    centre meets the textured part of the wall. It is true everywhere in this scene."""
+    return _wall_hits(index, *_pixel_positions(size))[3]
+
+
+def textured_depth(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s true depth at `size` (w, h), (h, w) float64: the camera-space z at which
+    the ray through each pixel's centre meets the wall, NaN off the Covered mask."""
+    z, _, _, covered = _wall_hits(index, *_pixel_positions(size))
+    return np.where(covered, z, np.nan)
+
+
+def textured_normal(index: int, size: tuple[int, int]) -> np.ndarray:
+    """Frame `index`'s true normal at `size` (w, h), (h, w, 3) float64: the wall's unit normal in
+    the camera frame, facing the camera, at every Covered_Pixel, and 0 elsewhere."""
+    normal = _rotate(TEXTURED_IMAGES[index].quaternion, np.array([[0.0, 0.0, -1.0]]))[0]
+    width, height = size
+    covered = textured_covered(index, size)
+    return np.where(covered[..., np.newaxis], np.broadcast_to(normal, (height, width, 3)), 0.0)
+
+
+def _texture(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """The texture's grey at the wall's own (x, y), sampled bilinearly from TEXTURE_NODES."""
+    rows, columns = TEXTURE_NODES.shape
+    across = (np.asarray(x) + TEXTURED_HALF_WIDTH) / TEXTURE_CELL
+    down = (np.asarray(y) + TEXTURED_HALF_HEIGHT) / TEXTURE_CELL
+    column = np.clip(np.floor(across), 0, columns - 2).astype(np.int64)
+    row = np.clip(np.floor(down), 0, rows - 2).astype(np.int64)
+    fx, fy = across - column, down - row
+    top = TEXTURE_NODES[row, column] * (1 - fx) + TEXTURE_NODES[row, column + 1] * fx
+    bottom = TEXTURE_NODES[row + 1, column] * (1 - fx) + TEXTURE_NODES[row + 1, column + 1] * fx
+    return top * (1 - fy) + bottom * fy
+
+
+def textured_frame(index: int, size: tuple[int, int] | None = None, *,
+                   plain: bool = False) -> np.ndarray:
+    """Frame `index` at `size` (w, h), the camera's own size if not given, as an (h, w, 3) uint8
+    BGR image with the same grey in each channel: the mean of the texture over TEXTURE_SAMPLES ×
+    TEXTURE_SAMPLES rays spread evenly over each pixel, in float64, then rounded. A ray that
+    misses the textured part reads TEXTURE_GREY. `plain` paints the whole wall TEXTURE_GREY."""
+    size = size or (TEXTURED_CAMERA.width, TEXTURED_CAMERA.height)
+    width, height = size
+    grey = np.zeros((height, width))
+    for row in range(TEXTURE_SAMPLES):
+        for column in range(TEXTURE_SAMPLES):
+            u, _ = _pixel_positions(size, (column + 0.5) / TEXTURE_SAMPLES)
+            _, v = _pixel_positions(size, (row + 0.5) / TEXTURE_SAMPLES)
+            _, x, y, covered = _wall_hits(index, u, v)
+            painted = TEXTURE_GREY if plain else np.where(covered, _texture(x, y), TEXTURE_GREY)
+            grey = grey + painted
+    level = np.clip(np.rint(grey / TEXTURE_SAMPLES ** 2), 0, 255).astype(np.uint8)
+    return np.repeat(level[..., np.newaxis], 3, axis=-1)
+
+
+def textured_candidate(index: int) -> Candidate:
+    """Frame `index` as source choice sees it: its name, its Pick_Number `index`, its Frame_Time
+    index × TEXTURED_SECONDS and its Image_Pose."""
+    from splatpipe.walls.sources import Candidate
+
+    return Candidate(name=TEXTURED_IMAGES[index].name, pick_number=index,
+                     frame_time=index * TEXTURED_SECONDS, world_to_camera=textured_pose(index))
+
+
+def textured_score_source(index: int, half: str, *, prior_size: tuple[int, int],
+                          high_pass_sigma: float, band_sigmas: Sequence[float],
+                          plain: bool = False) -> ScoreSource:
+    """Frame `index` as a Source_Frame of Source_Half `half`, at the Score_Size, the camera's own
+    128 x 96, with `high_pass_sigma` and `band_sigmas` from [walls].
+
+    Its High_Pass and Bands are images.py's, from the Luma of textured_frame (plain or not), and
+    its Score_Mask keeps every pixel. Its Start_Depth, at `prior_size` (w, h), is the frame's true
+    depth, NaN off its Covered mask: the occlusion test compares the warp's depth with the
+    Source_Frame's Start_Depth (Req 9.6, A1, D24), and true Observed_Points bring a Source_Frame's
+    Start_Depth to about the true depth through its Scene_Scale, whatever one factor its
+    Prior_Depth is off by.
+    """
+    from splatpipe.walls.images import bands, high_pass, luma
+    from splatpipe.walls.scoring import ScoreSource
+
+    grey = luma(textured_frame(index, plain=plain))
+    return ScoreSource(name=TEXTURED_IMAGES[index].name, world_to_camera=textured_pose(index),
+                       high_pass=high_pass(grey, high_pass_sigma),
+                       bands=np.stack(bands(grey, band_sigmas)),
+                       score_mask=np.ones(grey.shape, dtype=bool),
+                       start_depth=textured_depth(index, prior_size),
+                       covered=textured_covered(index, prior_size), half=half)
