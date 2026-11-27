@@ -52,6 +52,7 @@ convention, with the top-left pixel's centre at (0.5, 0.5).
   w × h grid by the Depth_Step's pixel rule (min(⌊u·w/W⌋, w − 1), min(⌊v·h/H⌋, h − 1)), keep the
   nearest depth per pixel, and a pixel no point lands on stays unfilled.
 The poses are applied to the points elementwise, one part at a time, never with @ or np.dot.
+to_world and to_camera do that, and the other walls modules use them for every pose they apply.
 
 Every function is elementwise over the pixels, with numpy's own loops and no BLAS call, so the
 results are the same bits whatever the thread count (C14). This module imports only the standard
@@ -198,7 +199,7 @@ def back_project(z: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return np.stack([z * x, z * y, z], axis=-1)
 
 
-def _to_world(pose: np.ndarray, px: np.ndarray, py: np.ndarray,
+def to_world(pose: np.ndarray, px: np.ndarray, py: np.ndarray,
               pz: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Camera points (px, py, pz) in the world, W = Rᵀ(P − t) for the world-to-camera `pose`,
     one part at a time: Wⱼ = Σᵢ R[i, j]·(Pᵢ − tᵢ), with no BLAS call (C14)."""
@@ -210,7 +211,7 @@ def _to_world(pose: np.ndarray, px: np.ndarray, py: np.ndarray,
             r[0, 2] * dx + r[1, 2] * dy + r[2, 2] * dz)
 
 
-def _to_camera(pose: np.ndarray, wx: np.ndarray, wy: np.ndarray,
+def to_camera(pose: np.ndarray, wx: np.ndarray, wy: np.ndarray,
                wz: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """World points (wx, wy, wz) in the camera of the world-to-camera `pose`, C = R·W + t, one
     part at a time: Cᵢ = Σⱼ R[i, j]·Wⱼ + tᵢ, with no BLAS call (C14)."""
@@ -272,8 +273,8 @@ def warp_maps(prior_depth: np.ndarray, factor: float | np.ndarray, prior_pose: n
         source_size = (z.shape[-1], z.shape[-2])
     width, height = source_size
     with np.errstate(over="ignore", invalid="ignore"):
-        world = _to_world(prior_pose, z * x, z * y, z)
-        source_x, source_y, source_z = _to_camera(source_pose, *world)
+        world = to_world(prior_pose, z * x, z * y, z)
+        source_x, source_y, source_z = to_camera(source_pose, *world)
         u, v = _project_parts(source_k, source_x, source_y, source_z)
         inside = (np.isfinite(source_z) & (source_z > 0)
                   & (u >= 0) & (u < width) & (v >= 0) & (v < height))
