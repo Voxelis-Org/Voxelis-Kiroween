@@ -53,7 +53,7 @@ def test_a_spend_refusal_places_and_launches_nothing(tmp_path: Path) -> None:
 def test_the_choice_carries_the_quote_strings(tmp_path: Path) -> None:
     *_, choice = parts(tmp_path)
     assert choice.admitted[0] == "g5.8xlarge" and choice.attempts[0][2] == "us-east-1a"
-    assert choice.expected_time == "about 30 min, up to the 120 min time cap"
+    assert choice.expected_time == "about 50 min, up to the 120 min time cap"
     assert choice.rough_cost.startswith("about $") and "worst case about $4.94" in choice.rough_cost
 
 

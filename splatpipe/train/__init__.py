@@ -19,15 +19,19 @@ is the CLI, `uv run python -m splatpipe.train --job <id> [--preset <name>]` (Req
 5. The hook GPU gives the GPU_Module, whose probe() gives the facts check_gpu decides on
    (Req 2.1–2.10). Nothing is read and nothing goes onto the GPU before this.
 6. Timed as load: the Sparse_Model, the Training_Size, the Training_Images and the Mask_Files,
-   then the Prior_Set in work/depth/ when depth.json is there, the scene, the points the
-   Start_Splats start from, with the Req 3.11 warning when they're a subset, the 3-NN search on
-   the GPU and the Start_Splats (Req 1.3–1.19, 3.1–3.15). Priors that fail a check give the
-   depth-priors spec's Req 10.3 warning, and the step trains with no Prior_Set. With no
-   depth.json, it trains with no Prior_Set and adds no count or warning about it (that spec's
-   Req 10.1–10.4, 14.3, 14.6, 14.7, A9, A14). With a Prior_Set, the Start_Splats also hold the
-   Back_Projected_Splats, after the Sparse_Points, and the Sparse_Points get what the Splat_Budget
-   leaves, with that spec's Req 12.7 warning in place of Req 3.11's when that's a subset. Every
-   Start_Splat goes through the one 3-NN search (that spec's Req 12.4–12.8, 14.4–14.6).
+   then the Prior_Set, the scene, the points the Start_Splats start from, with the Req 3.11
+   warning when they're a subset, the 3-NN search on the GPU and the Start_Splats (Req 1.3–1.19,
+   3.1–3.15). The Prior_Set comes from work/walls/ when work/walls/depth.json is there, and from
+   work/depth/ when depth.json is there otherwise (walls spec, Req 20.1, 20.3). Walls priors that
+   fail a check give the walls spec's Req 20.2 warning, and the step reads work/depth/ instead.
+   Depth priors that fail a check give the depth-priors spec's Req 10.3 warning, and the step
+   trains with no Prior_Set. With neither depth.json, it trains with no Prior_Set and adds no
+   count or warning about it (the depth-priors spec's Req 10.1–10.4, 14.3, 14.6, 14.7, A9, A14).
+   The walls priors change nothing else in training (walls spec, Req 20.4). With a Prior_Set,
+   the Start_Splats also hold the Back_Projected_Splats, after the Sparse_Points, and the
+   Sparse_Points get what the Splat_Budget leaves, with the depth-priors spec's Req 12.7 warning
+   in place of Req 3.11's when that's a subset. Every Start_Splat goes through the one 3-NN
+   search (the depth-priors spec's Req 12.4–12.8, 14.4–14.6).
 7. Timed as train: the Trainer (Req 4.17). With no Iteration run, the step fails with the
    Req 7.9 message, and with fewer than steps, it adds the Req 7.8 warning (Req 7.7–7.9).
 8. Timed as write_ply: the Mean_Exposure is baked in (Req 6.4–6.7), the splats with a NaN or an
@@ -75,7 +79,8 @@ from splatpipe.train.files import (CAMERAS, RECORD, SPARSE, TRAINED_SPLAT, check
 from splatpipe.train.gpu_api import (Gpu, GpuOutOfMemory, TrainResult, check_gpu, load_gpu,
                                      out_of_memory_failure)
 from splatpipe.train.ply import check_ply, write_ply
-from splatpipe.train.priors import PRIOR_FOLDER, BrokenPriors, PriorSet, read_prior_set
+from splatpipe.train.priors import (PRIOR_FOLDER, PRIOR_INDEX, BrokenPriors, PriorSet,
+                                    read_prior_set)
 from splatpipe.train.scene import Scene, build_scene, training_size
 from splatpipe.train.settings import TrainSettings, read_settings
 from splatpipe.train.splats import (Splats, bake_exposure, drop_non_finite, mean_exposure,
@@ -102,6 +107,13 @@ _DROPPED = "Splats left out of out/train.ply because they held a NaN or an infin
 # The depth-priors spec's Req 10.3 warning (A9): a Prior_Index or Prior_File failed a check.
 _BROKEN_PRIORS = ("The depth priors in work/{folder}/ weren't used, because {file} {what}. "
                   "Training ran without depth priors.")
+# work/walls/, where the Walls_Step writes its Prior_Set (walls spec, Req 20.1). The name is
+# here, not imported, because splatpipe.train never imports splatpipe.walls (Req 1.11).
+WALLS_FOLDER = "walls"
+# The walls spec's Req 20.2 warning (C9): the walls priors failed a check, so training fell
+# back to the depth priors in work/depth/.
+_BROKEN_WALLS_PRIORS = ("The walls priors in work/walls/ weren't used, because {file} {what}. "
+                        "Training fell back to the depth priors in work/depth/.")
 
 
 def run(job_id: str, preset: str | None = None, *,
@@ -176,20 +188,43 @@ def _load(step: StepContext, gpu: Gpu, cameras: Path,
 
 
 def _read_priors(step: StepContext, model: SparseModel) -> PriorSet | None:
-    """The Prior_Set in work/depth/, checked against the Sparse_Model `model`, or None.
+    """The Prior_Set the step trains with, checked against the Sparse_Model `model`, or None.
 
-    With no work/depth/depth.json, it gives None and adds no count or warning, so the step
-    trains as the splat-training spec says (depth-priors spec, Req 10.2, A14). Priors that fail
-    a check of Req 10.4 give the Req 10.3 warning, naming the file and what failed, and None,
-    so one bad file drops the whole Prior_Set (A9). A checked Prior_Set adds the count
-    prior_images, its Prior_Views (Req 14.4).
+    This is the one place that picks the step's prior folder (walls spec, Req 20.5). When
+    work/walls/depth.json is a file, the Walls_Step finished, and the Prior_Set in work/walls/
+    is read with read_prior_set and every one of its checks (walls spec, Req 20.1, D5). If it
+    fails one, the step adds the walls spec's own warning, naming the file and what failed and
+    saying that training fell back to work/depth/ (Req 20.2, C9), and reads work/depth/ below.
+
+    With no work/walls/depth.json, the flow is the depth-priors spec's, with no warning about
+    the Walls_Step (walls spec, Req 20.3). With no work/depth/depth.json, it gives None and adds
+    no count or warning, so the step trains as the splat-training spec says (depth-priors spec,
+    Req 10.2, A14). Priors there that fail a check of Req 10.4 give the Req 10.3 warning, naming
+    work/depth/, the file and what failed, and None, so one bad file drops the whole Prior_Set
+    (A9, walls spec Req 20.6). A checked Prior_Set adds the count prior_images, its Prior_Views,
+    from whichever folder it came (Req 14.4, walls spec Req 20.4). Nothing else changes with
+    the walls priors: no setting, count, timing, Loss_Term or Start_Splat (walls spec, Req 20.4).
     """
+    work = step.job.folder / "work"
+    if (work / WALLS_FOLDER / PRIOR_INDEX).is_file():  # the Walls_Step finished (Req 20.1, D5)
+        try:
+            priors = read_prior_set(work / WALLS_FOLDER, model)
+        except BrokenPriors as error:  # fall back to work/depth/ (Req 20.2, C9)
+            step.add_warning(_BROKEN_WALLS_PRIORS.format(file=error.path, what=error.what))
+        else:
+            return _counted(step, priors)
     try:
-        priors = read_prior_set(step.job.folder / "work" / PRIOR_FOLDER, model)
+        priors = read_prior_set(work / PRIOR_FOLDER, model)
     except BrokenPriors as error:
         step.add_warning(_BROKEN_PRIORS.format(folder=PRIOR_FOLDER, file=error.path,
                                                what=error.what))
         return None
+    return _counted(step, priors)
+
+
+def _counted(step: StepContext, priors: PriorSet | None) -> PriorSet | None:
+    """Add the count prior_images for the Prior_Set `priors`, when there is one, and give it
+    back (depth-priors spec, Req 14.4; walls spec, Req 20.4)."""
     if priors is not None:
         step.add_count("prior_images", int(len(priors.priors)))
     return priors

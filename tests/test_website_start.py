@@ -81,8 +81,9 @@ def test_a_start_reserves_then_asks_the_spend_guard_then_copies_and_launches(dep
     assert deps.aws.objects[f"{prefix}/video.mp4"] == data
     assert deps.aws.objects[f"{prefix}/code.tar"] == b"fake code archive"
     item = job_item(deps, started.job_id)
+    # steps is the real Step_List's length: frames, cameras, depth, walls, train and clean.
     assert (item["state"], item["launch"], item["instance_type"], item["steps"]) == (
-        "held", "launched", "g5.8xlarge", 5)
+        "held", "launched", "g5.8xlarge", 6)
     assert total(deps) == 515
     assert deps.aws.items[("account#judges", f"upload#{UPLOAD}")]["used_by"] == started.job_id
     # The Job_Record reads back with splatpipe.jobs' own rules.

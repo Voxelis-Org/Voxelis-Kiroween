@@ -46,12 +46,13 @@ class StepEntry:
 
 # The Step_List, in this order: the Frames_Step and the Cameras_Step, both required (Req 8.2;
 # frames spec, D1, Req 11.3; cameras spec, D1, Req 14.3), the Depth_Step, optional (depth-priors
-# spec, Req 1.3, A11), the Train_Step, required (train spec, D5, Req 11.4), then the Clean_Step,
-# optional (clean spec, Req 8.4). The Fake_Step stays out, so it never runs on real Jobs, and
-# tests that run it pass their own list.
+# spec, Req 1.3, A11), the Walls_Step, optional (walls spec, Req 1.3), the Train_Step, required
+# (train spec, D5, Req 11.4), then the Clean_Step, optional (clean spec, Req 8.4). The Fake_Step
+# stays out, so it never runs on real Jobs, and tests that run it pass their own list.
 STEP_LIST: tuple[StepEntry, ...] = (StepEntry("frames", "splatpipe.frames", True),
                                     StepEntry("cameras", "splatpipe.cameras", True),
                                     StepEntry("depth", "splatpipe.depth", False),
+                                    StepEntry("walls", "splatpipe.walls", False),
                                     StepEntry("train", "splatpipe.train", True),
                                     StepEntry("clean", "splatpipe.clean", False))
 

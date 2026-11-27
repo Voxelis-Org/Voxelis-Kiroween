@@ -15,7 +15,10 @@ only a key's own part of the settings table's kind is in its kind for the other 
 keys, like min_sources, whose kind is a whole number of 2 or more, and finish_minutes, a number
 of 0 or more. So an edge that would break a cross-check gets the other setting changed with it.
 
-The Fallback_List test comes in task 10, with the Step_List.
+The Fallback_List test reads the real config and the real Step_List, which holds the Walls_Step:
+the Start_Command's step_needs_over counts the Walls_Step's min_memory_gb of 32, and
+select_candidates keeps every type on each Preset's Fallback_List, which stays as it is (Req 3.8,
+22.9, C12, D16).
 """
 
 import tomllib
@@ -25,9 +28,12 @@ from typing import Any
 
 import pytest
 
+from cloud.config import load_cloud_config
+from cloud.select import Needs, select_candidates, step_needs_over
 from conftest import MISSING  # what set_walls takes to leave a key out of the test config
 from splatpipe.config import REPO_ROOT, StepSettings, load_config
 from splatpipe.errors import ExpectedFailure, PipelineError
+from splatpipe.run import STEP_LIST
 from splatpipe.walls.settings import WallsSettings, read_settings
 
 # Read by path, so these tests still read it once CONFIG_PATH points at a test config.
@@ -292,6 +298,37 @@ def test_the_real_walls_section_loads_exactly_the_85_keys_for_each_preset(preset
     assert {key: type(value) for key, value in kept.items()} == {
         key: KEPT_AS[kind] for key, kind in KINDS.items()}
     assert {type(sigma) for sigma in walls.band_sigmas} == {float}
+
+
+# The Fallback_Lists and the Step_Needs (Req 3.8, 22.9, C12, D16)
+
+# The hard needs over the real Step_List for each Preset, worked out here from config.toml's
+# values: the largest min_memory_gb is 32, which the Walls_Step's [walls] gives (and the
+# Train_Step's [train] too), the largest min_gpu_memory_gb is the Train_Step's Preset value, and
+# the largest min_vcpus is the Walls_Step's 16, which is soft and rules out no type.
+REAL_NEEDS = {"fast": Needs(min_memory_gb=32.0, min_gpu_memory_gb=24.0, min_vcpus=16),
+              "default": Needs(min_memory_gb=32.0, min_gpu_memory_gb=24.0, min_vcpus=16),
+              "quality": Needs(min_memory_gb=32.0, min_gpu_memory_gb=48.0, min_vcpus=16)}
+
+
+@pytest.mark.parametrize("preset", PRESET_NAMES)
+def test_every_type_on_each_presets_fallback_list_meets_the_step_needs_with_the_walls_step(
+        preset: str) -> None:
+    """Req 3.8, 22.9, C12. The needs come from the Start_Command's own step_needs_over over the
+    real Step_List's names, as cloud/start.py works them out, so the Walls_Step's min_memory_gb of
+    32 counts, and select_candidates keeps every type on the Preset's Fallback_List, which stays
+    as it is (D16)."""
+    config = load_config(REAL_CONFIG)
+    names = [entry.name for entry in STEP_LIST]
+    assert "walls" in names
+    # The Walls_Step on its own needs 32 GB of memory and, softly, 16 vCPUs, and no GPU.
+    assert step_needs_over(["walls"], config, preset) == Needs(
+        min_memory_gb=32.0, min_gpu_memory_gb=0.0, min_vcpus=16)
+    needs = step_needs_over(names, config, preset)
+    assert needs == REAL_NEEDS[preset]
+    cloud_config = load_cloud_config(REAL_CONFIG)
+    fallback = list(cloud_config.preset_plan(preset).fallback)
+    assert select_candidates(preset, needs, cloud_config) == fallback  # every type is kept
 
 
 # The kinds of read_settings (Req 3.4)

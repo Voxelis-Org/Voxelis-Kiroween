@@ -176,22 +176,22 @@ price_date = "2026-11-21"
 [cloud.presets.fast]
 # Ordered fallback. Primary g5.8xlarge is pinned; the rest are tunable.
 fallback = ["g5.8xlarge", "g5.4xlarge", "g6.4xlarge", "g5.2xlarge", "g6.2xlarge"]
-# Expected run time in minutes, for the money quote.
-expected_minutes = 30
+# Expected run time in minutes, for the money quote, the walls step's time included.
+expected_minutes = 50
 # The Time_Cap in minutes, the hard backstop when something hangs.
 cap_minutes = 120
 [cloud.presets.default]
 # Ordered fallback. Primary g5.8xlarge is pinned; the rest are tunable.
 fallback = ["g5.8xlarge", "g5.4xlarge", "g6.4xlarge"]
-# Expected run time in minutes, for the money quote.
-expected_minutes = 60
+# Expected run time in minutes, for the money quote, the walls step's time included.
+expected_minutes = 100
 # The Time_Cap in minutes, the hard backstop when something hangs.
 cap_minutes = 180
 [cloud.presets.quality]
 # Primary g6e.4xlarge and fallback g6e.2xlarge are pinned (assumption D), the 48 GB L40S class.
 fallback = ["g6e.4xlarge", "g6e.2xlarge"]
-# Expected run time in minutes, for the money quote.
-expected_minutes = 120
+# Expected run time in minutes, for the money quote, the walls step's time included.
+expected_minutes = 180
 # The Time_Cap in minutes, the hard backstop when something hangs.
 cap_minutes = 360
 

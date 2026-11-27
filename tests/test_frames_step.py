@@ -69,14 +69,16 @@ buffer's 6. When the Pick_Pass starts, none may be, because the helper that runs
 and the choosing gives back no Score_Frame (Req 1.12, 13.7).
 
 The Step_List test runs the walk through run_job with every Step_List entry but the cameras one:
-the Frames_Step, then the Depth_Step, the Train_Step and the Clean_Step. It leaves the
-Cameras_Step out, so its outcome doesn't depend on whether COLMAP is installed (cameras spec,
-Req 14.6). No camera solve has run, so once the Frames_Step is done the Depth_Step finds no
-work/cameras/images/ and fails with its message for the missing folder, and the Job goes on,
-because the Depth_Step is optional. The Train_Step then finds no work/cameras/images/ either and
-fails, and so does the Job, with the Train_Step's message as the Job_Summary's readable_error,
-and the Clean_Step doesn't run (splat-training spec, Req 1.2, 11.5, 11.11, and depth-priors spec,
-Req 1.10, 18.12).
+the Frames_Step, then the Depth_Step, the Walls_Step, the Train_Step and the Clean_Step. It
+leaves the Cameras_Step out, so its outcome doesn't depend on whether COLMAP is installed
+(cameras spec, Req 14.6). No camera solve has run, so once the Frames_Step is done the
+Depth_Step finds no work/cameras/images/ and fails with its message for the missing folder, and
+the Job goes on, because the Depth_Step is optional. The Walls_Step then finds no
+work/depth/depth.json and fails with its message for it, before it opens any Worker_Pool, and
+the Job goes on again, because the Walls_Step is optional too (walls spec, Req 1.5, 2.2). The
+Train_Step then finds no work/cameras/images/ either and fails, and so does the Job, with the
+Train_Step's message as the Job_Summary's readable_error, and the Clean_Step doesn't run
+(splat-training spec, Req 1.2, 11.5, 11.11, and depth-priors spec, Req 1.10, 18.12).
 
 The two real ffmpeg tests run the step with the real TOOLS, so they're skipped, with the reason
 "ffmpeg and ffprobe aren't installed", when either tool is missing, like the real tests in
@@ -819,7 +821,7 @@ def test_a_5000_frame_score_pass_leaves_at_most_8_frames_alive_and_none_at_the_p
 
 
 # The real Step_List but its cameras entry (splat-training spec, Req 1.2, 11.5, 11.11; cameras
-# spec, Req 14.6; depth-priors spec, Req 1.10, 18.12)
+# spec, Req 14.6; depth-priors spec, Req 1.10, 18.12; walls spec, Req 1.5, 2.2, 22.10)
 
 def test_run_job_with_the_step_list_but_cameras_fails_at_train_once_the_frames_step_is_done(
         new_job: Callable[..., str], fake_tools: Callable[..., Any],
@@ -830,7 +832,8 @@ def test_run_job_with_the_step_list_but_cameras_fails_at_train_once_the_frames_s
     # Every entry but the Cameras_Step's, in the Step_List's order, so no COLMAP runs.
     summary = run_job(job_id, steps=[entry for entry in STEP_LIST if entry.name != "cameras"])
     assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
-        ("frames", "done"), ("depth", "failed"), ("train", "failed"), ("clean", "not_run")]
+        ("frames", "done"), ("depth", "failed"), ("walls", "failed"), ("train", "failed"),
+        ("clean", "not_run")]
     assert (summary["status"], summary["failed_step"]) == ("failed", "train")
     # No camera solve has run, so the Depth_Step finds no work/cameras/images/ and fails with
     # the Req 2.2 message, and the Job goes on to the Train_Step (depth-priors spec, Req 1.10).
@@ -840,6 +843,14 @@ def test_run_job_with_the_step_list_but_cameras_fails_at_train_once_the_frames_s
     assert (depth["required"], depth["readable_error"]) == (False, (
         f"The depth step needs {images}, which the camera solve step writes, but it isn't "
         "there. Run the camera solve step on this job first."))
+    # The Depth_Step wrote no work/depth/depth.json, so the Walls_Step fails with its Req 2.2
+    # message before it opens a Worker_Pool, and the Job goes on (walls spec, Req 1.5, 2.2).
+    index = folder_of(job_id).resolve() / "work" / "depth" / "depth.json"
+    walls = summary["steps"][2]
+    assert (walls["required"], walls["readable_error"]) == (False, (
+        f"The walls step needs {index}, which the depth step writes, but it isn't there, so the "
+        "depth step has to run on this job first. The job goes on and trains as it would "
+        "without the walls step."))
     # The Train_Step finds no work/cameras/images/ either, and its failure fails the Job.
     assert summary["readable_error"] == (
         f"The train step needs {images}, which the camera solve step writes, but it isn't "
