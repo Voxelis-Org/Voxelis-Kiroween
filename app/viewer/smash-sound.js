@@ -1,5 +1,6 @@
-// Pumpkin smash's two sounds, made with Web Audio in code and no audio files: a soft whoosh when
-// a candy corn is thrown, and a squelchy splat with a few sparkly pings when a pumpkin bursts.
+// Pumpkin smash's sounds, made with Web Audio in code and no audio files: a soft whoosh when a
+// candy corn is thrown, a squelchy splat with a few sparkly pings when a pumpkin bursts, a tinkle
+// of glass when a lantern breaks, and a bonk when a pumpkin catches you.
 //
 // The audio context starts on the first sound, which always comes from a tap, a click or a key, so
 // browsers that only allow sound after the visitor does something let it play. Muting turns the
@@ -104,6 +105,26 @@ export function createSounds() {
             tone(now, 0.2, 'sine', 170, 55, 0.7);
             noiseBurst(now, 0.28, 'lowpass', 2200, 260, 0.9, 0.55);
             PINGS.forEach((note, i) => tone(now + 0.05 + i * 0.055, 0.25, 'triangle', note, note * 0.98, 0.06));
+        },
+        // A broken lantern: a tinkle of glass, three falling notes and a low buzz for the lost points.
+        lanternSound() {
+            if (muted || !ready()) {
+                return;
+            }
+            const now = context.currentTime;
+            noiseBurst(now, 0.35, 'highpass', 5200, 2600, 0.7, 0.4);
+            [2637, 1976, 1568].forEach((note, i) => tone(now + i * 0.07, 0.18, 'triangle', note, note * 0.97, 0.07));
+            tone(now + 0.05, 0.3, 'sawtooth', 140, 90, 0.12);
+        },
+        // Caught by a pumpkin: a soft, low bonk that wobbles down.
+        caughtSound() {
+            if (muted || !ready()) {
+                return;
+            }
+            const now = context.currentTime;
+            tone(now, 0.32, 'sine', 300, 70, 0.6);
+            tone(now + 0.03, 0.22, 'square', 120, 60, 0.08);
+            noiseBurst(now, 0.18, 'lowpass', 900, 200, 0.8, 0.3);
         },
         destroy() {
             context?.close().catch(() => {});

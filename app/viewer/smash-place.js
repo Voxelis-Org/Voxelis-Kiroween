@@ -14,9 +14,13 @@
 import { forwardOf, yawPitchOf } from './cameras.js';
 
 // The grid: this many cubes along its longest side, over the cameras' box and this many scene
-// lengths around it, so every place a pumpkin can go is inside it.
-export const GRID_CELLS = 64;
+// lengths around it (shrunk to the splats inside), so every place a pumpkin can go is inside it.
+export const GRID_CELLS = 112;
 export const GRID_MARGIN = 0.75;
+// Every cube within PATH_OPEN scene lengths of the filmed path is open, and a clump of fewer than
+// MIN_CLUMP solid cubes is a floater.
+export const PATH_OPEN = 0.05;
+export const MIN_CLUMP = 12;
 // A cube is solid when it holds at least MIN_SOLID_COUNT splats and at least SOLID_SHARE of the
 // mean count of the cubes that hold any. Stray floaters in the air hold far fewer.
 export const MIN_SOLID_COUNT = 3;
@@ -52,31 +56,76 @@ export function boxAround(points, margin) {
     return { lo, hi };
 }
 
-// Counts the splat centres into a grid over the box { lo, hi }. centres is a flat list of x, y, z
-// in the splat's own frame, as the engine keeps them; toViewer { rows, offset } takes a centre to
-// the viewer's frame as rows x centre + offset, rows being 3 rows of 3.
+// Counts the splat centres into a grid over the box { lo, hi }, and works out which cubes are
+// solid. centres is a flat list of x, y, z in the splat's own frame, as the engine keeps them;
+// toViewer { rows, offset } takes a centre to the viewer's frame as rows x centre + offset, rows
+// being 3 rows of 3.
 //
-// Returns { lo, cell, dims, counts, solid }: the grid's low corner, its cube size, its cubes along
-// x, y and z, the splats in each cube, and the count from which a cube is solid.
-export function buildOpenGrid(centres, toViewer, box, cells = GRID_CELLS) {
-    const { lo, hi } = box;
-    const longest = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1e-9);
-    const cell = longest / cells;
-    const dims = [0, 1, 2].map((c) => Math.max(1, Math.ceil((hi[c] - lo[c]) / cell)));
-    const counts = new Uint16Array(dims[0] * dims[1] * dims[2]);
+// Three filters keep floaters and fog out of the walls, so nothing stops you in the open air:
+// - Density: a cube is solid only when it holds at least MIN_SOLID_COUNT splats and SOLID_SHARE of
+//   the mean count of the cubes that hold any. A wall packs many splats into a cube; a floater or
+//   a wisp of fog spreads a few over many.
+// - The phone's own path: options.keepOpen lists points the phone moved through, and every cube
+//   within options.openRadius of one is open, because the phone was there.
+// - Clumps: a group of solid cubes touching each other face to face with fewer than
+//   options.minClump cubes in it is a floater, not a thing in the room, so it's open.
+// The box first shrinks to the splats' own bounds inside it, so its cubes are as small as they
+// can be.
+//
+// Returns { lo, cell, dims, counts, solid, mask }: the grid's low corner, its cube size, its cubes
+// along x, y and z, the splats in each cube, the count from which a cube is dense enough, and 1
+// for each cube that's solid after the filters.
+export function buildOpenGrid(centres, toViewer, box, options = {}) {
+    const cells = options.cells ?? GRID_CELLS;
     const [r0, r1, r2] = toViewer.rows;
     const [o0, o1, o2] = toViewer.offset;
-    for (let i = 0; i + 2 < centres.length; i += 3) {
+    const at = (i, out) => {
         const x = centres[i];
         const y = centres[i + 1];
         const z = centres[i + 2];
-        const ix = Math.floor((r0[0] * x + r0[1] * y + r0[2] * z + o0 - lo[0]) / cell);
-        const iy = Math.floor((r1[0] * x + r1[1] * y + r1[2] * z + o1 - lo[1]) / cell);
-        const iz = Math.floor((r2[0] * x + r2[1] * y + r2[2] * z + o2 - lo[2]) / cell);
-        if (ix < 0 || iy < 0 || iz < 0 || ix >= dims[0] || iy >= dims[1] || iz >= dims[2]) {
+        out[0] = r0[0] * x + r0[1] * y + r0[2] * z + o0;
+        out[1] = r1[0] * x + r1[1] * y + r1[2] * z + o1;
+        out[2] = r2[0] * x + r2[1] * y + r2[2] * z + o2;
+        return out;
+    };
+    const q = [0, 0, 0];
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i + 2 < centres.length; i += 3) {
+        at(i, q);
+        if (q[0] < box.lo[0] || q[1] < box.lo[1] || q[2] < box.lo[2] || q[0] > box.hi[0] || q[1] > box.hi[1] || q[2] > box.hi[2]) {
             continue;
         }
-        const k = (iz * dims[1] + iy) * dims[0] + ix;
+        for (let c = 0; c < 3; c++) {
+            lo[c] = Math.min(lo[c], q[c]);
+            hi[c] = Math.max(hi[c], q[c]);
+        }
+    }
+    for (let c = 0; c < 3; c++) {
+        if (!(lo[c] <= hi[c])) {
+            lo[c] = box.lo[c];
+            hi[c] = box.hi[c];
+        }
+    }
+    const longest = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1e-9);
+    const cell = longest / cells;
+    // One cube of room on every side, so a wall at the very edge is still inside.
+    for (let c = 0; c < 3; c++) {
+        lo[c] -= cell;
+        hi[c] += cell;
+    }
+    const dims = [0, 1, 2].map((c) => Math.max(1, Math.ceil((hi[c] - lo[c]) / cell)));
+    const [nx, ny, nz] = dims;
+    const counts = new Uint16Array(nx * ny * nz);
+    for (let i = 0; i + 2 < centres.length; i += 3) {
+        at(i, q);
+        const ix = Math.floor((q[0] - lo[0]) / cell);
+        const iy = Math.floor((q[1] - lo[1]) / cell);
+        const iz = Math.floor((q[2] - lo[2]) / cell);
+        if (ix < 0 || iy < 0 || iz < 0 || ix >= nx || iy >= ny || iz >= nz) {
+            continue;
+        }
+        const k = (iz * ny + iy) * nx + ix;
         if (counts[k] < 65535) {
             counts[k] += 1;
         }
@@ -91,7 +140,82 @@ export function buildOpenGrid(centres, toViewer, box, cells = GRID_CELLS) {
     }
     const mean = filled > 0 ? total / filled : 0;
     const solid = Math.max(MIN_SOLID_COUNT, Math.ceil(mean * SOLID_SHARE));
-    return { lo: [...lo], cell, dims, counts, solid };
+    const mask = new Uint8Array(counts.length);
+    for (let k = 0; k < counts.length; k++) {
+        mask[k] = counts[k] >= solid ? 1 : 0;
+    }
+    const grid = { lo, cell, dims, counts, solid, mask };
+    if (options.keepOpen && options.openRadius > 0) {
+        openAround(grid, options.keepOpen, options.openRadius);
+    }
+    dropClumps(grid, options.minClump ?? MIN_CLUMP);
+    return grid;
+}
+
+// Opens every cube whose middle is within radius of one of the points.
+function openAround(grid, points, radius) {
+    const { lo, cell, dims, mask } = grid;
+    const [nx, ny, nz] = dims;
+    const limit = radius * radius;
+    for (const p of points) {
+        const from = [0, 1, 2].map((c) => Math.max(0, Math.floor((p[c] - radius - lo[c]) / cell)));
+        const to = [0, 1, 2].map((c) => Math.min(dims[c] - 1, Math.floor((p[c] + radius - lo[c]) / cell)));
+        for (let iz = from[2]; iz <= to[2]; iz++) {
+            const dz = lo[2] + (iz + 0.5) * cell - p[2];
+            for (let iy = from[1]; iy <= to[1]; iy++) {
+                const dy = lo[1] + (iy + 0.5) * cell - p[1];
+                for (let ix = from[0]; ix <= to[0]; ix++) {
+                    const dx = lo[0] + (ix + 0.5) * cell - p[0];
+                    if (dx * dx + dy * dy + dz * dz <= limit) {
+                        mask[(iz * ny + iy) * nx + ix] = 0;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Opens every group of solid cubes, touching face to face, that has fewer than minClump cubes.
+function dropClumps(grid, minClump) {
+    if (!(minClump > 1)) {
+        return;
+    }
+    const { dims, mask } = grid;
+    const [nx, ny] = dims;
+    const plane = nx * ny;
+    const seen = new Uint8Array(mask.length);
+    const queue = new Int32Array(mask.length);
+    for (let start = 0; start < mask.length; start++) {
+        if (mask[start] !== 1 || seen[start]) {
+            continue;
+        }
+        let head = 0;
+        let tail = 0;
+        queue[tail++] = start;
+        seen[start] = 1;
+        while (head < tail) {
+            const k = queue[head++];
+            const ix = k % nx;
+            const iy = Math.floor(k / nx) % ny;
+            const iz = Math.floor(k / plane);
+            const next = [
+                ix > 0 ? k - 1 : -1, ix < nx - 1 ? k + 1 : -1,
+                iy > 0 ? k - nx : -1, iy < ny - 1 ? k + nx : -1,
+                iz > 0 ? k - plane : -1, iz < dims[2] - 1 ? k + plane : -1,
+            ];
+            for (const j of next) {
+                if (j >= 0 && mask[j] === 1 && !seen[j]) {
+                    seen[j] = 1;
+                    queue[tail++] = j;
+                }
+            }
+        }
+        if (tail < minClump) {
+            for (let i = 0; i < tail; i++) {
+                mask[queue[i]] = 0;
+            }
+        }
+    }
 }
 
 // Whether the cube holding point p is solid. Outside the grid counts as solid, as nothing is known
@@ -104,7 +228,7 @@ export function solidAt(grid, p) {
     if (ix < 0 || iy < 0 || iz < 0 || ix >= nx || iy >= ny || iz >= nz) {
         return true;
     }
-    return grid.counts[(iz * ny + iy) * nx + ix] >= grid.solid;
+    return grid.mask[(iz * ny + iy) * nx + ix] === 1;
 }
 
 // Whether no solid cube comes within clearance of point p. With no grid, everything is open.
@@ -112,7 +236,7 @@ export function isOpen(grid, p, clearance) {
     if (grid === null) {
         return true;
     }
-    const { lo, cell, dims, counts, solid } = grid;
+    const { lo, cell, dims, mask } = grid;
     const from = [0, 1, 2].map((c) => Math.floor((p[c] - clearance - lo[c]) / cell));
     const to = [0, 1, 2].map((c) => Math.floor((p[c] + clearance - lo[c]) / cell));
     if (from.some((value) => value < 0) || to.some((value, c) => value >= dims[c])) {
@@ -125,7 +249,7 @@ export function isOpen(grid, p, clearance) {
             const dy = Math.max(lo[1] + iy * cell - p[1], 0, p[1] - (lo[1] + (iy + 1) * cell));
             for (let ix = from[0]; ix <= to[0]; ix++) {
                 const dx = Math.max(lo[0] + ix * cell - p[0], 0, p[0] - (lo[0] + (ix + 1) * cell));
-                if (dx * dx + dy * dy + dz * dz <= limit && counts[(iz * dims[1] + iy) * dims[0] + ix] >= solid) {
+                if (dx * dx + dy * dy + dz * dz <= limit && mask[(iz * dims[1] + iy) * dims[0] + ix] === 1) {
                     return false;
                 }
             }
@@ -133,7 +257,6 @@ export function isOpen(grid, p, clearance) {
     }
     return true;
 }
-
 // How far from origin along the unit direction the first solid cube is, up to maxDistance. With
 // no grid, NO_GRID_TRUST of maxDistance.
 export function openDepth(grid, origin, direction, maxDistance) {
@@ -182,11 +305,12 @@ function nearestIndex(positions, point) {
 // Finds a place for a new pumpkin. path is tour.js's path (positions and forwards, rate samples a
 // second), grid is buildOpenGrid's or null, view is the camera { position, fov, sceneLength },
 // others are the middles of the pumpkins already out (and any spot to stay away from), and radius
-// is the pumpkin's radius. Of CANDIDATES random tries that pass every rule, it keeps the one
-// furthest from the others, so the pumpkins spread out.
+// is the pumpkin's radius. keepAway { point, distance } is a place it must be at least that far
+// from, like the player, so a new pumpkin doesn't appear on top of them. Of CANDIDATES random
+// tries that pass every rule, it keeps the one furthest from the others, so the pumpkins spread out.
 //
 // Returns [x, y, z], or null when no try passed.
-export function placePumpkin({ path, grid, view, others = [], radius, random = Math.random, candidates = CANDIDATES }) {
+export function placePumpkin({ path, grid, view, others = [], radius, keepAway = null, random = Math.random, candidates = CANDIDATES }) {
     const length = view.sceneLength;
     const nearest = minViewDistance(radius, view.fov);
     const spacing = MIN_SPACING * length;
@@ -212,7 +336,8 @@ export function placePumpkin({ path, grid, view, others = [], radius, random = M
         }
         const ahead = close + random() * (far - close);
         const p = [0, 1, 2].map((c) => from[c] + direction[c] * ahead);
-        if (dist(p, view.position) < nearest || !isOpen(grid, p, clearance)) {
+        if (dist(p, view.position) < nearest || !isOpen(grid, p, clearance)
+            || (keepAway !== null && dist(p, keepAway.point) < keepAway.distance)) {
             continue;
         }
         let gap = Infinity;

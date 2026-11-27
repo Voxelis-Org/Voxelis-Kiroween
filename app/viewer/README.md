@@ -2,7 +2,7 @@
 
 A web viewer for one finished job's splat. It opens `out/clean.sog`, or `out/train.ply` when the job has no clean copy, and starts at the job's first camera in `out/cameras.json`, with up pointing up.
 
-- **Laptop:** drag to turn, scroll (or pinch on a trackpad) to zoom, and WASD or the arrow keys to walk. Space or the **Tour** button plays and pauses the tour.
+- **Laptop:** drag to turn, scroll (or pinch on a trackpad) to zoom, WASD or the arrow keys to walk, and Q and E to go down and up. Space or the **Tour** button plays and pauses the tour.
 - **Phone:** drag with one finger to turn, and pinch to zoom. The **Tour** button plays and pauses the tour.
 
 Until the splat is on screen, a loading screen shows how much of the file has arrived, as a bar, a percentage and megabytes. With no `Content-Length` from the host, it shows only the megabytes and a sliding bar. Once the download is complete, it says the splat is unpacking while the engine decodes it.
@@ -25,16 +25,21 @@ It's plain HTML, CSS and JavaScript with no build step and no iframe. It runs on
 
 ## Pumpkin smash
 
-A Halloween game for any filmed place: glowing pumpkins float in the room, and you smash them with candy corn. It needs the tour's path, so a job with no tour has no game.
+A Halloween game for any filmed place, played like a PC game on a laptop. Glowing pumpkins float in the room, and the ones that see you come after you. Smash them with candy corn, and don't hit the lanterns. It needs the tour's path, so a job with no tour has no game.
 
-- **Starting:** the **Pumpkin smash** button above the Tour button, or P. It stops the tour, turns haunted mode off and starts a 60-second round, with the pumpkins smashed and the time left at the top right. When the time is up, a panel shows the score and **Play again**. The button (now **End smash**), P or Esc ends the game and puts the room back as it was, haunted mode included. H does nothing while a round runs.
-- **Throwing:** a tap or a click that doesn't drag throws a glowing candy corn from just below the view to where it lands, in 0.2 s. It smashes the nearest pumpkin its ray passes within the radius of. Dragging still turns, and pinch, scroll and WASD still move.
-- **The dark room:** the splat itself darkens, and each pumpkin throws warm, flickering orange light on the walls around it, through the engine's `gsplatModifyVS` shader chunk on the gsplat template material. Haunted mode's canvas filter isn't used, because it would dim the pumpkins too.
-- **The pumpkins:** 6 at a time, made in code with no model or image files: 8 ribbed wedges, a stem and a glowing carved face. They bob and sway, and they're real meshes in the scene, so a wall in front of one hides it. Each one goes near the filmed path, some way along where the phone looked from there, short of the first wall and clear of everything solid, spread out from the others, and far enough from the camera to be at most a quarter of the view's height. The walls come from counting the splat's centres into a grid of cubes. Sizes and distances are shares of the scene length the tour uses: a pumpkin's radius is 0.035 of it.
-- **A smash:** the wedges and the stem fly apart with spin and gravity, wrapped sweets and sparkles spray out, the pumpkin's light flashes and goes out, and everything is gone within 1.5 s. It scores 1, and a new pumpkin appears somewhere else a second later.
-- **Sound:** a whoosh for a throw and a splat for a smash, made with Web Audio in code, and a mute button at the top right.
-- **Phones:** each shape is one instanced draw. The pieces, sweets and sparkles come from pools made once, with at most 300 sweets and sparkles at a time. With `prefers-reduced-motion`, the pumpkins don't bob or sway and their light doesn't flicker.
-
+- **Starting and ending:** the **Pumpkin smash** button above the Tour button, or P. It stops the tour, turns haunted mode off and starts a 60-second round. The score, a bar for how fired up you are and the time left are at the top right, and the controls show along the bottom for the first few seconds. When the time is up, a panel shows the score and **Play again**. The button (now **End smash**), P or Esc ends the game and puts the room back as it was, haunted mode included. H and the Tour button do nothing while a round runs.
+- **Laptop controls:** the mouse is locked to the view, so moving it looks around, and a click throws at the aim dot in the middle. WASD walk, Space jumps, G switches between walking and flying (Q and E go down and up), V switches between your own eyes and a camera over your shoulder, and M mutes the sounds. Esc frees the mouse and pauses the clock: a click carries on, and Esc again or End smash ends the game. Where the browser won't lock the mouse, a click that doesn't drag throws where it lands.
+- **Phone controls:** drag to look, tap to throw where you tap, and pinch to move.
+- **Scoring:** a smashed pumpkin scores 1, a broken lantern costs 2 and a pumpkin that catches you costs 1, so the score can go below 0. The end panel lists all three.
+- **The chase:** a pumpkin starts chasing once it's on screen with nothing in the way, or once you're within 0.25 scene lengths. It glows hotter, waits 0.8 s and comes after you around the walls, slow at first and quicker as the round goes on, from 0.06 to 0.14 scene lengths a second against your walk of 0.4. One that reaches you bursts, and the edges of the view glow orange.
+- **The lanterns:** 3 at a time, iron lanterns with glowing amber glass, made in code. One hit shatters it into shards, and a new one appears somewhere else 2.5 s later.
+- **Walls and physics:** the splat's centres are counted into a grid of cubes, and a cube with enough splats in it is solid. You bump into walls and things in the room, and the pumpkins go around them. Floaters and fog don't count: a cube needs at least 3 splats and 10% of the mean count of the cubes with any, a clump of fewer than 12 solid cubes is dropped, and everything within 0.05 scene lengths of where the phone went is open. Walking, gravity holds you to the floor, you step up onto anything lower than 30% of your height, and the phone's height above the floor under the filmed path sets your eye height. With no floor found, you fly. Splats only show surfaces, so the inside of something filmed all round counts as open. A candy corn stops at the first wall, so a pumpkin behind one can't be hit.
+- **The light:** the splat itself is lit through the engine's `gsplatModifyVS` shader chunk on the gsplat template material. Calm, the room is a cool dim blue, keeping about 45% of its colour. The more you throw and smash, the brighter and warmer it gets, up to about 70%, and it calms down over about 5 s. A lantern or being caught knocks it back. A warm light follows you and grows with it, each pumpkin throws flickering orange light on the walls and the lanterns throw a steady amber one. Haunted mode's canvas filter isn't used, because it would dim the pumpkins too.
+- **You:** a person made in code, in an orange hoodie, jeans and white trainers, built from rounded parts joined at the shoulders, elbows, wrists, hips, knees and ankles. They walk, jump, fly and throw overarm. You see them over your shoulder with V. The camera stays level with your head, so it doesn't rise out of a room whose ceiling wasn't filmed, and it stops short of any splats behind you.
+- **The pumpkins:** 6 at a time, made in code with no model or image files: 8 ribbed wedges, a stem and a glowing carved face. They bob and sway, and they're real meshes in the scene, so a wall in front of one hides it. Each one appears near the filmed path, short of the first wall and clear of everything solid, spread out from the others, at least 0.35 scene lengths from you and far enough from the camera to be at most a quarter of the view's height. One that isn't chasing is never drawn filling the view. Sizes and distances are shares of the scene length the tour uses: a pumpkin's radius is 0.035 of it.
+- **A smash:** the wedges and the stem fly apart with spin and gravity, wrapped sweets and sparkles spray out, the pumpkin's light flashes and goes out, and everything is gone within 1.5 s. A new pumpkin appears somewhere else a second later.
+- **Sound:** a whoosh for a throw, a splat for a smash, a tinkle of glass for a lantern and a bonk when you're caught, all made with Web Audio in code, and a mute button at the top right.
+- **Phones:** each shape is one instanced draw. The pieces, sweets, sparkles and shards come from pools made once, with at most 300 sweets, sparkles and shards at a time. With `prefers-reduced-motion`, the pumpkins don't bob or sway and their light doesn't flicker.
 ## Files
 
 | File | What it is |
@@ -45,12 +50,14 @@ A Halloween game for any filmed place: glowing pumpkins float in the room, and y
 | `controls.js` | How a drag, a pinch, the wheel and the keys move the camera |
 | `tour.js` | The tour's path from the cameras, and the player that walks it |
 | `haunt.js` | Haunted mode: the dimming, the ghost and the logo's three taps |
-| `smash.js` | Pumpkin smash: its button, the dark room, the meshes, input and the round on screen |
-| `smash-play.js` | Pumpkin smash's rules and motion: the round's clock and score, the throw and what it smashes, the pieces' gravity, spin and fading, and the pools |
-| `smash-place.js` | Where pumpkins go: the grid of open and solid space from the splat's centres, and the placement rules |
-| `smash-meshes.js` | The pumpkin's wedges, stem and face, the candy corn, the sweet and the sparkle, made in code |
-| `smash-sound.js` | The throw and smash sounds, made with Web Audio |
-| `smash.css` | Pumpkin smash's score, clock, mute button and end panel. `smash.js` links it from beside itself |
+| `smash.js` | Pumpkin smash: its button, the light, the meshes, the mouse lock, input, and the round on screen |
+| `smash-play.js` | Pumpkin smash's rules and motion: the round's clock, score and penalties, the throw and what it smashes, the pieces' gravity, spin and fading, the pools, and the light that follows how fired up you are |
+| `smash-place.js` | The grid of open and solid space from the splat's centres, without floaters and fog, and where pumpkins and lanterns go |
+| `smash-physics.js` | Your body bumping into walls, standing, stepping, jumping and flying, the pumpkins' chase, line of sight, mouse look and the camera over your shoulder |
+| `smash-human.js` | The person you play, made in code, and their walk, jump, flight and throw |
+| `smash-meshes.js` | The pumpkin's wedges, stem and face, the candy corn, the sweet, the sparkle, the lantern and its shards, made in code |
+| `smash-sound.js` | The throw, smash, lantern and caught sounds, made with Web Audio |
+| `smash.css` | Pumpkin smash's score, fury bar, clock, mute button, aim dot, pause and end panels. `smash.js` links it from beside itself |
 | `loading.js` | The loading screen's percentage and megabytes |
 | `embed.js` | Starts a viewer in every element with a `data-splat-url`, for the website |
 | `page.js`, `index.html` | The standalone page, for testing on a laptop |
@@ -81,7 +88,7 @@ The website serves these from the bundle, read into `Deps.static` like `app.js`:
 |---|---|---|
 | `GET /viewer/viewer.css`, `/viewer/smash.css` | the same names in `app/viewer/` | `text/css; charset=utf-8` |
 | `GET /viewer/embed.js` | `app/viewer/embed.js` | `text/javascript; charset=utf-8` |
-| `GET /viewer/viewer.js`, `/viewer/params.js`, `/viewer/cameras.js`, `/viewer/controls.js`, `/viewer/tour.js`, `/viewer/haunt.js`, `/viewer/loading.js`, `/viewer/smash.js`, `/viewer/smash-play.js`, `/viewer/smash-place.js`, `/viewer/smash-meshes.js`, `/viewer/smash-sound.js` | the same names in `app/viewer/` | `text/javascript; charset=utf-8` |
+| `GET /viewer/viewer.js`, `/viewer/params.js`, `/viewer/cameras.js`, `/viewer/controls.js`, `/viewer/tour.js`, `/viewer/haunt.js`, `/viewer/loading.js`, `/viewer/smash.js`, `/viewer/smash-play.js`, `/viewer/smash-place.js`, `/viewer/smash-meshes.js`, `/viewer/smash-sound.js`, `/viewer/smash-physics.js`, `/viewer/smash-human.js` | the same names in `app/viewer/` | `text/javascript; charset=utf-8` |
 | `GET /viewer/vendor/playcanvas.min.mjs` | the engine, 2,895,086 bytes | `text/javascript; charset=utf-8` |
 | `GET /viewer/vendor/PLAYCANVAS-LICENSE.txt` | the engine's MIT licence, which its terms ask us to keep with it | `text/plain; charset=utf-8` |
 

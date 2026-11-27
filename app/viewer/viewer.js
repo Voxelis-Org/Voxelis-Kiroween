@@ -23,7 +23,7 @@ const FAR_CLIP = 1000;
 const BACKGROUND = new pc.Color(0.06, 0.06, 0.07);
 
 const HINT_TOUCH = 'Drag to turn, pinch to zoom.';
-const HINT_MOUSE = 'Drag to turn, scroll to zoom, WASD or the arrow keys to walk.';
+const HINT_MOUSE = 'Drag to turn, scroll to zoom, WASD or the arrow keys to walk, Q and E to go down and up.';
 const HINT_TOUR_TOUCH = ' Tap Tour to walk the filmed path.';
 const HINT_TOUR_MOUSE = ' Space or Tour walks the filmed path.';
 // How long a short message, like haunted mode's, stays up, in milliseconds.
@@ -196,7 +196,8 @@ export function mountViewer(container, sources) {
         play.setAttribute('aria-pressed', String(on));
     };
     const togglePlay = () => {
-        if (tour === null || view === null) {
+        // Pumpkin smash has Space for jumping, and the tour waits until it ends.
+        if (tour === null || view === null || smash?.active) {
             return;
         }
         if (tour.playing) {
@@ -318,7 +319,7 @@ export function mountViewer(container, sources) {
         bindInput(place);
         if (path !== null) {
             smash = createPumpkinSmash({
-                app, container, canvas, view, path, splat, resource: asset.resource, touch, announce,
+                app, container, canvas, view, place, path, splat, resource: asset.resource, touch, announce,
                 stopTour: takeOver, haunt, before: play,
             });
             cleanups.push(() => smash.destroy());

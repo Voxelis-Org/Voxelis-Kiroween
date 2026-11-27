@@ -40,30 +40,34 @@ export function pinchLengths(spreadChange, screenHeight) {
     return (spreadChange / Math.max(screenHeight, 1)) * PINCH_SPEED;
 }
 
-// The keys that walk, by KeyboardEvent.code, so WASD works whatever the keyboard layout.
+// The keys that walk, by KeyboardEvent.code, so WASD works whatever the keyboard layout. Q and E
+// go down and up, as in the SuperSplat viewer's fly mode.
 export const WALK_KEYS = {
     KeyW: 'forward', ArrowUp: 'forward',
     KeyS: 'back', ArrowDown: 'back',
     KeyA: 'left', ArrowLeft: 'left',
     KeyD: 'right', ArrowRight: 'right',
+    KeyQ: 'down', KeyE: 'up',
 };
 
 // Walking for dt seconds with the given set of held directions. Walking stays level: forward is
 // the heading with the pitch left out, so looking down while walking doesn't sink into the floor.
+// Up and down go straight up and down, at the same speed.
 export function walk(view, held, dt) {
     const ahead = (held.has('forward') ? 1 : 0) - (held.has('back') ? 1 : 0);
     const side = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
-    if (ahead === 0 && side === 0) {
+    const rise = (held.has('up') ? 1 : 0) - (held.has('down') ? 1 : 0);
+    if (ahead === 0 && side === 0 && rise === 0) {
         return false;
     }
     const y = (view.yaw * Math.PI) / 180;
     const forward = [-Math.sin(y), 0, -Math.cos(y)];
     const right = [Math.cos(y), 0, -Math.sin(y)];
-    const n = Math.hypot(ahead, side);
+    const n = Math.hypot(ahead, side, rise);
     const d = (WALK_SPEED * view.sceneLength * dt) / n;
     view.position = [
         view.position[0] + (forward[0] * ahead + right[0] * side) * d,
-        view.position[1],
+        view.position[1] + rise * d,
         view.position[2] + (forward[2] * ahead + right[2] * side) * d,
     ];
     return true;

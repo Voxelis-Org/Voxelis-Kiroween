@@ -96,12 +96,21 @@ export function smoothstep(x) {
 
 // ---- the round ----
 
+// What a lantern and being caught by a pumpkin cost, in points.
+export const LANTERN_PENALTY = 2;
+export const CAUGHT_PENALTY = 1;
+
 // A round's clock and score. state is 'idle' before the first start and after end(), 'playing'
-// while the clock runs, and 'over' once it has run out, until start() or end().
+// while the clock runs, and 'over' once it has run out, until start() or end(). Smashing a pumpkin
+// scores 1, breaking a lantern costs LANTERN_PENALTY and being caught costs CAUGHT_PENALTY, so the
+// score can go below 0. Each counts only while the clock runs and returns whether it counted.
 export function createRound(seconds = ROUND_SECONDS) {
     let state = 'idle';
     let timeLeft = seconds;
     let score = 0;
+    let smashed = 0;
+    let broken = 0;
+    let caught = 0;
     return {
         get state() {
             return state;
@@ -112,10 +121,42 @@ export function createRound(seconds = ROUND_SECONDS) {
         get score() {
             return score;
         },
+        get smashed() {
+            return smashed;
+        },
+        get broken() {
+            return broken;
+        },
+        get caught() {
+            return caught;
+        },
+        // How far into the round the clock is, in seconds.
+        get elapsed() {
+            return seconds - timeLeft;
+        },
         start() {
             state = 'playing';
             timeLeft = seconds;
             score = 0;
+            smashed = 0;
+            broken = 0;
+            caught = 0;
+        },
+        breakLantern() {
+            if (state !== 'playing') {
+                return false;
+            }
+            broken += 1;
+            score -= LANTERN_PENALTY;
+            return true;
+        },
+        caughtBy() {
+            if (state !== 'playing') {
+                return false;
+            }
+            caught += 1;
+            score -= CAUGHT_PENALTY;
+            return true;
         },
         // Moves the clock on by dt seconds. Returns true on the step where the time runs out.
         step(dt) {
@@ -134,6 +175,7 @@ export function createRound(seconds = ROUND_SECONDS) {
             if (state !== 'playing') {
                 return false;
             }
+            smashed += 1;
             score += 1;
             return true;
         },
@@ -141,6 +183,60 @@ export function createRound(seconds = ROUND_SECONDS) {
             state = 'idle';
         },
     };
+}
+
+// The end panel's lines for a finished round.
+export function resultLines(round) {
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    const lines = [`You smashed ${plural(round.smashed, 'pumpkin', 'pumpkins')} with candy corn.`];
+    if (round.broken > 0) {
+        lines.push(`You broke ${plural(round.broken, 'lantern', 'lanterns')}: −${round.broken * LANTERN_PENALTY}.`);
+    }
+    if (round.caught > 0) {
+        lines.push(`Pumpkins caught you ${plural(round.caught, 'time', 'times')}: −${round.caught * CAUGHT_PENALTY}.`);
+    }
+    lines.push(`Score: ${round.score}`);
+    return lines;
+}
+
+// ---- how fired up the player is, and the light that follows it ----
+
+// Fury goes from 0 to 1: throwing and smashing raise it, and it fades back with this time
+// constant, in seconds. Breaking a lantern or being caught knocks it down.
+export const FURY_FADE = 5;
+export const FURY_THROW = 0.05;
+export const FURY_SMASH = 0.2;
+export const FURY_LANTERN = -0.25;
+export const FURY_CAUGHT = -0.15;
+
+export function furyAfter(fury, dt) {
+    return fury * Math.exp(-Math.max(0, dt) / FURY_FADE);
+}
+
+export function furyKick(fury, amount) {
+    return clamp(fury + amount, 0, 1);
+}
+
+// The light for a fury from 0 to 1: how much of its own colour a splat keeps (a cool dim room when
+// calm, warmer and brighter when fired up), how bright the pumpkins' light is, and the warm light
+// around the player, its strength and its reach in scene lengths.
+const CALM_ROOM = [0.46, 0.45, 0.54];
+const FIRED_ROOM = [0.74, 0.65, 0.56];
+export function lightingFor(fury) {
+    const f = smoothstep(fury);
+    const mix = (a, b) => a + (b - a) * f;
+    return {
+        keep: CALM_ROOM.map((value, c) => mix(value, FIRED_ROOM[c])),
+        pumpkinGain: mix(1.1, 1.8),
+        playerStrength: mix(0.35, 0.9),
+        playerReach: mix(0.16, 0.3),
+    };
+}
+
+// How fast a chasing pumpkin moves, in scene lengths a second, elapsed seconds into a round: it
+// starts slow and gets quicker, but stays well below the player's walk of 0.4.
+export function chaseSpeed(elapsed, seconds = ROUND_SECONDS) {
+    return 0.06 + 0.08 * clamp(elapsed / seconds, 0, 1);
 }
 
 // The time left as the clock shows it, m:ss, rounded up so it shows 1:00 at the start and 0:00
@@ -419,6 +515,41 @@ export function launchSweets(centre, radius, random, now, spawn, sweets = SWEETS
         bit.twinkle = sweet ? 0 : between(random, 18, 30);
         const palette = sweet ? SWEET_COLOURS : SPARKLE_COLOURS;
         copy(bit.tint, palette[Math.floor(random() * palette.length) % palette.length]);
+    }
+}
+
+// The lantern you mustn't hit: this many at a time, this tall in scene lengths, a throw within
+// LANTERN_HIT of their height breaks one, and a new one appears this long after.
+export const LANTERN_COUNT = 3;
+export const LANTERN_SIZE = 0.07;
+export const LANTERN_HIT = 0.32;
+export const LANTERN_RESPAWN = 2.5;
+export const SHARDS_PER_LANTERN = 26;
+const SHARD_SIZE = 0.12;
+
+// Bursts a lantern size tall at centre into glass shards and a few sparkles, falling and fading.
+export function launchShards(centre, size, random, now, spawn, shards = SHARDS_PER_LANTERN) {
+    for (let n = 0; n < shards; n++) {
+        const bit = spawn(now);
+        const sparkle = n % 4 === 3;
+        const d = randomDirection(random);
+        d[1] = d[1] * 0.6 + 0.3;
+        const dir = unit(d);
+        const speed = between(random, 1.5, 4) * size;
+        bit.kind = sparkle ? 'sparkle' : 'shard';
+        for (let c = 0; c < 3; c++) {
+            bit.position[c] = centre[c] + dir[c] * size * 0.2;
+            bit.velocity[c] = dir[c] * speed;
+        }
+        copy(bit.turn, quatAxis(randomDirection(random), between(random, 0, Math.PI * 2)));
+        copy(bit.spinAxis, randomDirection(random));
+        bit.spinRate = between(random, 6, 16);
+        bit.gravity = GRAVITY * size * 0.5 * (sparkle ? 0.3 : 1);
+        bit.size = size * (sparkle ? 0.35 : SHARD_SIZE * between(random, 0.7, 1.4));
+        bit.life = between(random, 0.7, PIECE_SECONDS);
+        bit.fade = 0.4;
+        bit.twinkle = sparkle ? between(random, 18, 30) : 0;
+        copy(bit.tint, sparkle ? [1, 0.95, 0.75] : [1, 1, 1]);
     }
 }
 

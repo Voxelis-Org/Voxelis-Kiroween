@@ -234,7 +234,8 @@ test('a pumpkin with nowhere open to go is not placed', () => {
             }
         }
     }
-    const full = buildOpenGrid(new Float32Array(fill), identity, box);
+    // Cubes bigger than the fill's spacing, so every cube holds splats.
+    const full = buildOpenGrid(new Float32Array(fill), identity, box, { cells: 48 });
     const view = { position: [0, 0, 0], fov: 60, sceneLength: 6 };
     assert.equal(placePumpkin({ path, grid: full, view, radius: 0.2, random: seeded(2) }), null);
 });

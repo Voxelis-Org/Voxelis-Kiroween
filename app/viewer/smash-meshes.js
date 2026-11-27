@@ -349,10 +349,76 @@ function sparkleShape() {
     return shape.build();
 }
 
+// A box with its middle at centre and half sizes half, in one colour, with flat faces.
+export function addBox(shape, centre, half, color, glow) {
+    const faces = [
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]], [[-1, 0, 0], [0, 0, 1], [0, 1, 0]],
+        [[0, 1, 0], [0, 0, 1], [1, 0, 0]], [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+        [[0, 0, 1], [1, 0, 0], [0, 1, 0]], [[0, 0, -1], [0, 1, 0], [1, 0, 0]],
+    ];
+    for (const [n, u, v] of faces) {
+        const corner = (a, b) => [0, 1, 2].map((c) => centre[c] + half[c] * (n[c] + a * u[c] + b * v[c]));
+        const ids = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => shape.vertex(corner(a, b), n, color, glow));
+        shape.triangle(ids[0], ids[1], ids[2]);
+        shape.triangle(ids[0], ids[2], ids[3]);
+    }
+}
+
+const IRON = [0.13, 0.11, 0.1];
+const LANTERN_GLASS = [1.0, 0.8, 0.38];
+
+// The lantern you mustn't hit: a little iron lantern with four glowing amber panes, a pointed
+// roof and a ring to hang it by, 1 tall and centred on its middle.
+function lanternShape() {
+    const shape = new Shape();
+    const w = 0.22;
+    addBox(shape, [0, -0.47, 0], [w + 0.03, 0.03, w + 0.03], IRON, 0.05);
+    addBox(shape, [0, 0.3, 0], [w + 0.02, 0.025, w + 0.02], IRON, 0.05);
+    for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        addBox(shape, [x * w, -0.08, z * w], [0.03, 0.37, 0.03], IRON, 0.05);
+    }
+    // The glass, a little inside the posts, glowing.
+    const g = w - 0.01;
+    addBox(shape, [0, -0.08, 0], [g, 0.36, g], LANTERN_GLASS, 1);
+    // The roof: four sloping triangles up to a point.
+    const apex = [0, 0.47, 0];
+    const corners = [[w + 0.02, 0.32, w + 0.02], [w + 0.02, 0.32, -w - 0.02], [-w - 0.02, 0.32, -w - 0.02], [-w - 0.02, 0.32, w + 0.02]];
+    for (let k = 0; k < 4; k++) {
+        const a = corners[k];
+        const b = corners[(k + 1) % 4];
+        const n = unit(cross([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [apex[0] - a[0], apex[1] - a[1], apex[2] - a[2]]));
+        const out = n[0] * a[0] + n[2] * a[2] < 0 ? scaled(n, -1) : n;
+        shape.triangle(shape.vertex(a, out, IRON, 0.05), shape.vertex(b, out, IRON, 0.05), shape.vertex(apex, out, IRON, 0.05));
+        shape.triangle(shape.vertex(a, scaled(out, -1), IRON, 0.05), shape.vertex(apex, scaled(out, -1), IRON, 0.05), shape.vertex(b, scaled(out, -1), IRON, 0.05));
+    }
+    // The ring on top, as eight little bars.
+    for (let k = 0; k < 8; k++) {
+        const a = (2 * Math.PI * k) / 8;
+        addBox(shape, [Math.cos(a) * 0.05, 0.53 + Math.sin(a) * 0.05, 0], [0.015, 0.015, 0.012], IRON, 0.05);
+    }
+    return shape.build();
+}
+
+// A shard of the lantern's glass: a thin glowing sliver, 1 long, seen from both sides.
+function shardShape() {
+    const shape = new Shape();
+    const points = [[0, 0.5, 0], [-0.22, -0.4, 0.02], [0.25, -0.5, -0.02]];
+    for (const side of [1, -1]) {
+        const n = [0, 0, side];
+        const ids = points.map((p) => shape.vertex(p, n, [1, 0.9, 0.6], 0.9));
+        if (side > 0) {
+            shape.triangle(ids[0], ids[1], ids[2]);
+        } else {
+            shape.triangle(ids[0], ids[2], ids[1]);
+        }
+    }
+    return shape.build();
+}
+
 let cache = null;
 
-// Every shape, made once: { wedge, stem, face, candyCorn, sweet, sparkle }. The wedge and the
-// stem also have offset, where their middle sits in the pumpkin.
+// Every shape, made once: { wedge, stem, face, candyCorn, sweet, sparkle, lantern, shard }. The
+// wedge and the stem also have offset, where their middle sits in the pumpkin.
 export function shapes() {
     cache ??= {
         wedge: wedgeShape(),
@@ -361,9 +427,13 @@ export function shapes() {
         candyCorn: candyCornShape(),
         sweet: sweetShape(),
         sparkle: sparkleShape(),
+        lantern: lanternShape(),
+        shard: shardShape(),
     };
     return cache;
 }
+
+export { Shape };
 
 // The pumpkin's 9 parts that fly apart, as { kind, offset, turn }: where each part's middle sits
 // in the pumpkin, in radii, and its turn as a quaternion [x, y, z, w]. Wedge k is the front wedge
