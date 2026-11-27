@@ -133,8 +133,21 @@
     });
   }
   const shareLink = document.getElementById('share-link');
-  if (shareLink) {
+  const copyShareLink = document.getElementById('copy-share-link');
+  if (shareLink && copyShareLink) {
+    const status = document.getElementById('share-copy-status');
     shareLink.addEventListener('focus', () => shareLink.select());
+    copyShareLink.addEventListener('click', async () => {
+      status.textContent = '';
+      try {
+        await navigator.clipboard.writeText(shareLink.value);
+        status.textContent = 'Link copied.';
+      } catch {
+        shareLink.focus();
+        shareLink.select();
+        status.textContent = 'Link selected. Copy it from the field.';
+      }
+    });
   }
   refresh();
 }());
