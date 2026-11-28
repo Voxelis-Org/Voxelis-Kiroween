@@ -53,11 +53,22 @@ image_undistorter needs. Every frame moves, and the test config asks for a Pick 
 the video's 10 s, so the Frames_Step makes 5 Picks, and the corner's 6 stuck pixels, 0.125 of the
 frame, make it use the Mask. 5 Picks need 3 Placed_Frames, at least half of them, and the
 FakeColmap's global mapper places all 5 in its one Model, where its default of 8 would be more
-Picks than there are. The Step_List goes on to the Train_Step and the Clean_Step, so the test
-also gives each the stand-in its own tests use: fake_gpu's FakeGpu for the Train_Step's
-GPU_Module, and for the Clean_Step's export the real export_sog with
-tests/fake_splat_transform.py, set to ok, in place of node and splat-transform. So the whole Job
-runs on a CPU with no COLMAP, GPU or Node.
+Picks than there are. The Step_List goes on to the Depth_Step, the Walls_Step, the Train_Step
+and the Clean_Step, so the test also gives each the stand-in its own tests use: fake_depth_gpu's
+FakeDepthGpu for the Depth_Step, the walls_pool fixture's InlinePool for the Walls_Step's
+Worker_Pool, so no worker process starts, fake_gpu's FakeGpu for the Train_Step's GPU_Module, and
+for the Clean_Step's export the real export_sog with tests/fake_splat_transform.py, set to ok, in
+place of node and splat-transform. So the whole Job runs on a CPU with no COLMAP, GPU or Node.
+
+The Walls_Step fails on this scene, and the Job is done with warnings (walls spec, Req 1.6,
+22.10, A21). Its 5 Prior_Frames have Pick_Numbers 0 to 4, and a frame's Source_Frames must be
+source_min_gap (2) Pick_Numbers apart from each other, so of its 4 candidates it can choose at
+most 2, fewer than min_sources (4), even with source_fallback_seconds. So every Prior_Frame
+fails its Self_Check with too few Source_Frames before any pass runs (walls spec, Req 8.7), no
+Prior_Frame is a Trusted_Frame, and the step fails with the Req 18.8 message: 5 Prior_Frames, 0
+timed out and 5 failed, all 5 with too few Source_Frames. Its 16 × 12 frames couldn't hold one
+31 × 31 Score_Window either. The step writes no Walls_Index, so the Train_Step trains on the
+depth priors.
 
 The tests check:
 
@@ -117,10 +128,11 @@ The tests check:
   (Req 16.9).
 - splatpipe.cameras.__main__.main prints cameras: done on stdout and gives 0 for a done run, and
   gives 1 for a failed one, with its Readable_Error on stderr and no traceback (Req 14.2).
-- run_job with the real Step_List runs the Frames_Step, the Cameras_Step, the Train_Step and the
-  Clean_Step in that order, and the Job is done once all four are. work/frames/ then holds the
-  frames spec's layout, mask.png included,
-  and work/cameras/ the design's, with masks/, a Training_Image and a Training_Mask for each of
+- run_job with the real Step_List runs the Frames_Step, the Cameras_Step, the Depth_Step, the
+  Walls_Step, the Train_Step and the Clean_Step in that order. Every step is done but the
+  Walls_Step, which fails with the Req 18.8 message, so the Job is done with warnings (walls
+  spec, Req 1.6, 22.10, A21). work/frames/ then holds the frames spec's layout, mask.png
+  included, and work/cameras/ the design's, with masks/, a Training_Image and a Training_Mask for each of
   the 5 Placed_Frames and the three Model_Files, and out/cameras.json lists the 5 Placed_Frames
   (Req 14.4).
 """
@@ -1178,7 +1190,7 @@ def test_run_job_runs_the_frames_step_then_the_cameras_step_and_the_job_is_done(
         new_job: Callable[..., str], tmp_path: Path, temp_config: Path,
         fake_tools: type[FakeTools], fake_colmap: type[FakeColmap],
         fake_depth_gpu: type[FakeDepthGpu], fake_gpu: Callable[..., Any],
-        monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch: pytest.MonkeyPatch, walls_pool: list[int]) -> None:
     job_id = new_job()  # with no work/frames/, which the Frames_Step makes
     # The tiny [frames] settings, a stand-in Weights_File at [depth]'s moge_weights, outside the
     # Jobs_Folder, which the Depth_Step wants to be a file before the stand-in loads it, and
@@ -1203,13 +1215,34 @@ def test_run_job_runs_the_frames_step_then_the_cameras_step_and_the_job_is_done(
     use_stand_in(monkeypatch, "ok")
     monkeypatch.setattr(clean, "export_sog", partial(export_sog, find=find_stand_in))
     # The Job_Runner with the real Step_List: the Frames_Step, the Cameras_Step, the Depth_Step,
-    # the Train_Step and the Clean_Step. The Job is done once all five are (Req 14.4).
+    # the Walls_Step, the Train_Step and the Clean_Step (Req 14.4; walls spec, Req 1.3). The
+    # walls_pool fixture puts an InlinePool in place of the Walls_Step's Worker_Pool, so no
+    # worker process starts.
     summary = run_job(job_id)
-    assert summary["status"] == "done", summary["readable_error"]
+    # The Walls_Step fails on this tiny scene, and the Job is done with warnings (walls spec,
+    # Req 1.5, 1.6, 22.10, A21). Its 5 Prior_Frames have Pick_Numbers 0 to 4, and a frame's
+    # Source_Frames must be source_min_gap (2) Pick_Numbers apart from each other, so of its 4
+    # candidates it can choose at most 2, fewer than min_sources (4), with source_min_seconds and
+    # with source_fallback_seconds alike. So every Prior_Frame fails its Self_Check with too few
+    # Source_Frames before any pass runs (walls spec, Req 8.7), and none is a Trusted_Frame. Its
+    # 16 × 12 frames couldn't hold one 31 × 31 Score_Window either.
+    assert summary["status"] == "done_with_warnings", summary["readable_error"]
     assert [(step["step"], step["outcome"]) for step in summary["steps"]] == [
-        ("frames", "done"), ("cameras", "done"), ("depth", "done"), ("train", "done"),
-        ("clean", "done")]
+        ("frames", "done"), ("cameras", "done"), ("depth", "done"), ("walls", "failed"),
+        ("train", "done"), ("clean", "done")]
+    # The Req 18.8 message: 5 Prior_Frames, 0 timed out and 5 failed their Self_Check, all 5 with
+    # too few Source_Frames, and the Job goes on and trains on the depth priors.
+    walls = summary["steps"][3]
+    assert (walls["required"], walls["readable_error"]) == (False, (
+        f"None of the {VIDEO_PICKS} frames passed the walls step's self-check, so no walls priors "
+        f"were made: 0 ran out of time before their solve ended, and {VIDEO_PICKS} failed their "
+        f"self-check, {VIDEO_PICKS} of them because they had too few other frames to compare "
+        "with. The job goes on and trains on the depth priors."))
+    # The step opened one Worker_Pool, the InlinePool, and wrote no Walls_Index, so the
+    # Train_Step read the depth priors in work/depth/ (walls spec, Req 18.7).
+    assert len(walls_pool) == 1
     folder = folder_of(job_id)
+    assert not (folder / "work" / "walls" / "depth.json").exists()
     # The Depth_Step read the Cameras_Step's model and fitted a prior to every Placed_Frame.
     depth_report = read_json(folder / "out" / "reports" / "depth.json")
     assert depth_report["counts"]["fitted_images"] == VIDEO_PICKS

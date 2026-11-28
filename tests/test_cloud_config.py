@@ -56,8 +56,11 @@ FAST_PRIMARY = "g5.8xlarge"
 DEFAULT_PRIMARY = "g5.8xlarge"
 QUALITY_FALLBACK = ("g6e.4xlarge", "g6e.2xlarge")
 
-# The Q2 minutes as (expected, cap), settled in Q2 (Req 2.5, 2.6).
-PRESET_MINUTES = {"fast": (30, 120), "default": (60, 180), "quality": (120, 360)}
+# Each Preset's minutes as (expected, cap). The caps are Q2's (Req 2.5, 2.6). The expected times
+# rose from Q2's 30, 60 and 120 to cover the walls step's time (walls D19), and the caps stay, so the
+# website's reservations don't change.
+PRESET_MINUTES = {"fast": (50, 120), "default": (100, 180), "quality": (180, 360)}
+# The smoke test's and the image build's minutes as (expected, cap), settled in Q2.
 SMOKE_MINUTES = (10, 30)
 IMAGE_MINUTES = (75, 120)
 # The image builder's types, tried in order: the g5.8xlarge first, then the g5.4xlarge when AWS has
@@ -202,9 +205,9 @@ def valid_cloud() -> dict[str, Any]:
             "g5.8xlarge": machine(32, 128, 24, 2.448),
         },
         "presets": {
-            "fast": {"fallback": ["g5.8xlarge"], "expected_minutes": 30, "cap_minutes": 120},
-            "default": {"fallback": ["g5.8xlarge"], "expected_minutes": 60, "cap_minutes": 180},
-            "quality": {"fallback": ["g5.8xlarge"], "expected_minutes": 120, "cap_minutes": 360},
+            "fast": {"fallback": ["g5.8xlarge"], "expected_minutes": 50, "cap_minutes": 120},
+            "default": {"fallback": ["g5.8xlarge"], "expected_minutes": 100, "cap_minutes": 180},
+            "quality": {"fallback": ["g5.8xlarge"], "expected_minutes": 180, "cap_minutes": 360},
         },
         "smoke": {"expected_minutes": 10, "cap_minutes": 30, "check_timeout_seconds": 60,
                   "scene_gaussians": 256, "image_pixels": 64, "video_seconds": 4, **TRAIN_SMOKE,

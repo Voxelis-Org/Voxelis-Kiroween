@@ -148,10 +148,10 @@ A step name has lowercase ASCII letters, digits and underscores, and starts with
 
 The step list is `STEP_LIST` in `splatpipe/run.py`: the steps the job runner runs, in order. Each entry is a `StepEntry(name, module, required)`. When a required step fails, the job fails. When an optional step fails, the job goes on without it. The fake step isn't in the list, so it never runs on real jobs. The tests pass their own lists.
 
-The list holds the frames step and the cameras step, both required, the depth step, optional, the train step, required, and then the clean step, optional: `StepEntry("frames", "splatpipe.frames", True)`, `StepEntry("cameras", "splatpipe.cameras", True)`, `StepEntry("depth", "splatpipe.depth", False)`, `StepEntry("train", "splatpipe.train", True)` and `StepEntry("clean", "splatpipe.clean", False)`. A job is done once all five steps are done, and done with warnings when the three required steps are done and the depth step or the clean step fails. The planned steps are:
+The list holds the frames step and the cameras step, both required, the depth step and the walls step, both optional, the train step, required, and then the clean step, optional: `StepEntry("frames", "splatpipe.frames", True)`, `StepEntry("cameras", "splatpipe.cameras", True)`, `StepEntry("depth", "splatpipe.depth", False)`, `StepEntry("walls", "splatpipe.walls", False)`, `StepEntry("train", "splatpipe.train", True)` and `StepEntry("clean", "splatpipe.clean", False)`. A job is done once all six steps are done, and done with warnings when the three required steps are done and the depth step, the walls step or the clean step fails. The planned steps are:
 
 - Required steps: picking frames, solving cameras and training.
-- Optional steps: depth priors and clean.
+- Optional steps: depth priors, correcting walls and clean.
 
 Running a job in the cloud comes in its own spec, and it isn't a step.
 
@@ -327,11 +327,13 @@ The laptop commands, each run as `uv run python -m cloud.<name>`:
 
 On the machine, the Cloud_Runner rebuilds the job folder from the bucket (the `input/`, plus any `out/` and `work/` from an earlier run of the same job), calls `run_job` without `--fresh` so it resumes from the first unfinished step exactly as a laptop run does, uploads each step's report, `work/` and `out/` as they appear with a final sync at the end, writes the spend lines, and powers the machine off when the job ends. The machine's user data starts it as `python -m cloud.runner --job <id>`, from the code it extracted to `/opt/job`, once it has read the machine's own instance type from the instance metadata with an IMDSv2 token, for the spend lines. It isn't a laptop command.
 
+The quote's expected time comes from `expected_minutes` in `[cloud.presets.*]`: 50 minutes for `fast`, 100 for `default` and 180 for `quality`, the walls step's time included. Each preset's time cap, `cap_minutes`, stays at 120, 180 and 360 minutes, so the website's reservations don't change. The walls step adds roughly the cost of its preset's `max_minutes` on the preset's first machine type to a job, at the prices in `[cloud.types]`: about $0.80 for `fast` (20 minutes) and $1.60 for `default` (40 minutes) on a g5.8xlarge, and about $3.00 for `quality` (60 minutes) on a g6e.4xlarge. The website's start page shows the new expected times once the account owner redeploys it, because the deployed website keeps the config it was deployed with.
+
 The website in `app/` starts jobs through the same Start_Core in `cloud/start.py` (`check_image`, `choose_machine` and `launch_job`, which calls the spend guard first), with its own baked commit's code archive and the whole video as the used part. It reads a job's status from its job summary, `out/job.json`, and its step reports, and its result file by the names in `[clean]`: `clean_sog`, else `train_ply`. The viewer it shows is the one in `app/viewer/`, pinned to the PlayCanvas engine that reads splat-transform 3.8.0's `.sog`.
 
 ### The cap deadline
 
-The Cloud_Runner sets one environment variable for the steps, `SPLATPIPE_CAP_DEADLINE`: the absolute UTC instant, in ISO 8601, by which a step should have saved and stopped. It's the machine's start time plus the preset's time cap, minus `upload_margin_minutes` from `[cloud]`, leaving room to upload the results before the machine's hard time-cap shutdown. The train step reads it and stops training early, so that `out/train.ply` is written and checked `clean_reserve_minutes` before the cap deadline. The cameras step reads it too, and caps each COLMAP command's time limit at the time left before it.
+The Cloud_Runner sets one environment variable for the steps, `SPLATPIPE_CAP_DEADLINE`: the absolute UTC instant, in ISO 8601, by which a step should have saved and stopped. It's the machine's start time plus the preset's time cap, minus `upload_margin_minutes` from `[cloud]`, leaving room to upload the results before the machine's hard time-cap shutdown. The train step reads it and stops training early, so that `out/train.ply` is written and checked `clean_reserve_minutes` before the cap deadline. The cameras step reads it too, and caps each COLMAP command's time limit at the time left before it. The walls step reads `SPLATPIPE_CAP_DEADLINE` too, with the train step's own reader, and stops solving frames in time to leave the train step its `train_reserve_minutes` from the walls step's preset table: 40 minutes for `fast`, 60 for `default` and 110 for `quality`. Its stop time is the earlier of its start plus its preset's `max_minutes` and the cap deadline minus `train_reserve_minutes`, and it starts no frame's solve within `finish_minutes` of that stop time, as "Step: walls" says.
 
 ### What each step asks the machine for
 
@@ -342,10 +344,11 @@ Each step records the machine it needs in its own config section, per preset, as
 | Picking frames | 16 vCPUs, 16 GB RAM |
 | Solving cameras | 16 vCPUs, 16 GB RAM |
 | Depth priors | a GPU with 16 GB VRAM |
+| Correcting walls | 16 vCPUs, 32 GB RAM |
 | Training | 4 vCPUs, 32 GB RAM and a GPU with 24 GB (fast and default) or 48 GB (quality) |
 | Clean | 8 vCPUs, 8 GB RAM |
 
-Each step spec adds its own keys when it's built. There is no `[cloud.needs.*]` table; a step's needs live in the step's own section. The depth step's need is `min_gpu_memory_gb` in `[depth]`, 16, which the train step's 24 GB already covers.
+Each step spec adds its own keys when it's built. There is no `[cloud.needs.*]` table; a step's needs live in the step's own section. The depth step's need is `min_gpu_memory_gb` in `[depth]`, 16, which the train step's 24 GB already covers. The walls step's needs live in `[walls]` as `min_vcpus`, 16, a soft need, and `min_memory_gb`, 32, which the train step's 32 GB already covers, so they rule out no machine type on any preset's fallback list. A job can land on a machine with fewer vCPUs, like a g5.2xlarge with 8, and then the walls step solves fewer frames per minute and its preset's `max_minutes` cuts it short, leaving the frames it didn't reach with their depth prior.
 
 ### The smoke test
 
@@ -1102,7 +1105,7 @@ Its report, `out/reports/cameras.json`, comes from the step runner, like every s
 
 ## Step: depth
 
-The depth step is in `splatpipe/depth/`, built like the fake step. It makes depth priors for the train step on the job machine's GPU. It runs MoGe-2 on each frame of the camera solve output in `work/cameras/`, fits each frame's depth to the camera solve's own points, and writes the frames that fit as prior files in its work folder, `work/depth/`. It's an optional step: when it fails, the job goes on and trains without depth priors.
+The depth step is in `splatpipe/depth/`, built like the fake step. It makes depth priors for the train step on the job machine's GPU. It runs MoGe-2 on each frame of the camera solve output in `work/cameras/`, fits each frame's depth to the camera solve's own points, and writes the frames that fit as prior files in its work folder, `work/depth/`. It's an optional step: when it fails, the job goes on and trains without depth priors. The walls step, which runs next, reads the depth priors too, corrects them and writes its own copy to `work/walls/`. It leaves the files in `work/depth/` as they are, so the train step can still fall back to them.
 
 Its CLI is `uv run python -m splatpipe.depth --job <id> [--preset P]`, and its plain function is `splatpipe.depth.run(job_id, preset=None)`.
 
@@ -1143,7 +1146,7 @@ MoGe-2 gets each frame as RGB floats from 0 to 1, each 8-bit value divided by 25
 
 ### What it writes
 
-The step writes only into its work folder: `work/depth/<stem>.npz`, `work/depth/depth.json.tmp` while it writes the index, and `work/depth/depth.json`. These files are the prior format, the contract between the depth step and the train step, and anything that makes priors later writes the same. One module, `splatpipe/train/priors.py`, defines it for both steps, with its writer and its reader, and imports no torch. The names are fixed there, not in `config.toml`.
+The step writes only into its work folder: `work/depth/<stem>.npz`, `work/depth/depth.json.tmp` while it writes the index, and `work/depth/depth.json`. These files are the prior format, the contract between the depth step and the train step, and anything that makes priors later writes the same. The walls step reads them with the format's reader and every one of its checks, and writes its corrected priors in the same format to `work/walls/`, never into `work/depth/`. One module, `splatpipe/train/priors.py`, defines it for both steps, with its writer and its reader, and imports no torch. The names are fixed there, not in `config.toml`.
 
 ```
 work/depth/
@@ -1277,6 +1280,281 @@ The counts are whole numbers, so the scales, offsets, errors and metres per unit
 
 The depth step writes no files to `out/` but its report, `out/reports/depth.json`, which the step runner writes, like every step's.
 
+## Step: walls
+
+The walls step is in `splatpipe/walls/`, built like the fake step and the depth step. Plain walls have almost no texture, so the camera solve finds few points on them and MoGe-2's depth there is only roughly right, which makes the splat bumpy. The walls step corrects each frame's depth prior from `work/depth/` by searching four numbers per frame that bend the depth without moving anything off its ray, scored by how well the faint texture a wall still has, like paint stipple, lines up across many other frames. It writes the corrected priors to its work folder, `work/walls/`, in exactly the prior format, and the train step trains with them. It's an optional step between the depth step and the train step: when it fails, the job goes on and trains on the depth priors. It runs on the CPU only, with numpy, scipy and OpenCV, and imports no torch, gsplat or MoGe, so it runs the same on a laptop and on the job machine. It uses every vCPU the machine has, through worker processes.
+
+Its CLI is `uv run python -m splatpipe.walls --job <id> [--preset P]`, and its plain function is `splatpipe.walls.run(job_id, preset=None)`. The CLI prints `walls: done` and exits with 0 when the step is done, and prints the readable error on stderr, with no traceback, and exits with 1 when it fails.
+
+It works in this order:
+
+1. It removes `out/walls/`, first of all, so no demo image of an earlier run is left.
+2. It checks every setting.
+3. It reads the cap deadline from `SPLATPIPE_CAP_DEADLINE`, when that's set, with the train step's own reader, reads the clock once for its start, and works out its stop time and its solve cutoff.
+4. It checks that its input files are there, without reading them: `work/depth/depth.json`, the camera solve output's `images/` folder and its three model files, and `work/frames/frames.json`, in that order.
+5. It reads the sparse model, the depth priors and the frames record, and keeps the prior frames: the frames that have a depth prior.
+6. The preparation pass, on the main process: for each prior frame it decodes the frame, works out its score images, its scene scale and its start depth, and writes them to a scratch folder, `work/walls/scratch/`.
+7. It solves each prior frame in a worker process, in the solve order, until the solve cutoff. A frame whose solve hasn't ended by then has timed out.
+8. When no prior frame passed its self-check, the step fails here, before it writes anything.
+9. The cross-frame stages: the fuse, the world planes, the fallback, the correction, the flatten, the despeckle and the per-frame choice, each finished for every frame before the next starts.
+10. It writes a walls prior file for every prior frame, removes the scratch folder, and writes the walls record, `work/walls/walls.json`.
+11. It writes the demo images to `out/walls/`.
+12. Last of all, it writes the walls index, `work/walls/depth.json`.
+
+A `finally` removes `work/walls/scratch/` and ends every worker process, whether the step is done or fails, so no worker is left running and no reader or upload sees the scratch folder.
+
+The method, in our own words, follows in the order the step runs it. The code is written fresh from the walls spec on numpy, scipy and OpenCV, with no code from the paper or from any repo that implements it.
+
+**The change.** For each frame, the step searches four numbers (a, b, c, d) that change its depth map z into z′ by
+
+    1/z′ = a × (1/z) + m × (b·x + c·y + d)
+
+at each pixel, where (x, y) are the pixel's normalised coordinates, ((u − cx) / fx, (v − cy) / fy) in the shared camera, and m is the median inverse depth of the map being changed. Kriegman and Belhumeur describe this family of changes for a perspective camera, the perspective bas-relief changes, in their work on what shadows can and can't tell about a surface's shape. We write it relative to the depth it changes, with the factor m, so that b, c and d don't depend on the scene's units, and (1, 0, 0, 0) changes nothing.
+
+- It keeps every pixel on its own ray. The change gives each pixel a new depth and nothing else, and the pixel's point is z × (x, y, 1), so the new point lies on the same ray from the camera centre as the old one. The frame's image stays exactly where it is, and only how far each pixel is changes.
+- It keeps every plane flat. A point z × (x, y, 1) lies on a plane n·X = δ that doesn't pass through the camera centre when 1/z = (nₓ·x + n_y·y + n_z) / δ, which is affine in x and y. The change multiplies that by a and adds m times another affine function of x and y, so the new 1/z is still affine, and the changed points lie on one plane again. So a wall that the prior has flat stays flat, and the search only needs four numbers per frame.
+- The normals follow the change exactly. A pixel at depth z, with ray r = (x, y, 1) and unit normal n, gets the normal a·n + m·z·(n·r)·(b, c, d), set to unit length and turned to face the camera. On a plane this is the changed plane's own normal.
+- Two changes in a row are one change: the first (a₁, b₁, c₁, d₁) on a map of median m₁ and then (a₂, b₂, c₂, d₂) on the result, of median m₂, are (a₁·a₂, a₂·b₁ + (m₂/m₁)·b₂, a₂·c₁ + (m₂/m₁)·c₂, a₂·d₁ + (m₂/m₁)·d₂) of the first map. So the three passes below end in one change of the start depth, the solved change, which the walls record holds.
+
+**The scene scale and the start depth.** Each prior frame's scale points are the camera solve's points that it observes, in front of its camera, whose projection lands on a pixel with a prior, by the depth step's pixel rule. For each, r = ln(the point's camera z / the prior's depth at its pixel). With r̃ the median of the r and D the median of |r − r̃|, the scene scale k is exp(the median of the r within `scale_mad_gate` (3) × D of r̃), so a few points far off can't pull it. A frame with fewer than `scale_min_points` (10) scale points has k = 1. The start depth is k × the prior's depth, so the search starts from the camera solve's own size of room and spends its range on the shape. The step works it out at the prior size, and at the score size from the prior scaled up with the train step's own rule. The preparation pass does this for every prior frame, so a frame that times out has its k too.
+
+**The source frames.** Each prior frame is scored against up to `max_sources` (32) other prior frames. The candidates are the prior frames at least `source_min_seconds` (1 s) away in the video, by their picks' `seconds`. A candidate's overlap is the share of the frame's prior pixels whose point at the start depth lands in front of the candidate and inside its image, and its image motion is how far, in the candidate's score-size pixels, such a point moves there when its depth changes by `motion_depth_change` (1 %), the median over the points that land inside. A candidate with an overlap below `source_min_overlap` (0.3) or a motion below `source_min_motion` (0.4 pixels) is dropped. The rest are ranked by overlap × min(motion, `source_motion_cap`), highest first, and taken in that order when their pick number is at least `source_min_gap` (2) from every one already taken, so two sources are never neighbouring picks. With fewer than `min_sources` (4), the step chooses again with `source_fallback_seconds` (0.5 s). A frame that still has fewer fails its self-check, and no pass runs for it.
+
+**The score table.** The scoring works at the score size, the train step's training size rule with `score_long_edge` (640), so a 1920 × 1080 camera scores at 640 × 360. Each frame's luma is OpenCV's grey of the frame at that size, its high pass is the luma minus its Gaussian blur at `high_pass_sigma` (3 pixels), and its bands are the differences of its blurs at neighbouring `band_sigmas` [0, 1, 2, 4, 8], 4 bands. The score windows are 31 × 31 (`window_size`) windows centred every `window_step` (4) pixels that lie inside the image, have a start depth at every pixel, touch no masked pixel and aren't flat, with a high pass variance of at least `flat_variance` (0.04). To score a window against a source at a depth factor s, the step takes each window pixel's point at s × the current depth on its ray, moves it into the source's camera through both poses, samples the source's image there bilinearly, and works out the zero-mean normalised cross-correlation of the two windows. A window and a source count only when every warped pixel lands in front of the source and inside it, touches no masked pixel of the source, the warped window isn't flat, and the window isn't occluded: its centre lands on one of the source's prior pixels, and the depth the warp predicts there is within `occlusion_tolerance` (15 %) of the source's own start depth, k × its prior depth. The occlusion test is made once per table, at the current depth. The score table C(p, s) holds, for each window p and each table scale s, the sum of the window's correlations over its sources. The table scales run from a pass's smallest to its largest scale, evenly spaced in ln(s), at most the pass's step apart: 94 scales in the first pass, 43 in the second and the third, and 97 for a facet. Any guess of the four numbers then scores by lookup: the sum over the windows of C(p, s(p)), with s(p) the guess's depth factor at the window's centre, interpolated linearly in ln(s). A guess whose depth factor leaves the table's range at any window, or whose |b|, |c| or |d| is above `fit_bound` (0.2), is rejected. One window's correlation with the faint texture is far below the noise, but the sum over a whole frame and many sources is not.
+
+**The three passes and the band mix.** The first pass builds a table on the high pass around the start depth from ×0.5 to ×2 and takes the one scale s with the highest total, the one nearest 1 on a tie, so its change is (1/s, 0, 0, 0). The second pass builds a table on the high pass around that depth from ×0.92 to ×1.087 and fits the four numbers on it. The fit is scipy's Nelder-Mead from `fit_starts` (5) fixed starts, the change that changes nothing and four others spread by `fit_start_spread`, and gives back the best guess it scored, so it's never worse than no change. Before the third pass, the step weights the luma's bands by how well each agrees across frames: a band's coherence ρ is its mean correlation over the frame's windows and sources at the second pass's depth, capped at `band_max_coherence` (0.95), and its weight w is set so that w² × the band's variance = ρ / (1 − ρ²), with 0 for a band whose ρ isn't above 0 or whose variance is 0. So a band that lines up well across frames counts for more, and a band that is mostly noise counts for little. The band mix is the sum of the weighted bands, made for the frame and for each of its sources with the frame's own weights, or the high pass when every weight is 0. The third pass builds a table on the band mix around the second pass's depth from ×0.95 to ×1.053 and fits the four numbers again. The three changes compose into the frame's solved change.
+
+**The self-check.** The answer is checked against itself, with no ground truth. The ranked sources split into two halves, the 1st, 3rd, 5th and so on, and the 2nd, 4th, 6th and so on, and the third pass's four numbers are fitted again on each half's own table. The halves agree when the median over the frame's prior pixels of |z_A / z_B − 1| is below `halves_tolerance` (1.5 %). The step also lays 32 × 32 tiles (`tile_size`) over the score size and compares, tile by tile, the mean correlation at the answer with the mean at the answer × `z_scale` (1.2), and again at the answer ÷ 1.2, over the windows that count at both depths. Over the n tiles with at least `tile_min_windows` (16) such windows, the tile score is Z = (mean at the answer − mean at the other depth) / (`z_error_factor` × the standard error), with the standard error from the two sample variances. A frame passes its self-check when it has at least `min_sources` sources, its halves agree, and both tile scores are above `min_z` (2.5). Fewer than 2 counting tiles gives no Z, and the check fails. A frame that passes is a trusted frame, and one that fails is a failed frame.
+
+**Facets.** Every frame whose solve ends is cut into facets at the prior size, from its depth prior's own normals and inverse depth: 4-connected pieces of at least `facet_min_pixels` (4,000) pixels, whose every normal is within `facet_normal_degrees` (6°) of the piece's mean normal, and that hold no jump pixel, where the inverse depth changes by more than `facet_jump` (1 %) over `facet_jump_distance` (2) pixels across or down. A trusted frame's facets are each refitted on their own: a table and its two half tables on the band mix around the solved depth from ×0.75 to ×1.333, over the windows whose centres fall on the facet, with the looser occlusion test of `facet_occlusion_tolerance` (50 %). A facet's change is applied only when its halves agree within `facet_halves_tolerance` (3 %), it moves the facet by more than `facet_min_change_ratio` (2.5) times that disagreement, and both its tile scores are at least `facet_min_z` (3). An applied change gives the facet's pixels its depth and normals and leaves every other pixel as it was. A failed frame's facets aren't refitted, but are kept for the flatten.
+
+**Neighbour frames.** The cross-frame stages use each frame's neighbour frames: the trusted frames other than itself within `neighbour_window` (24) pick numbers, at most `neighbour_frames` (12), the nearest first. A neighbour's points, projected into the frame and kept nearest per pixel, give the frame's pixels at most one projected value per neighbour. A pixel's agreeing values are its projected values within `agree_tolerance` (3 %) of the nearest of them to the camera. Every stage reads the other frames' depths as the stage before left them, so the order the workers take the frames in changes nothing.
+
+**The fuse.** Each trusted frame's pixel takes the median of its own solved depth and its neighbours' projected solved depths within `fuse_tolerance` (10 %) of it, when those are at least `fuse_min_values` (3), its own included, and keeps its own depth otherwise.
+
+**The world planes.** Once, on the main process, after the fuse, every facet of every trusted frame is fitted with a plane through its fused points in the world, by Tukey-reweighted principal components (`tukey_constant` 4.685, `tukey_iterations` 10). The facets are merged largest first: a facet joins the first world plane whose normal is within `plane_merge_degrees` (3°) of its own and whose offset is within `plane_merge_offset` (1.5 %) of the facet's distance from its camera, or starts a new one, and each join refits the plane through all its facets' points. A world plane is kept when facets from at least `plane_min_frames` (3) frames made it and it has at least `plane_min_share` (1 %) of the pixels of the largest such plane.
+
+**The fallback.** A failed frame gets a fallback depth in one of two ways. At each pixel, the median of its agreeing values from its neighbours' fused depths counts when there are at least `agree_min_frames` (2) of them. When at least `projection_min_coverage` (30 %) of its prior pixels have such a median, the projection fallback fits one change of its start depth to those medians by Tukey-reweighted least squares in inverse depth: each pixel with a median takes it, each other prior pixel the fitted change's depth, and every pixel the fitted change's normal. Otherwise, when there are world planes, the plane registration makes `register_passes` (5) passes with a depth tolerance falling geometrically from `register_start_tolerance` (50 %) to `register_end_tolerance` (3 %). Each pass matches every prior pixel to the world plane nearest its current depth, among those whose normal is within `register_max_degrees` (45°) of the pixel's normal and whose depth along the pixel's ray is within the tolerance, then fits one change of the start depth to the matched pixels' plane depths. The fallback depth is the start depth through the last pass's change. A failed frame with no world plane, or with fewer than `register_min_pixels` (1,000) matched pixels in any pass, gets no fallback depth.
+
+**The correction, the flatten and the despeckle.** Each frame with a walls depth, a trusted frame's fused depth or a failed frame's fallback depth, then goes through three stages. The correction moves a pixel to the median M of its agreeing values from its neighbours' fused depths, when there are at least `agree_min_frames` of them and |ln(z / M)| is above `correction_tolerance` (0.03). The flatten refits each facet's plane through its points at the walls depth, takes the normal of the world plane nearest it in angle when one is within `flatten_degrees` (5°), or else its own, and moves each pixel within `flatten_tolerance` (3 %) of that plane onto it, with the plane's normal. The despeckle moves a pixel to the median of its 5 × 5 window (`despeckle_window`) when the window has at least `despeckle_min_valid` (9) prior pixels with a depth and the pixel is more than `despeckle_tolerance` (3 %) off their median. The correction and the despeckle change depths only. Within each stage, every pixel reads the depths from before the stage.
+
+**The per-frame choice.** Every prior frame ends with exactly one walls prior, either from its walls depth or an unchanged copy of its depth prior, a depth prior copy:
+
+- A trusted frame gets a walls prior from its walls depth.
+- A failed frame with a fallback depth gets a walls prior from it when its sparse error, the median over its scale points of |ln(walls depth / the point's camera z)|, is at most `fallback_max_sparse_error` (0.1), or when it has fewer than `scale_min_points` scale points.
+- A failed frame with a fallback depth whose sparse error is above `fallback_max_sparse_error`, a failed frame with no fallback depth, and a frame that timed out get a depth prior copy.
+
+**Time and workers.** The step's stop time is the earlier of its start plus its preset's `max_minutes` and the cap deadline minus its preset's `train_reserve_minutes`, or its start plus `max_minutes` with no cap deadline. The solve cutoff is `finish_minutes` (3) before it. The frames are solved in the solve order, first, last, middle, then the quarters and so on, so a run that's cut off still covers the whole video. No frame's solve starts at or after the solve cutoff, and the solves still running then are ended, and their frames time out. A frame that timed out still serves as a source of the frames still solving. The cross-frame stages and the writes run after the solves, with no cutoff of their own: `finish_minutes` is the time they're meant to fit in. The worker pool has `workers` processes, or one per vCPU the process may use when `workers` is 0, never more than the prior frames. The workers are started with `spawn`, so none inherits the depth step's GPU state, and each runs numpy and OpenCV on one thread, so the workers don't fight over the vCPUs. The same inputs give the same walls priors, bit for bit, whatever the number of workers, when no frame times out.
+
+The method comes from D. J. Kriegman and P. N. Belhumeur, "What Shadows Reveal about Object Structure", ECCV 1998, pp. 399–414, with its journal version in JOSA A 18(8), 2001.
+
+### What it reads
+
+- The depth priors in `work/depth/`, which the depth step writes, read with the prior format's reader, `read_prior_set`, and every one of its checks, as "Step: depth" lays them out. It leaves them as they are.
+- The camera solve output in `work/cameras/`: the frames in `images/`, the masks in `masks/` and the sparse model in `sparse/`, under the train step's names, read with the train step's own readers, as "Step: train" lays them out.
+- The frames record, `work/frames/frames.json`, read with Python's `json` module. Of it the step uses only `picks`, and of each pick only its `number`, its `file` and its `seconds`. A prior frame's pick is the pick whose `file` is its name, which gives its pick number and its time in the video.
+- `SPLATPIPE_CAP_DEADLINE`, the cap deadline, when the cloud runner sets it.
+- Its settings, from `[walls]` and from the job's preset table, like `[walls.fast]`.
+
+It reads nothing else in the job folder. It solves, scores against, projects from and writes a prior for only the prior frames, the images that `work/depth/depth.json` lists, and ignores every other image in `images.bin`.
+
+It decodes each prior frame with the train step's `read_training_image` and scales it down to the score size with `scaled_down`, OpenCV's `INTER_AREA`, so a frame with no file, one that can't be decoded and one that isn't the shared camera's size fail with the train step's messages. When a frame has a mask, `masks/<stem>.png`, the step reads it with the train step's mask reader and `mask_threshold` from `[walls]`, and black means ignore: a window that touches a masked pixel, in the frame or in the warped source, is skipped. A frame with no mask keeps every pixel. cv2 decodes, scales, blurs and warps only still images here, and never reads or writes video.
+
+### What it writes
+
+The step writes only inside `work/walls/` and `out/walls/`. Its report comes from the step runner.
+
+```
+work/walls/
+  000000.npz ...   the walls prior files, one for each prior frame, named after its image
+  walls.json       the walls record
+  depth.json       the walls index, written last
+  scratch/         the scratch folder while the step runs, removed before it returns
+out/
+  walls/<stem>.jpg the demo images
+  reports/walls.json the step's report, which the step runner writes
+```
+
+The walls prior files and the walls index are exactly the prior format of "Step: depth", at the depth step's prior size, written with the format's own writers, `write_prior` and `write_index`, so the train step reads them with `read_prior_set(work/walls, model)` and no new code, and the format gains no field. The walls index is the depth index, `work/depth/depth.json`, copied unchanged: its camera, its prior size, its `metres_per_unit` and every entry with its pose and fit fields, in its order. Every prior frame gets exactly one walls prior file, so the index lists exactly the files there are.
+
+- A walls prior made from a walls depth keeps its depth prior's `mask` exactly, so no prior pixel is added or dropped. Its `inverse_depth` is the float32 of 1 / the walls depth at each marked pixel, and 0 at every other. Its `normal` is the unit normal facing the camera that the change, the facet's change, the fallback or the flatten gave the pixel. A marked pixel whose new inverse depth isn't finite and above 0 keeps its depth prior's `inverse_depth` and `normal`, and one whose new normal isn't finite or has a length of 0 keeps its depth prior's `normal`.
+- A depth prior copy holds its depth prior's `inverse_depth`, `normal` and `mask`, each unchanged, bit for bit. A frame gets one when it timed out, when it failed its self-check and got no fallback depth, and when it has at least `scale_min_points` scale points and its fallback depth is off them by a sparse error above `fallback_max_sparse_error`, as the per-frame choice above says.
+
+The step writes the walls prior files first, then removes the scratch folder and writes the walls record, then the demo images, and the walls index last of all, through `depth.json.tmp` and one rename, as the depth step does. So a reader that finds `work/walls/depth.json` finds every walls prior file, and a run that fails, at any point, leaves no `work/walls/depth.json`, so the train step reads `work/depth/`. The step runner empties `work/walls/` before the step runs, so no file from an earlier run is left.
+
+`walls.json`, the walls record, holds the numbers that aren't whole and so can't be report counts, as plain JSON, with `null` for a number that isn't finite or wasn't worked out:
+
+| Field | What it holds |
+|---|---|
+| `format` | 1, the record's version. |
+| `started_utc` | The step's start, in UTC, in ISO 8601. |
+| `cap_deadline` | The cap deadline in UTC, or `null` when `SPLATPIPE_CAP_DEADLINE` isn't set. |
+| `walls_stop_time` | The step's stop time, in UTC. |
+| `solve_cutoff` | The solve cutoff, `finish_minutes` before the stop time, in UTC. |
+| `stop_limit` | What set the stop time: `"max_minutes"`, or `"train_reserve_minutes"` when the cap deadline less the train step's reserve came first. |
+| `workers` | The number of worker processes. |
+| `world_planes` | The number of world planes kept. |
+| `demo_frames` | The names of the demo images' frames. |
+| `frames` | One object per prior frame, in pick number order. |
+
+Each object in `frames` holds:
+
+| Field | What it holds |
+|---|---|
+| `name`, `pick_number` | The image's name in `images.bin` and its pick number. |
+| `scene_scale`, `scale_points` | The scene scale k and the number of scale points. |
+| `sources` | The number of source frames, `null` for a frame that timed out. |
+| `source_frames` | The source frames' names, in rank order, `null` for a frame that timed out. |
+| `source_seconds` | The time the sources were chosen with, `source_min_seconds` or `source_fallback_seconds`. |
+| `first_scale` | The first pass's scale. |
+| `change`, `m` | The solved change (a, b, c, d) of the start depth, and m, the start depth's median inverse depth. |
+| `band_weights` | The band weights, one per band. |
+| `halves_difference` | The median of \|z_A / z_B − 1\| between the two halves' answers. |
+| `tile_low`, `tile_high` | The tile scores against the answer ÷ and × `z_scale`. |
+| `tile_low_count`, `tile_high_count` | The tiles each tile score counted. |
+| `passed` | Whether the frame passed its self-check, `null` for a frame that timed out. |
+| `facets`, `facet_changes` | The number of facets and of applied facet changes. |
+| `applied_facets` | Each applied facet change: its `facet`, its `change`, its `m`, its `halves_difference`, `tile_low` and `tile_high`. |
+| `fallback` | A failed frame's fallback: `"projection"`, `"planes"`, or `null` when it got none or isn't a failed frame. |
+| `fallback_coverage` | A failed frame's share of prior pixels with a median of agreeing values. |
+| `fallback_change` | The fallback's fitted change (a, b, c, d). |
+| `outcome` | `"passed"`, `"fallback"` or `"depth_prior"`, the per-frame choice. |
+| `reason` | For `"depth_prior"`, why: `"timed_out"`, `"no_fallback"` or `"sparse_error"`, and `null` otherwise. |
+| `sparse_error` | The sparse error of the frame's walls depth, `null` when it has no walls depth, fewer than `scale_min_points` scale points, or no scale point where the walls depth has a depth. |
+
+A frame that timed out has `null` for every field from `sources` to `applied_facets`, but its `m`. A frame with too few sources has its `sources`, `source_frames`, `source_seconds`, `passed`, `facets`, `facet_changes` and an empty `applied_facets`, and `null` for the passes' fields, from `first_scale` to `tile_high_count`.
+
+### Config section
+
+| Key | Table | Value | What it is |
+|---|---|---|---|
+| `score_long_edge` | `[walls]` | `640` | The longest edge of the score size, in pixels. A smaller camera isn't scaled up. |
+| `high_pass_sigma` | `[walls]` | `3.0` | The sigma of the blur the high pass takes away, in score-size pixels. |
+| `window_size` | `[walls]` | `31` | The side of a score window, in score-size pixels. |
+| `window_step` | `[walls]` | `4` | The spacing of the score windows' centres, in score-size pixels. |
+| `flat_variance` | `[walls]` | `0.04` | A window whose high pass variance, in grey levels squared, is under this is flat and isn't scored. |
+| `occlusion_tolerance` | `[walls]` | `0.15` | A window is occluded for a source when the depth the warp predicts there and the source's start depth differ by more than this share. |
+| `mask_threshold` | `[walls]` | `128` | A mask pixel, from 0 to 255, below this is masked. It matches `[train]`'s. |
+| `scale_mad_gate` | `[walls]` | `3.0` | The scene scale keeps the scale points within this many median absolute deviations. |
+| `scale_min_points` | `[walls]` | `10` | The fewest scale points for a scene scale. With fewer, k is 1. Untested on real footage. |
+| `max_sources` | `[walls]` | `32` | The most source frames per prior frame. |
+| `source_min_seconds` | `[walls]` | `1.0` | The shortest time between a prior frame and its sources, in seconds. |
+| `source_fallback_seconds` | `[walls]` | `0.5` | The shorter time used when `source_min_seconds` gives too few sources. |
+| `min_sources` | `[walls]` | `4` | The fewest source frames a prior frame needs. |
+| `source_min_gap` | `[walls]` | `2` | The fewest pick numbers between two sources of one frame. |
+| `source_min_overlap` | `[walls]` | `0.3` | The smallest overlap of a source. |
+| `motion_depth_change` | `[walls]` | `0.01` | The depth change the image motion is measured for, 1 %. |
+| `source_min_motion` | `[walls]` | `0.4` | The smallest image motion of a source, in score-size pixels. |
+| `source_motion_cap` | `[walls]` | `3.0` | The image motion counts up to this in the source rank, in score-size pixels. |
+| `first_min_scale`, `first_max_scale`, `first_scale_step` | `[walls]` | `0.5`, `2.0`, `0.015` | The first pass's smallest and largest table scale, and the largest step between its scales, in ln(s). |
+| `second_min_scale`, `second_max_scale`, `second_scale_step` | `[walls]` | `0.92`, `1.087`, `0.004` | The same for the second pass. |
+| `third_min_scale`, `third_max_scale`, `third_scale_step` | `[walls]` | `0.95`, `1.053`, `0.0025` | The same for the third pass. |
+| `fit_starts` | `[walls]` | `5` | The Nelder-Mead starts of each fit. |
+| `fit_bound` | `[walls]` | `0.2` | The largest \|b\|, \|c\| and \|d\| of a fit's guess. |
+| `fit_start_spread` | `[walls]` | `0.05` | How far the starts other than no change are spread. Untested on real footage. |
+| `fit_max_iterations` | `[walls]` | `400` | The most Nelder-Mead iterations per start. Untested on real footage. |
+| `fit_x_tolerance` | `[walls]` | `0.0001` | Nelder-Mead's tolerance on the four numbers. Untested on real footage. |
+| `fit_f_tolerance` | `[walls]` | `0.001` | Nelder-Mead's tolerance on the guess's score. Untested on real footage. |
+| `band_sigmas` | `[walls]` | `[0, 1, 2, 4, 8]` | The blur sigmas of the octave bands, in score-size pixels, 0 being the luma itself, so 4 bands. |
+| `band_max_coherence` | `[walls]` | `0.95` | The cap on a band's coherence. Untested on real footage. |
+| `halves_tolerance` | `[walls]` | `0.015` | The two halves agree when their difference is under this. |
+| `tile_size` | `[walls]` | `32` | The side of a tile, in score-size pixels. |
+| `tile_min_windows` | `[walls]` | `16` | The fewest windows a tile needs to count in a tile score. Untested on real footage. |
+| `z_scale` | `[walls]` | `1.2` | The tile score compares the answer with the answer × and ÷ this. |
+| `min_z` | `[walls]` | `2.5` | A frame's two tile scores must be above this. |
+| `z_error_factor` | `[walls]` | `2.0` | The tile score's standard error is multiplied by this. |
+| `facet_normal_degrees` | `[walls]` | `6.0` | A facet's normals lie within this many degrees of its mean normal. |
+| `facet_jump` | `[walls]` | `0.01` | Inverse depths that differ by more than this share make a jump pixel. |
+| `facet_jump_distance` | `[walls]` | `2` | The distance across or down, in prior-size pixels, the jump test compares over. |
+| `facet_min_pixels` | `[walls]` | `4000` | The fewest prior-size pixels of a facet. |
+| `facet_min_scale`, `facet_max_scale`, `facet_scale_step` | `[walls]` | `0.75`, `1.333`, `0.006` | A facet refit's smallest and largest table scale, and the largest step between its scales, in ln(s). |
+| `facet_occlusion_tolerance` | `[walls]` | `0.5` | The looser occlusion test of a facet's refit. |
+| `facet_halves_tolerance` | `[walls]` | `0.03` | A facet's two halves must agree within this. |
+| `facet_min_change_ratio` | `[walls]` | `2.5` | A facet's change must be more than this times its halves' difference. |
+| `facet_min_z` | `[walls]` | `3.0` | A facet's two tile scores must be at least this. |
+| `plane_merge_degrees` | `[walls]` | `3.0` | Facet planes merge when their normals are within this many degrees... |
+| `plane_merge_offset` | `[walls]` | `0.015` | ... and their offsets within this share of the facet's camera distance. |
+| `plane_min_frames` | `[walls]` | `3` | The fewest prior frames whose facets make a world plane. |
+| `plane_min_share` | `[walls]` | `0.01` | The smallest share of the largest world plane's pixels a world plane needs. |
+| `neighbour_frames` | `[walls]` | `12` | The most neighbour frames per prior frame. |
+| `neighbour_window` | `[walls]` | `24` | Neighbour frames are within this many pick numbers. |
+| `fuse_tolerance` | `[walls]` | `0.1` | The fuse takes the projected values within this share of the pixel's depth. |
+| `fuse_min_values` | `[walls]` | `3` | The fewest values, the pixel's own included, the fuse takes a median of. |
+| `agree_tolerance` | `[walls]` | `0.03` | Agreeing values are within this share of the nearest projected value. |
+| `agree_min_frames` | `[walls]` | `2` | The fewest agreeing values for the fallback and the correction. |
+| `projection_min_coverage` | `[walls]` | `0.3` | The smallest share of prior pixels with agreeing values for the projection fallback. |
+| `register_max_degrees` | `[walls]` | `45.0` | A pixel matches a world plane whose normal is within this many degrees of its own. |
+| `register_start_tolerance` | `[walls]` | `0.5` | The plane registration's depth tolerance in its first pass. |
+| `register_end_tolerance` | `[walls]` | `0.03` | The plane registration's depth tolerance in its last pass. |
+| `register_passes` | `[walls]` | `5` | The passes of the plane registration. |
+| `register_min_pixels` | `[walls]` | `1000` | The fewest matched pixels in each plane registration pass. Untested on real footage. |
+| `tukey_constant` | `[walls]` | `4.685` | Tukey's constant, in median absolute deviations, for every robust fit. Untested on real footage. |
+| `tukey_iterations` | `[walls]` | `10` | The reweighting rounds of every robust fit. Untested on real footage. |
+| `correction_tolerance` | `[walls]` | `0.03` | The correction moves a pixel more than this off its neighbours' median, in ln(depth). |
+| `flatten_degrees` | `[walls]` | `5.0` | A facet takes a world plane's normal within this many degrees. |
+| `flatten_tolerance` | `[walls]` | `0.03` | Only pixels within this share of the facet's plane depth move onto it. |
+| `despeckle_window` | `[walls]` | `5` | The side of the despeckle's window, in prior-size pixels. |
+| `despeckle_min_valid` | `[walls]` | `9` | The fewest valid pixels the despeckle's window needs. |
+| `despeckle_tolerance` | `[walls]` | `0.03` | A pixel more than this share off its window's median takes the median. |
+| `fallback_max_sparse_error` | `[walls]` | `0.1` | A fallback depth whose sparse error is above this drops to a depth prior copy. |
+| `finish_minutes` | `[walls]` | `3` | The solve cutoff comes this many minutes before the stop time, left for the cross-frame stages and the writes. |
+| `workers` | `[walls]` | `0` | The worker processes. 0 means one per vCPU the process may use. Untested on real footage. |
+| `demo_frames` | `[walls]` | `3` | The demo images written. 0 writes none. Untested on real footage. |
+| `demo_jpeg_quality` | `[walls]` | `90` | The JPEG quality of the demo images. Untested on real footage. |
+| `min_vcpus` | `[walls]` | `16` | The fewest vCPUs the job's cloud machine should have for this step, a soft need. The step never checks it. |
+| `min_memory_gb` | `[walls]` | `32` | The least memory the job's cloud machine needs for this step, in GB, a hard need. The step never checks it. |
+| `max_minutes` | `[walls.fast]`, `[walls.default]` and `[walls.quality]` | `20`, `40` and `60` | The longest the step solves frames for, from its start, in minutes. |
+| `train_reserve_minutes` | `[walls.fast]`, `[walls.default]` and `[walls.quality]` | `40`, `60` and `110` | The minutes before the cap deadline the step leaves for the train step. |
+
+The real `config.toml` has a comment on the line directly above every key.
+
+- The values marked "Untested on real footage" are defaults the spec chose with no real footage to test them on, and their comments in `config.toml` say so. `mask_threshold` gives a rule instead, matching `[train]`'s. `train_reserve_minutes` was chosen with no measured training times yet. No `[walls]` number has been tuned on real footage: the first real job on the walls step is the first test of them all.
+- The step checks every setting before it reads the cap deadline or any file. A value of the wrong kind fails the step with a readable error that names the key, its table and what it must be, like "The setting window_size in [walls] is 30, but it must be an odd whole number of 3 or more. Change it to an odd whole number of 3 or more." A bool is never a number here. A missing key fails the step with the step runner's message, which names `[walls]`, the preset's table and the key.
+- The kinds: `window_size` and `despeckle_window` are odd whole numbers of 3 or more; `mask_threshold` a whole number from 0 to 255; `demo_jpeg_quality` a whole number from 1 to 100; `min_sources` a whole number of 2 or more; `workers` and `demo_frames` whole numbers of 0 or more; and every other whole number, from `score_long_edge` to `min_vcpus`, a whole number above 0. `source_min_overlap`, `plane_min_share` and `projection_min_coverage` are numbers from 0 to 1; `band_max_coherence` a number above 0 and below 1; `z_scale` a number above 1; `facet_normal_degrees`, `plane_merge_degrees`, `register_max_degrees` and `flatten_degrees` numbers of degrees above 0 and at most 90; `min_z` and `facet_min_z` any number; `flat_variance`, `source_min_seconds`, `source_fallback_seconds`, `source_min_motion`, `facet_min_change_ratio`, `agree_tolerance`, `flatten_tolerance`, `despeckle_tolerance`, `finish_minutes` and `train_reserve_minutes` numbers of 0 or more; and every other number a number above 0. `band_sigmas` is a list of 2 or more numbers, the first 0, each above the one before.
+- Once every kind passes, the step makes the cross-checks, each refused with a readable error that names both settings and their values: each pass's `*_min_scale` below 1 and its `*_max_scale` above 1, for the first, second and third passes and the facets; `source_fallback_seconds` at most `source_min_seconds`; `min_sources` at most `max_sources`; `register_end_tolerance` at most `register_start_tolerance`; `despeckle_min_valid` at most `despeckle_window` squared; and `finish_minutes` below the preset's `max_minutes`.
+
+`min_vcpus` and `min_memory_gb` are the step's machine needs, which `cloud.start` reads to pick the machine, as "What each step asks the machine for" says. The step checks them like the other settings, but never uses them.
+
+### Step report fields
+
+- `settings`: the 83 settings in `[walls]` and the preset's `max_minutes` and `train_reserve_minutes`.
+- `counts.images`: the prior frames.
+- `counts.solved_images`: the prior frames whose solve ended, passed or failed.
+- `counts.passed_images`: the trusted frames, which passed their self-check.
+- `counts.fallback_images`: the failed frames whose walls prior was made from a fallback depth.
+- `counts.depth_prior_images`: the depth prior copies.
+- `counts.timed_out_images`: the frames that timed out.
+- `timings.read`: reading the inputs and the preparation pass.
+- `timings.solve`: the frames' solves, until the last one ended or the solve cutoff.
+- `timings.fuse`, `timings.planes`, `timings.fallback`, `timings.correct`, `timings.flatten` and `timings.despeckle`: each cross-frame stage.
+- `timings.write`: writing the walls prior files, the walls record and the walls index.
+- `timings.demo`: making and writing the demo images.
+- `warnings`, each only when it applies:
+  - When some frames timed out: "The walls step ran out of time for <timed out> of <frames> frames: it had to stop solving frames in time to be done by <stop time> UTC, which <the walls step's own max_minutes, or the train step's train_reserve_minutes before the cap deadline> set. Those frames keep their depth prior."
+  - When fewer frames passed their self-check than there are prior frames: "<passed> of <frames> frames passed the walls step's self-check and were corrected from their own solve. Of the others, <fallback> got a walls prior from a fallback depth and <depth prior> kept their depth prior unchanged."
+- `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message. Those failures are:
+  - a bad or missing setting, and a failed cross-check;
+  - a malformed `SPLATPIPE_CAP_DEADLINE`, with the train step's message;
+  - no `work/depth/depth.json`: "The walls step needs <path>, which the depth step writes, but it isn't there, so the depth step has to run on this job first. The job goes on and trains as it would without the walls step.";
+  - a missing `images/` folder or model file, which names the path and says that the camera solve step writes it, and a missing `work/frames/frames.json`, which names the path and says that the frames step writes it;
+  - a sparse model the train step's reader refuses, with its message, and depth priors that fail a check of `read_prior_set`: "The walls step can't use the depth priors: <the reader's message>. Run the depth step on this job again. The job goes on and trains as it would without the walls step.";
+  - a frames record that isn't a JSON object, has no `picks`, or has a pick field that's missing, of the wrong kind or repeated, which names the field, like `picks[3].seconds`, and says to run the frames step on this job again;
+  - a prior frame that no pick has as its `file`, which names the image, says that `frames.json` doesn't match the camera solve and gives the command to run the job again with `--fresh`;
+  - a frame with no file, one that can't be decoded and one that isn't the shared camera's size, and a mask that can't be decoded, isn't its image's size or masks every pixel, each with the train step's message, the last naming `mask_threshold` in `[walls]`;
+  - a worker process that ended without its result: "A worker process stopped while the walls step solved the frame '<name>'. The machine may have run out of memory. The job goes on and trains on the depth priors.", or "its frames" when the frame isn't known. A worker that raises an `ExpectedFailure` fails the step with that same message;
+  - no trusted frame: "None of the <frames> frames passed the walls step's self-check, so no walls priors were made: <timed out> ran out of time before their solve ended, and <failed> failed their self-check, <too few> of them because they had too few other frames to compare with. The job goes on and trains on the depth priors.";
+  - a walls prior file, the walls record, a demo image or the walls index that can't be written, like on a full disk, with the file and the reason, a demo image that can't be encoded, and `out/walls/` or the scratch folder that can't be removed.
+
+Any other error, a worker's included, is a bug, with the general bug message.
+
+When the step fails, for any reason, the job runner writes its readable error to the job log and goes on with the next step, because the step is optional. So a job whose required steps are all done ends done with warnings, with the walls step's entry `failed`, and trains on the depth priors. A tiny job fails here in practice: in the tests' five-frame job, `tests/test_cameras_step.py`, every frame can take at most 2 sources that are 2 pick numbers apart, fewer than `min_sources`, so the step fails with the no-trusted-frame message, 5 frames, 0 timed out, 5 failed, all 5 with too few sources. A real job needs enough frames, spread over enough time, for each frame to find 4 sources.
+
+The counts are whole numbers, so the scales, changes and scores are in `walls.json` instead. The step adds each count as soon as it knows it, and each timing when its block ends, so a failed report holds the counts and timings the step had worked out before it failed. Once all six counts are known, `images` = `passed_images` + `fallback_images` + `depth_prior_images` = `solved_images` + `timed_out_images`.
+
+### Files in out/
+
+The walls step writes the demo images to `out/walls/`, one JPEG per chosen frame, `out/walls/<stem>.jpg`, at `demo_jpeg_quality`, encoded as a still image with `cv2.imencode`. It chooses `demo_frames` (3) frames spread evenly by pick number among the prior frames whose walls prior isn't a depth prior copy, or every one of them when there are fewer. Each image holds, side by side at the prior size, the frame, the normals of the depth prior's depth and the normals of the walls prior's depth. Both normal images are worked out from each depth map by finite differences, for display only, so a flat wall shows as one flat colour: a normal n shows as (n + 1) / 2 × 255 in red, green and blue, and a pixel with no normal is black. The step removes `out/walls/` first of all, at the start of each run, so a run that fails, or makes fewer demo images, leaves none from an earlier run. Its report, `out/reports/walls.json`, comes from the step runner, like every step's.
+
 ## Step: train
 
 The train step is in `splatpipe/train/`, built like the fake step. It trains the job's 3D Gaussian splat on the job machine's GPU, from the frames, cameras and points that the camera solve step writes to `work/cameras/`, and writes the splat to `out/train.ply`, where the clean step reads it. It trains with its own trainer, written on gsplat 1.5.3's `rasterization()` and MCMC strategy.
@@ -1290,7 +1568,7 @@ It works in this order:
 3. It reads the cap deadline from `SPLATPIPE_CAP_DEADLINE`, when that's set, and works out the stop time.
 4. It checks that the camera solve output's `images/` folder and its three model files are there, without reading them. This comes before the GPU checks, so a job without the camera solve output fails with the camera solve's message on any machine, a laptop included.
 5. It imports the GPU module, `splatpipe/train/gpu.py`, and checks the GPU: torch must see a CUDA GPU, gsplat must be 1.5.3, and the GPU must have the memory the preset needs. Nothing is read and nothing goes onto the GPU before this.
-6. The load: it reads the sparse model, the training images and their masks, then the depth priors in `work/depth/` when `work/depth/depth.json` is there, and sets up the scene at the training size. It starts a splat at each point of the sparse model, or at `max_splats` of them chosen at random when there are more, and sizes each splat from its nearest other points, which the GPU finds. With depth priors, it also starts splats from the priors, on plain surfaces where the sparse model has no point, and the sparse model's points get only what those leave of `max_splats`, as "What it reads" says.
+6. The load: it reads the sparse model, the training images and their masks, then the depth priors, from `work/walls/` when `work/walls/depth.json` is there and from `work/depth/` otherwise, when `work/depth/depth.json` is there, and sets up the scene at the training size. It starts a splat at each point of the sparse model, or at `max_splats` of them chosen at random when there are more, and sizes each splat from its nearest other points, which the GPU finds. With depth priors, it also starts splats from the priors, on plain surfaces where the sparse model has no point, and the sparse model's points get only what those leave of `max_splats`, as "What it reads" says.
 7. The training: the trainer trains the splats on the GPU for the preset's `steps` iterations, unless the stop time comes first. Each iteration renders one training image, turns the render's colours with that image's own exposure fix, works out the loss against the image with its masked pixels left out, and updates the splats and the fix. With depth priors, the loss also holds the five prior loss terms, which pull the rendered depth and the splats' normals toward the priors and keep the splats flat, as "Config section" says. The trainer goes through every image once per pass, in a new order each pass. Every `refine_every` iterations for most of the run, gsplat's MCMC strategy moves nearly transparent splats onto opaque ones and adds new ones, up to `max_splats`.
 8. The write: it bakes the mean of the images' exposure fixes into the splats' colours, leaves out every splat with a NaN or an infinity, and writes the rest to `work/train/train.ply`.
 9. The PLY check reads the file back and checks its header, its size and that every value is finite.
@@ -1300,7 +1578,7 @@ It works in this order:
 ### What it reads
 
 - The camera solve output in `work/cameras/`, below.
-- The depth priors in `work/depth/`, which the depth step writes, only when `work/depth/depth.json` is there. Below.
+- The walls priors in `work/walls/`, which the walls step writes, when `work/walls/depth.json` is there, and otherwise the depth priors in `work/depth/`, which the depth step writes, only when `work/depth/depth.json` is there. Below.
 - `SPLATPIPE_CAP_DEADLINE`, the cap deadline, when the cloud runner sets it.
 - Its settings, from `[train]` and from the job's preset table, like `[train.fast]`.
 - torch, gsplat 1.5.3 and fused-ssim, which only the job's machine image has. Only the GPU module, `splatpipe/train/gpu.py`, imports them, and the step imports that module only when it runs. So `splatpipe.train` imports on a laptop, and there the step fails at its GPU checks with a readable error that says to run the job with `uv run python -m cloud.start`.
@@ -1346,6 +1624,14 @@ The depth priors are the prior format that "Step: depth" lays out under "What it
 7. that each prior file, at the path that `prior_path` derives from the checked name and never at a path from the index, is there, reads as a `.npz` file with `allow_pickle=False`, and holds exactly `inverse_depth`, `normal` and `mask` at `prior_height` × `prior_width`, as float32, float32 and bool, with every value finite and `inverse_depth` above 0 where `mask` is true and 0 where it's false.
 
 The first check that fails drops every prior, so one bad file means the step trains without depth priors. It then adds one warning that names the file and what failed, "The depth priors in work/depth/ weren't used, because <file> <what>. Training ran without depth priors.", and goes on as it would with no `depth.json`. Priors that fail a check never fail the step.
+
+The walls step writes its own priors to `work/walls/` in the same format, and writes `work/walls/depth.json` last of all, so that file is there only when the walls step finished. One function, `_read_priors` in `splatpipe/train/__init__.py`, picks the folder:
+
+- When `work/walls/depth.json` is there, the step reads `work/walls/` with `read_prior_set` and the same seven checks, and trains with the walls priors when they pass.
+- When the walls priors fail a check, the step adds the warning "The walls priors in work/walls/ weren't used, because <file> <what>. Training fell back to the depth priors in work/depth/." and then reads `work/depth/` exactly as above, with the depth priors' own warning when those fail too. So a run can hold both warnings and train without priors.
+- With no `work/walls/depth.json`, the step reads `work/depth/` exactly as above and adds no warning about the walls step.
+
+Nothing else in training changes with the walls priors: no setting, count, timing or loss term, and the starting splats are made the same way. `counts.prior_images` counts the priors of whichever folder the step trained with.
 
 When every check passes, each training image that `depth.json` names is a prior view, and the scene keeps two things for it: its prior at the prior size, as read, and its training image's brightness gradient at the training size. That gradient is the length of the central-difference gradient of the image's grey value from 0 to 1, OpenCV's RGB-to-grey value divided by 255, with the border pixels repeated outward, kept as float32. A training image with no prior keeps no prior. The scene also works out, once per run, how to scale a prior up from the prior size to the training size, as "Step: depth" says under "What it writes". The step adds `counts.prior_images`.
 
@@ -1544,6 +1830,7 @@ The depth-normal start is round(`depth_normal_start_fraction` × `steps`), round
 - `counts.ply_bytes`: the trained splat's size in bytes.
 - `warnings`, each only when it applies:
   - When the depth priors fail a check of "What it reads": "The depth priors in work/depth/ weren't used, because <file> <what>. Training ran without depth priors.", where <file> is the path of the file that failed and <what> says what failed, like "has the camera fx 1450.0, but cameras.bin's is 1452.5". The step then trains without depth priors. With no `work/depth/depth.json` there's no warning.
+  - When the walls priors in `work/walls/` fail a check: "The walls priors in work/walls/ weren't used, because <file> <what>. Training fell back to the depth priors in work/depth/." The step then reads `work/depth/`, so this warning can come with the one above. With no `work/walls/depth.json` there's no warning about the walls step.
   - Without depth priors, when the camera solve gave more points than the splat budget: "The camera solve gave <points> points, more than this preset's splat budget of <max_splats>, so training started from <max_splats> of them, chosen at random."
   - With depth priors, in place of the one above, when the camera solve gave more points than the splat budget leaves after the splats from the depth priors: "The camera solve gave <points> points, more than the <left> places this preset's splat budget of <max_splats> leaves after <backprojected_splats> splats started from the depth priors, so training started from <left> of the points, chosen at random.", where <left> is `max_splats` less `counts.backprojected_splats`.
   - When the trainer stopped at the stop time, before the last planned iteration: "Training stopped early, after <steps_run> of <steps> iterations, to leave time for the clean step before the job's time cap."

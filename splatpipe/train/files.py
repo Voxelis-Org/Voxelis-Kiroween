@@ -32,7 +32,9 @@ whether it gives None or raises cv2.error, as it does for an empty file and for 
 OpenCV's size limit. Names from images.bin are shown with repr(). cv2 only decodes still images
 here and never reads or writes video. The decoder, read_training_image, and the scaler,
 scaled_down, are public because the Depth_Step decodes and scales its Frames with them, so it
-refuses a Frame with the same messages (depth-priors spec, Req 2.7).
+refuses a Frame with the same messages (depth-priors spec, Req 2.7). The mask reader,
+read_keep_mask, is public because the Walls_Step reads its Mask_Files with it, naming its own
+Config section in the all-masked message (walls spec, Req 2.12).
 
 move_into_out moves the checked Trained_Splat into out/ with one os.replace, so out/ never holds
 a half-written file (Req 8.8). write_record writes the Train_Record with
@@ -162,7 +164,7 @@ def _read_view(cameras: Path, name: str, camera: Camera, width: int, height: int
     no Mask_File."""
     image = read_training_image(cameras / IMAGES, name, camera)
     pixels = cv2.cvtColor(scaled_down(image, width, height), cv2.COLOR_BGR2RGB)
-    keep = _keep(cameras / MASKS, name, _size(image), width, height, threshold)
+    keep = read_keep_mask(cameras / MASKS, name, _size(image), width, height, threshold)
     return ImagePixels(pixels, keep)
 
 
@@ -197,13 +199,17 @@ def scaled_down(image: np.ndarray, width: int, height: int) -> np.ndarray:
     return cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
 
 
-def _keep(folder: Path, name: str, size: tuple[int, int], width: int, height: int,
-          threshold: int) -> np.ndarray | None:
-    """The keep mask at the Training_Size of the image `name`, whose (width, height) is `size`,
-    from its Mask_File in `folder`, masks/, or None when it has none (Req 1.14, 1.15).
+def read_keep_mask(folder: Path, name: str, size: tuple[int, int], width: int, height: int,
+                   threshold: int, section: str = "train") -> np.ndarray | None:
+    """The keep mask at the Training_Size `width` × `height` of the image `name`, whose
+    (width, height) is `size`, from its Mask_File in `folder`, masks/, or None when it has none
+    (Req 1.14, 1.15). `threshold` is the mask_threshold.
 
     The Mask_File must be a grey image cv2 can decode, of its image's size, that keeps at least one
-    pixel once keep_mask has scaled it (Req 1.16, 3.4).
+    pixel once keep_mask has scaled it (Req 1.16, 3.4). `section` names the Config section of
+    `threshold` in the all-masked message, "every pixel is below mask_threshold in [<section>]",
+    and changes nothing else. The Walls_Step reads its Mask_Files with this too, so it reads and
+    refuses them by the Train_Step's rules (walls spec, Req 2.12).
     """
     mask_name = f"{name.removesuffix('.jpg')}.png"
     path = folder / mask_name
@@ -218,8 +224,8 @@ def _keep(folder: Path, name: str, size: tuple[int, int], width: int, height: in
     keep = keep_mask(grey, width, height, threshold)
     if not keep.any():
         raise ExpectedFailure(f"{shown} masks every pixel of its image {name!r}: scaled to the "
-                              "training size, every pixel is below mask_threshold in [train], "
-                              f"{threshold}, so the image has nothing to train on. {_AGAIN}")
+                              "training size, every pixel is below mask_threshold in "
+                              f"[{section}], {threshold}, so the image has nothing to train on. {_AGAIN}")
     return keep
 
 

@@ -10,17 +10,19 @@ The ## Step: train section's Config section test reads the real [train] the same
 has to name every key the real [train] and its preset tables hold, and the whole section has to
 name the depth-priors spec's 15 [train] keys, each of which the real [train] must hold, and its
 five Prior_Terms. The
-## Step: depth section's Config section test reads the real [depth] the same way. The step list
-test takes its entries from the real STEP_LIST, and the skill tests read the gsplat-training and
-moge-depth skills by path.
+## Step: depth section's Config section test reads the real [depth] the same way, and the
+## Step: walls section's the real [walls]. The step list test takes its entries from the real
+STEP_LIST, and the skill tests read the gsplat-training and moge-depth skills by path.
 
 The Step_Reports' counts and timings are written out here, as the step tests write them out:
 tests/test_frames_step.py, tests/test_train_step.py and tests/test_depth_step.py check that a real
-run's report holds exactly those names.
+run's report holds exactly those names. The walls step's counts and timings come from
+splatpipe.walls.report instead, its Counts fields and TIMING_NAMES, so the test follows the code.
 """
 
 import re
 import tomllib
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
@@ -34,6 +36,7 @@ from splatpipe.frames.files import frames_record, pick_name
 from splatpipe.frames.mask import MaskChoice
 from splatpipe.frames.scores import Scores
 from splatpipe.run import STEP_LIST
+from splatpipe.walls.report import TIMING_NAMES, Counts
 
 ROOT = Path(__file__).resolve().parents[1]  # this file is in tests/, at the repo root
 LICENCE_LIST = ROOT / "docs" / "third-party-licences.md"
@@ -68,14 +71,17 @@ def test_the_ffmpeg_row_says_what_ffprobe_reads_and_that_the_tools_are_never_ven
 def test_numpy_and_headless_opencv_say_yes_and_opencv_never_reads_or_writes_video() -> None:
     """Frames spec, Req 12.6. Training spec, Req 13.16: the opencv-python-headless row also names
     the train step's JPEG frames and PNG masks. Depth-priors spec, Req 17.7: it also names the
-    depth step's JPEG frames, and still says it never reads or writes video."""
+    depth step's JPEG frames, and still says it never reads or writes video. Walls spec, Req
+    21.14 (A20): it also names the walls step's frames, masks, blurs, warps and demo JPEGs."""
     for name in ("numpy", "opencv-python-headless"):
         assert licence_row(name)["Installed"] == "Yes", f"The {name} row should say Yes"
     how = licence_row("opencv-python-headless")["How we use it"]
     train = ("The train step decodes the camera solve's JPEG frames and PNG masks and scales "
              "them down")
     depth = "The depth step decodes the camera solve's JPEG frames and scales them down"
-    for words in (train, depth):
+    walls = ("The walls step decodes the camera solve's JPEG frames and PNG masks, blurs and "
+             "warps them, and writes its demo JPEGs")
+    for words in (train, depth, walls):
         assert words in how, f"The opencv-python-headless row should say {words!r}"
     assert "never reads or writes video" in how, (
         "The opencv-python-headless row should say it never reads or writes video")
@@ -185,24 +191,30 @@ def test_the_pipeline_doc_has_a_step_section_for_the_fake_step_and_every_listed_
         doc_part(parts, 2, f"Step: {name}")
 
 
-def test_the_step_list_part_names_the_frames_cameras_depth_train_and_clean_entries_in_order() -> None:
+def test_the_step_list_part_names_the_six_entries_in_order_with_the_walls_step() -> None:
     """Frames spec, Req 12.5. Training spec, Req 13.8, 13.14. Cameras spec, Req 14.8, 15.7.
-    Depth-priors spec, Req 17.4, 17.9: the list holds the frames step and the cameras step, both
-    required, the depth step, optional, the train step, required, and then the clean step,
-    optional, each written as the real Step_List's entry. The frames spec's three sentences, the
-    old one on a later spec adding the clean step's entry, and every side's words on the camera
-    solve spec or the training spec still to add its entry are gone."""
+    Depth-priors spec, Req 17.4, 17.9. Walls spec, Req 21.6, 21.15: the list holds the frames
+    step and the cameras step, both required, the depth step and the walls step, both optional,
+    the train step, required, and then the clean step, optional, each written as the real
+    Step_List's entry, and the planned optional steps name correcting walls. The depth-priors
+    spec's five-step sentences, the frames spec's three sentences, the old one on a later spec
+    adding the clean step's entry, and every side's words on the camera solve spec or the
+    training spec still to add its entry are gone."""
     step_list = doc_part(pipeline_parts(), 2, "The step list")
     phrases = ("The list holds the frames step and the cameras step, both required, the depth "
-               "step, optional, the train step, required, and then the clean step, optional",
-               "A job is done once all five steps are done, and done with warnings when the three "
-               "required steps are done and the depth step or the clean step fails")
+               "step and the walls step, both optional, the train step, required, and then the "
+               "clean step, optional",
+               "A job is done once all six steps are done, and done with warnings when the three "
+               "required steps are done and the depth step, the walls step or the clean step "
+               "fails",
+               "Optional steps: depth priors, correcting walls and clean.")
     missing = [words for words in phrases if words not in step_list]
     assert not missing, f"The part headed The step list should say {missing}"
     # Each entry as the code writes it, in the real Step_List's order, with frames first.
     entries = [f'`StepEntry("{entry.name}", "{entry.module}", {entry.required})`'
                for entry in STEP_LIST]
     assert STEP_LIST[0].name == "frames" and STEP_LIST[0].required
+    assert len(STEP_LIST) == 6, "The real Step_List should hold six steps"
     unnamed = [entry for entry in entries if entry not in step_list]
     assert not unnamed, f"The part headed The step list should name {unnamed}"
     places = [step_list.index(entry) for entry in entries]
@@ -226,7 +238,12 @@ def test_the_step_list_part_names_the_frames_cameras_depth_train_and_clean_entri
             "The list holds the frames step, required, the depth step, optional",
             "The list holds the frames step, the cameras step and the train step, all three "
             "required",
-            "A job is done once all four steps are done")
+            "A job is done once all four steps are done",
+            "The list holds the frames step and the cameras step, both required, the depth "
+            "step, optional, the train step, required",
+            "A job is done once all five steps are done",
+            "the depth step or the clean step fails",
+            "Optional steps: depth priors and clean.")
     left = [words for words in gone if words in step_list]
     assert not left, f"The part headed The step list should no longer say {left}"
 
@@ -655,6 +672,103 @@ def test_the_train_section_names_the_prior_keys_and_counts_and_depth_names_the_s
     assert not missing, f"The depth section's What it writes part should name {missing}"
 
 
+# The ## Step: walls section and the walls step's words in other sections (walls spec, Req 21.1
+# to 21.5, 21.8 to 21.10, 21.12, 21.15)
+
+WALLS = "Step: walls"
+# The Walls_Report's counts (Req 19.1) and timings (Req 19.2), from the code that writes them.
+WALLS_COUNTS = tuple(field.name for field in fields(Counts))
+WALLS_TIMINGS = TIMING_NAMES
+# The Kriegman_Belhumeur_Paper's citation (Req 21.2): its authors, title, ECCV 1998, its pages and
+# its journal version.
+CITATION = ("D. J. Kriegman and P. N. Belhumeur", '"What Shadows Reveal about Object Structure"',
+            "ECCV 1998", "399–414", "JOSA A 18(8), 2001")
+
+
+def walls_part(title: str) -> str:
+    """The text of the ### part with this title in the ## Step: walls section."""
+    section = doc_part(pipeline_parts(), 2, WALLS)
+    return doc_part(doc_parts(section), 3, title, f"The ## {WALLS} section")
+
+
+def test_the_walls_section_comes_after_depth_and_before_train_and_has_the_five_parts() -> None:
+    """Walls spec, Req 21.1."""
+    parts = pipeline_parts()
+    section = doc_parts(doc_part(parts, 2, WALLS))
+    for title in STEP_PARTS:
+        doc_part(section, 3, title, f"The ## {WALLS} section")
+    titles = [title for level, title, _ in parts if level == 2]
+    assert titles.index(DEPTH) < titles.index(WALLS) < titles.index(TRAIN), (
+        f"docs/pipeline.md should have ## {WALLS} after ## {DEPTH} and before ## {TRAIN}")
+
+
+def test_the_walls_config_section_names_every_real_key_and_its_tables() -> None:
+    """Walls spec, Req 21.4, 21.15: the keys of the real [walls] and of its preset tables, and
+    which values are defaults untested on real footage."""
+    config = walls_part("Config section")
+    section = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["walls"]
+    presets = {name: table for name, table in section.items() if isinstance(table, dict)}
+    shared = [key for key, value in section.items() if not isinstance(value, dict)]
+    per_preset = list(dict.fromkeys(key for table in presets.values() for key in table))
+    assert presets and per_preset, "The real [walls] should have preset tables with keys"
+    tables = ["[walls]", *(f"[walls.{name}]" for name in presets)]
+    names = [f"`{name}`" for name in (*shared, *per_preset, *tables)]
+    missing = [words for words in (*names, "Untested on real footage") if words not in config]
+    assert not missing, f"The walls section's Config section part should name {missing}"
+
+
+def test_the_walls_step_report_fields_part_names_every_count_and_timing() -> None:
+    """Walls spec, Req 21.5, 21.15, with the counts of Req 19.1 and the timings of Req 19.2, as
+    splatpipe.walls.report names them."""
+    assert len(WALLS_COUNTS) == 6 and len(WALLS_TIMINGS) == 10
+    report = walls_part("Step report fields")
+    names = [*(f"`counts.{name}`" for name in WALLS_COUNTS),
+             *(f"`timings.{name}`" for name in WALLS_TIMINGS)]
+    missing = [name for name in names if name not in report]
+    assert not missing, f"The walls section's Step report fields part should name {missing}"
+
+
+def test_the_walls_section_names_its_index_its_record_and_out_walls() -> None:
+    """Walls spec, Req 21.3, 21.5, 21.15: What it writes names the walls index and the walls
+    record, and Files in out/ names out/walls/ and that the step removes it first."""
+    writes = walls_part("What it writes")
+    missing = [words for words in ("`work/walls/depth.json`", "`walls.json`") if words not in writes]
+    assert not missing, f"The walls section's What it writes part should name {missing}"
+    out = walls_part("Files in out/")
+    phrases = ("`out/walls/`", "removes `out/walls/` first of all, at the start of each run")
+    missing = [words for words in phrases if words not in out]
+    assert not missing, f"The walls section's Files in out/ part should say {missing}"
+
+
+def test_the_walls_section_cites_the_kriegman_belhumeur_paper() -> None:
+    """Walls spec, Req 21.2, 21.15: the authors, the title, ECCV 1998, pages 399–414 and the
+    JOSA A 18(8) 2001 version."""
+    section = doc_part(pipeline_parts(), 2, WALLS)
+    missing = [words for words in CITATION if words not in section]
+    assert not missing, f"The ## {WALLS} section's citation should give {missing}"
+
+
+def test_the_train_section_reads_work_walls_and_falls_back_to_work_depth() -> None:
+    """Walls spec, Req 21.9: the train step reads work/walls/ when work/walls/depth.json is there
+    and work/depth/ otherwise, with Req 20.2's fallback warning."""
+    section = doc_part(pipeline_parts(), 2, TRAIN)
+    phrases = ("from `work/walls/` when `work/walls/depth.json` is there and from `work/depth/` "
+               "otherwise",
+               "The walls priors in work/walls/ weren't used, because <file> <what>. Training fell "
+               "back to the depth priors in work/depth/.")
+    missing = [words for words in phrases if words not in section]
+    assert not missing, f"The ## {TRAIN} section should say {missing}"
+
+
+def test_the_depth_section_says_the_walls_step_reads_the_priors_and_leaves_them() -> None:
+    """Walls spec, Req 21.10."""
+    section = doc_part(pipeline_parts(), 2, DEPTH)
+    phrases = ("The walls step, which runs next, reads the depth priors too",
+               "It leaves the files in `work/depth/` as they are")
+    missing = [words for words in phrases if words not in section]
+    assert not missing, f"The ## {DEPTH} section should say {missing}"
+
+
 # The smoke test and cap deadline parts of ## Running a job in the cloud (training spec,
 # Req 12.13, 13.9, 13.11; cameras spec, Req 15.10, 15.11; depth-priors spec, Req 16.12, 17.5)
 
@@ -697,6 +811,40 @@ def test_the_cap_deadline_part_names_clean_reserve_minutes_and_that_the_cameras_
     assert cameras in deadline, f"The part headed The cap deadline should say {cameras!r}"
     assert "No current step reads it" not in deadline, (
         "The part headed The cap deadline should no longer say 'No current step reads it'")
+
+
+def test_the_cap_deadline_part_says_the_walls_step_reads_it_and_leaves_train_reserve_minutes() -> None:
+    """Walls spec, Req 21.8 (D18): the walls step reads the cap deadline too and stops solving
+    frames in time to leave the train step its train_reserve_minutes, the real presets' values."""
+    cloud = doc_parts(doc_part(pipeline_parts(), 2, CLOUD))
+    deadline = doc_part(cloud, 3, "The cap deadline", f"The ## {CLOUD} section")
+    walls = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["walls"]
+    reserve = [walls[preset]["train_reserve_minutes"] for preset in ("fast", "default", "quality")]
+    phrases = ("The walls step reads `SPLATPIPE_CAP_DEADLINE` too",
+               "stops solving frames in time to leave the train step its `train_reserve_minutes`",
+               f"{reserve[0]} minutes for `fast`, {reserve[1]} for `default` and {reserve[2]} for "
+               "`quality`")
+    missing = [words for words in phrases if words not in deadline]
+    assert not missing, f"The part headed The cap deadline should say {missing}"
+
+
+def test_the_cloud_section_states_the_new_expected_times_and_the_walls_steps_cost() -> None:
+    """Walls spec, Req 21.11, 21.12 (D19): 50, 100 and 180 minutes, as the real
+    [cloud.presets.*] give them, the time caps unchanged, the rough cost the walls step adds and
+    that the website shows the new times once the account owner redeploys."""
+    presets = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["cloud"]["presets"]
+    names = ("fast", "default", "quality")
+    expected = [presets[name]["expected_minutes"] for name in names]
+    caps = [presets[name]["cap_minutes"] for name in names]
+    assert expected == [50, 100, 180], "The real expected_minutes should be 50, 100 and 180"
+    assert caps == [120, 180, 360], "The real cap_minutes should stay 120, 180 and 360"
+    cloud = doc_part(pipeline_parts(), 2, CLOUD)
+    phrases = (f"{expected[0]} minutes for `fast`, {expected[1]} for `default` and {expected[2]} "
+               "for `quality`, the walls step's time included",
+               f"stays at {caps[0]}, {caps[1]} and {caps[2]} minutes",
+               "$0.80", "$1.60", "$3.00", "once the account owner redeploys it")
+    missing = [words for words in phrases if words not in cloud]
+    assert not missing, f"The ## {CLOUD} section should say {missing}"
 
 
 # The gsplat-training skill (training spec, Req 13.13)

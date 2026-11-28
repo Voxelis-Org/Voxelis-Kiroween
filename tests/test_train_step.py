@@ -61,6 +61,14 @@ Start_Splat by brute force over all of them together. The regression check runs 
 scene with no work/depth/ and compares the Start_Splats with choose_points of the scene's points,
 worked out in the test.
 
+The walls spec's tests of the prior folder (its Req 20 and 22.11) run the plane scene too.
+write_plane_priors with step "walls" writes the same Prior_Set into work/walls/, as the
+Walls_Step would, with a Walls_Index that copies the Depth_Index and every inverse_depth times
+WALLS_FACTOR, so the Scene the FakeGpu gets shows which folder the step trained from. The broken
+walls sets are the broken depth sets, written into work/walls/. The regression check runs with no
+work/walls/, on the default scene with no work/depth/ and on the plane scene with its depth
+priors, and expects the counts, timings and warnings the tests above expect.
+
 conftest's no_cap_deadline removes SPLATPIPE_CAP_DEADLINE before every test, so only a test that
 sets it with monkeypatch.setenv has a Cap_Deadline (Req 14.11).
 """
@@ -468,9 +476,10 @@ def plane_job(new_job: Callable[..., str]) -> str:
     return job_id
 
 
-def priors_folder(job_id: str) -> Path:
-    """The Job's work/depth/, where the Depth_Step writes the Prior_Set."""
-    return folder_of(job_id) / "work" / "depth"
+def priors_folder(job_id: str, step: str = "depth") -> Path:
+    """The Job's work/depth/, where the Depth_Step writes the Prior_Set, or with `step` "walls"
+    the Job's work/walls/, where the Walls_Step writes its own."""
+    return folder_of(job_id) / "work" / step
 
 
 def plane_prior(record: ImageRecord) -> Prior:
@@ -501,14 +510,19 @@ def plane_prior(record: ImageRecord) -> Prior:
 
 
 def write_plane_priors(job_id: str,
-                       records: Sequence[ImageRecord] = PRIOR_RECORDS) -> dict[str, Prior]:
+                       records: Sequence[ImageRecord] = PRIOR_RECORDS, *,
+                       step: str = "depth", factor: float = 1.0) -> dict[str, Prior]:
     """Write a Prior_Set for the plane scene into the Job's work/depth/ with the Prior_Writer,
     write_prior and write_index, as the Depth_Step would from fits with a scale of 1 and an offset
     of 0: plane_prior of each of `records`, then the Prior_Index, last, with the plane's camera,
-    the Prior_Size and each record's pose. Gives the Priors written, by image name."""
-    folder = priors_folder(job_id)
+    the Prior_Size and each record's pose. Gives the Priors written, by image name.
+
+    `step` "walls" writes it into work/walls/ instead, as the Walls_Step would, with a Walls_Index
+    that copies the Depth_Index, and `factor` multiplies every inverse_depth, so a test tells
+    these Priors from the depth ones (walls spec, Req 20)."""
+    folder = priors_folder(job_id, step)
     folder.mkdir(parents=True)
-    priors = {str(record.name): plane_prior(record) for record in records}
+    priors = {str(record.name): scaled_prior(plane_prior(record), factor) for record in records}
     for name, prior in priors.items():
         write_prior(prior_path(folder, name), prior)
     listed = tuple(PriorEntry(name=str(record.name), quaternion=record.quaternion,
@@ -522,6 +536,15 @@ def write_plane_priors(job_id: str,
                                    prior_height=PRIOR_HEIGHT, metres_per_unit=1.0,
                                    priors=listed))
     return priors
+
+
+def scaled_prior(prior: Prior, factor: float) -> Prior:
+    """`prior` with its inverse_depth times `factor`, in float32, and its normal and mask as they
+    are. A factor of 1 gives back `prior` itself."""
+    if factor == 1.0:
+        return prior
+    return Prior(inverse_depth=(prior.inverse_depth * np.float32(factor)).astype(np.float32),
+                 normal=prior.normal, mask=prior.mask)
 
 
 def write_ramp(job_id: str, name: str) -> None:
@@ -611,10 +634,11 @@ def test_a_prior_set_gives_the_trainer_each_prior_views_prior_and_gradient_and_t
     assert_taps(scene.taps.columns, scene.taps.nearest_columns, PRIOR_WIDTH, scene.width)
 
 
-def cut_index_short(job_id: str) -> None:
-    """Write the plane's Prior_Set, then cut its Prior_Index to half its bytes."""
-    write_plane_priors(job_id)
-    index = priors_folder(job_id) / "depth.json"
+def cut_index_short(job_id: str, step: str = "depth") -> None:
+    """Write the plane's Prior_Set into the Job's work/depth/, or work/walls/ with `step`
+    "walls", then cut its Prior_Index to half its bytes."""
+    write_plane_priors(job_id, step=step)
+    index = priors_folder(job_id, step) / "depth.json"
     data = index.read_bytes()
     index.write_bytes(data[:len(data) // 2])
 
@@ -877,6 +901,172 @@ def test_with_no_work_depth_the_start_splats_are_choose_points_and_no_back_proje
     assert report["counts"]["start_splats"] == len(chosen)
     subset = [SUBSET_WARNING.format(points=POINTS, budget=budget)] if budget < POINTS else []
     assert report["warnings"] == subset
+
+
+# Training with the walls priors (walls spec, Req 20.1–20.4, 20.6, 22.11)
+
+# What the walls priors' inverse_depth is, times the depth priors': not 1, so a test tells the
+# Priors the Trainer got from work/walls/ from those it got from work/depth/.
+WALLS_FACTOR = 0.9
+# The walls spec's Req 20.2 warning (C9), before and after the file and what failed.
+BROKEN_WALLS_HEAD = "The walls priors in work/walls/ weren't used, because "
+BROKEN_WALLS_TAIL = ". Training fell back to the depth priors in work/depth/."
+# The counts a done run on the plane scene with a Prior_Set adds: the splat-training spec's, and
+# the depth-priors spec's prior_images and backprojected_splats (its Req 14.4).
+PRIOR_COUNTS = (*SPLAT_TRAINING_COUNTS, "prior_images", "backprojected_splats")
+
+
+def index_path(job_id: str, step: str) -> Path:
+    """The whole path of the Prior_Index, depth.json, in the Job's work/<step>/, as a warning
+    names it."""
+    return folder_of(job_id).resolve() / "work" / step / "depth.json"
+
+
+def assert_trained_with(gpu: Any, written: dict[str, Prior]) -> None:
+    """Check that the Scene the FakeGpu `gpu` got holds the Priors `written`, by image name, each
+    array as it was written, and that only the plane's fourth image has an empty prior."""
+    views = gpu.scene.views
+    assert [view.name for view in views if view.prior is None] == [PLANE_IMAGES[3].name]
+    for view in views:
+        if view.prior is None:
+            continue
+        for array in PRIOR_ARRAYS:
+            held, prior = getattr(view.prior.prior, array), getattr(written[view.name], array)
+            assert held.dtype == prior.dtype and np.array_equal(held, prior), (view.name, array)
+
+
+def test_a_walls_prior_set_is_what_training_uses_and_nothing_else_in_the_report_changes(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any]) -> None:
+    job_id = plane_job(new_job)
+    depth = write_plane_priors(job_id)
+    fake_gpu()
+    before = run_done(job_id)
+    # The same Job once the Walls_Step has finished: its Prior_Set in work/walls/, with the
+    # Walls_Index written last, and inverse depths that differ from the depth priors'.
+    walls = write_plane_priors(job_id, step="walls", factor=WALLS_FACTOR)
+    for name, prior in walls.items():
+        assert not np.array_equal(prior.inverse_depth, depth[name].inverse_depth), name
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    # The Trainer gets the walls Priors, every array as the Walls_Step wrote it (Req 20.1).
+    assert_trained_with(gpu, walls)
+    assert_taps(gpu.scene.taps.rows, gpu.scene.taps.nearest_rows, PRIOR_HEIGHT, gpu.scene.height)
+    assert_taps(gpu.scene.taps.columns, gpu.scene.taps.nearest_columns, PRIOR_WIDTH,
+                gpu.scene.width)
+    # prior_images counts the walls Priors, and nothing else changes: the same counts with the
+    # same values, the same timings, settings and warnings as the run with the depth priors
+    # (Req 20.4).
+    assert report["counts"]["prior_images"] == len(walls)
+    assert type(report["counts"]["prior_images"]) is int
+    assert report["counts"] == before["counts"]
+    assert sorted(report["counts"]) == sorted(PRIOR_COUNTS)
+    assert sorted(report["timings"]) == sorted(before["timings"]) == sorted(TIMINGS)
+    assert report["settings"] == before["settings"]
+    assert report["warnings"] == before["warnings"] == []
+
+
+# Each writes a walls Prior_Set for the plane scene into work/walls/ that fails a check, with
+# what the warning says failed, as BROKEN_PRIORS does for work/depth/.
+BROKEN_WALLS_PRIORS = [
+    pytest.param(partial(cut_index_short, step="walls"), "can't be read as JSON (",
+                 id="a walls depth.json cut short"),
+    pytest.param(partial(write_plane_priors, records=EARLIER_SOLVE, step="walls",
+                         factor=WALLS_FACTOR),
+                 f"has the pose of an earlier camera solve for '{PLANE_IMAGES[1].name}': its "
+                 "translation isn't the one images.bin gives",
+                 id="walls priors for an earlier camera solve"),
+]
+
+
+@pytest.mark.parametrize(("write", "what"), BROKEN_WALLS_PRIORS)
+def test_broken_walls_priors_warn_naming_work_walls_and_the_file_and_training_uses_the_depth_ones(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any],
+        write: Callable[[str], object], what: str) -> None:
+    job_id = plane_job(new_job)
+    depth = write_plane_priors(job_id)
+    write(job_id)
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    # One warning, naming work/walls/, the walls depth.json by its whole path and what failed,
+    # and saying training fell back to work/depth/ (Req 20.2, 20.6, C9).
+    [warning] = report["warnings"]
+    assert warning.startswith(f"{BROKEN_WALLS_HEAD}{index_path(job_id, 'walls')} {what}"), warning
+    assert warning.endswith(BROKEN_WALLS_TAIL), warning
+    # The step then reads work/depth/ as today: the Trainer gets the depth Priors, and
+    # prior_images counts them (Req 20.2, 20.4).
+    assert_trained_with(gpu, depth)
+    assert report["counts"]["prior_images"] == len(depth)
+    assert sorted(report["counts"]) == sorted(PRIOR_COUNTS)
+
+
+def test_with_the_walls_and_the_depth_priors_both_broken_the_report_holds_both_warnings(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any]) -> None:
+    job_id = plane_job(new_job)
+    write_plane_priors(job_id, records=EARLIER_SOLVE)
+    cut_index_short(job_id, "walls")
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    # The walls warning, then the depth-priors spec's own, each naming the folder it read, so a
+    # reader tells a broken walls set from a broken depth set (Req 20.2, 20.6).
+    walls_warning, depth_warning = report["warnings"]
+    assert walls_warning.startswith(
+        f"{BROKEN_WALLS_HEAD}{index_path(job_id, 'walls')} can't be read as JSON ("), walls_warning
+    assert walls_warning.endswith(BROKEN_WALLS_TAIL), walls_warning
+    assert depth_warning.startswith(
+        f"{BROKEN_PRIORS_HEAD}{index_path(job_id, 'depth')} has the pose of an earlier camera "
+        f"solve for '{PLANE_IMAGES[1].name}'"), depth_warning
+    assert depth_warning.endswith(BROKEN_PRIORS_TAIL), depth_warning
+    # No Prior_Set: no count of it, every view an empty prior and no taps.
+    assert "prior_images" not in report["counts"]
+    assert [view.prior for view in gpu.scene.views] == [None] * len(PLANE_IMAGES)
+    assert gpu.scene.taps is None
+
+
+def test_walls_prior_files_with_no_walls_depth_json_are_ignored_and_training_uses_the_depth_ones(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any]) -> None:
+    job_id = plane_job(new_job)
+    depth = write_plane_priors(job_id)
+    # Walls Prior_Files with no Walls_Index, as a Walls_Step that failed before its last write
+    # would leave them, if it left any.
+    write_plane_priors(job_id, step="walls", factor=WALLS_FACTOR)
+    (priors_folder(job_id, "walls") / "depth.json").unlink()
+    assert any(priors_folder(job_id, "walls").iterdir())
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    # The step reads work/depth/ with no warning about the Walls_Step (Req 20.3), and
+    # prior_images counts the depth Priors (Req 20.4).
+    assert report["warnings"] == []
+    assert_trained_with(gpu, depth)
+    assert report["counts"]["prior_images"] == len(depth)
+
+
+# The regression check: the default scene with no work/depth/, and the plane scene with its depth
+# priors, each with the counts the splat-training and depth-priors specs give.
+@pytest.mark.parametrize("with_priors", [
+    pytest.param(False, id="no work/depth/"),
+    pytest.param(True, id="the depth priors"),
+])
+def test_with_no_work_walls_the_report_holds_exactly_todays_counts_timings_and_warnings(
+        new_job: Callable[..., str], fake_gpu: Callable[..., Any], with_priors: bool) -> None:
+    job_id = plane_job(new_job) if with_priors else camera_solve_job(new_job)
+    depth = write_plane_priors(job_id) if with_priors else {}
+    assert not priors_folder(job_id, "walls").exists()
+    gpu = fake_gpu()
+    report = run_done(job_id)
+    # Exactly today's counts, timings and warnings, with no warning about the Walls_Step and no
+    # new count (Req 20.3, 20.4).
+    assert sorted(report["counts"]) == sorted(PRIOR_COUNTS if with_priors
+                                              else SPLAT_TRAINING_COUNTS)
+    assert sorted(report["timings"]) == sorted(TIMINGS)
+    assert report["warnings"] == []
+    assert sorted(report["settings"]) == sorted([*SHARED_SETTINGS, *PRESET_SETTINGS])
+    if with_priors:
+        assert report["counts"]["prior_images"] == len(PRIOR_RECORDS)
+        assert report["counts"]["backprojected_splats"] == BACK_PROJECTED
+        assert_trained_with(gpu, depth)
+    else:
+        assert [view.prior for view in gpu.scene.views] == [None] * IMAGES
+        assert gpu.scene.taps is None
 
 
 # Failed runs

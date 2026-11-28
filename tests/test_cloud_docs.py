@@ -215,11 +215,13 @@ def test_the_pillow_row_notes_the_libraries_its_wheels_bundle() -> None:
 
 # The per-Step Step_Needs plan of Requirement 2's note, as {Step: substrings the row must contain}.
 # The training spec (Req 13.10, 13.15) gave the Training row its needs and renamed the clean
-# step's row Clean. The depth-priors spec (Req 17.6) keeps the Depth priors row's 16 GB.
+# step's row Clean. The depth-priors spec (Req 17.6) keeps the Depth priors row's 16 GB. The walls
+# spec (Req 21.7, C13) adds the Correcting walls row.
 STEP_NEEDS_PLAN = {
     "Picking frames": ("16 vCPUs", "16 GB RAM"),
     "Solving cameras": ("16 vCPUs", "16 GB RAM"),
     "Depth priors": ("GPU", "16 GB VRAM"),
+    "Correcting walls": ("16 vCPUs", "32 GB RAM"),
     "Training": ("4 vCPUs", "32 GB RAM", "24 GB", "48 GB"),
     "Clean": ("8 vCPUs", "8 GB RAM"),
 }
@@ -301,6 +303,23 @@ def test_the_step_needs_paragraph_says_the_depth_steps_need_lives_in_depth() -> 
     config = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))
     assert config["depth"]["min_gpu_memory_gb"] == 16
     assert min(config["train"][preset]["min_gpu_memory_gb"] for preset in PRESETS) == 24
+
+
+def test_the_step_needs_paragraph_says_the_walls_steps_needs_live_in_walls() -> None:
+    """Walls spec, Req 21.7 (D16): the paragraph after the Step_Needs table says that the walls
+    step's needs are `min_vcpus`, a soft need, and `min_memory_gb` in `[walls]`, with the real
+    config's numbers, and that its presets' `max_minutes` cuts the step short on a machine with
+    fewer vCPUs."""
+    walls = tomllib.loads(REAL_CONFIG.read_text(encoding="utf-8"))["walls"]
+    vcpus, memory = walls["min_vcpus"], walls["min_memory_gb"]
+    assert (vcpus, memory) == (16, 32), "The real [walls] should ask for 16 vCPUs and 32 GB"
+    section = markdown_section(PIPELINE_DOC.read_text(encoding="utf-8"), "Running a job in the cloud")
+    needs = (f"The walls step's needs live in `[walls]` as `min_vcpus`, {vcpus}, a soft need, and "
+             f"`min_memory_gb`, {memory},")
+    assert needs in section, f"the paragraph after the Step_Needs table should say {needs!r}"
+    short = ("solves fewer frames per minute and its preset's `max_minutes` cuts it short, leaving "
+             "the frames it didn't reach with their depth prior")
+    assert short in section, f"the paragraph after the Step_Needs table should say {short!r}"
 
 
 def test_the_pipeline_doc_says_the_cloud_run_is_not_a_step() -> None:
