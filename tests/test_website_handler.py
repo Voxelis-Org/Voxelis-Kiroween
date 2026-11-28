@@ -201,8 +201,8 @@ def test_the_result_shows_the_capture_warning_from_a_successful_cameras_report(d
     page = call(deps, "GET", f"/jobs/{JOB_ID}", cookies=cookies)
     assert page["statusCode"] == 200
     html = text(page)
-    assert '<strong id="status">Done</strong>' in html
-    assert f'<p class="warning">{LOOK_UP_WARNING}</p>' in html
+    assert '<span id="status" class="pill status-done">Done</span>' in html
+    assert f'<p class="warning notice">{LOOK_UP_WARNING}</p>' in html
     assert "Internal camera diagnostic." not in html
 
 
