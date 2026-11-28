@@ -756,10 +756,13 @@ Resources:
         - Key: project
           Value: voxelis-kiroween
 
+  # The ARN is built from the function's Ref, not a GetAtt. A code update modifies the function, and
+  # a change set can't read a modified resource's GetAtt, so the URL would show a Conditional
+  # replacement and the deploy command would refuse it. The function's name is known then.
   WebsiteFunctionUrl:
     Type: AWS::Lambda::Url
     Properties:
-      TargetFunctionArn: !GetAtt WebsiteFunction.Arn
+      TargetFunctionArn: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${WebsiteFunction}"
       AuthType: NONE
       InvokeMode: BUFFERED
 

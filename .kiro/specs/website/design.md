@@ -1422,7 +1422,7 @@ Resources:
   WebsiteFunctionUrl:
     Type: AWS::Lambda::Url
     Properties:
-      TargetFunctionArn: !GetAtt WebsiteFunction.Arn
+      TargetFunctionArn: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${WebsiteFunction}"
       AuthType: NONE
       InvokeMode: BUFFERED
 
@@ -1488,7 +1488,7 @@ Every path from `JobBucket` ends at `WebsiteTable`, `WebsiteLogGroup` or `Websit
 
 ### One change set, and a URL that stays
 
-The first deploy needs one change set: it creates the website resources, and the bucket gains its CORS rule once the URL exists. On a fresh copy's first create, the code parameters are empty and the Placeholder_Function answers (Req 14.13). A later deploy changes only `Code` and `Handler`, which update the function in place, so the function and the URL keep their ids and the Website_URL stays the same. Nothing in the template forces either to be replaced: neither has a name property, and the URL's `TargetFunctionArn` doesn't change. The Setup_Guide's change-set review also looks for a `Replacement` of `True` on `WebsiteTable`, `WebsiteFunction` or `WebsiteFunctionUrl` (Req 17.2).
+The first deploy needs one change set: it creates the website resources, and the bucket gains its CORS rule once the URL exists. On a fresh copy's first create, the code parameters are empty and the Placeholder_Function answers (Req 14.13). A later deploy changes only `Code` and `Handler`, which update the function in place, so the function and the URL keep their ids and the Website_URL stays the same. Nothing in the template forces either to be replaced: neither has a name property, and the URL's `TargetFunctionArn` doesn't change. That ARN is built with `!Sub` from the function's `Ref`, its name, and never with `!GetAtt WebsiteFunction.Arn`: a code update modifies the function, CloudFormation can't evaluate a `GetAtt` of a modified resource when it makes the change set, and `TargetFunctionArn` needs a replacement when it changes, so a `GetAtt` would show the URL with a `Replacement` of `Conditional` on every code deploy and the Deploy_Command would refuse it. The `Ref` of a function that isn't replaced is known when the change set is made, and the `!Sub` gives the same ARN the `GetAtt` gave. `tests/test_website_template.py` checks that `TargetFunctionArn` holds no `Fn::GetAtt`. The Setup_Guide's change-set review also looks for a `Replacement` of `True` on `WebsiteTable`, `WebsiteFunction` or `WebsiteFunctionUrl` (Req 17.2).
 
 ### The write pattern can't reach a Job's results
 
