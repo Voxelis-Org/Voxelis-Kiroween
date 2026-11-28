@@ -66,6 +66,18 @@ def test_the_function_url_answers_browsers_only_through_the_url() -> None:
     assert "Bucket" not in json.dumps({k: v for k, v in function.items() if k != "Code"})
 
 
+def test_the_function_url_targets_the_function_without_a_getatt() -> None:
+    # A code redeploy modifies WebsiteFunction, and CloudFormation can't evaluate a GetAtt of a
+    # modified resource when it makes the change set. TargetFunctionArn needs a replacement when it
+    # changes, so a GetAtt here makes the URL show a Replacement of Conditional on every code
+    # redeploy, and app.deploy's guard rightly refuses that. A Ref of a function that isn't replaced
+    # is known when the change set is made, so the ARN is built from the Ref instead.
+    target = props("WebsiteFunctionUrl")["TargetFunctionArn"]
+    assert "Fn::GetAtt" not in json.dumps(target)
+    assert target == {"Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}"
+                                 ":function:${WebsiteFunction}"}
+
+
 def test_the_table_the_logs_and_the_bucket_rules() -> None:
     table = props("WebsiteTable")
     assert table["BillingMode"] == "PAY_PER_REQUEST"
