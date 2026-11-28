@@ -1,0 +1,1259 @@
+{
+  "pbtResults": {
+    "1.10 Write the property test for Property 5 in `tests/test_walls_budget.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795801523892
+    },
+    "2.4 Write the property test for Property 1 in `tests/test_walls_geometry.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795804948649
+    },
+    "2.6 Write the property test for Property 3 in `tests/test_walls_geometry.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795805279493
+    },
+    "2.7 Write the property test for Property 4 in `tests/test_walls_geometry.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795805543970
+    },
+    "7.3 Write the property test for Property 6 in `tests/test_walls_crossframe.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795814784229
+    },
+    "9.7 Write the property test for Property 7 in `tests/test_walls_outputs.py`, with Hypothesis": {
+      "status": "passed",
+      "lastRunTimestamp": 1795817261719
+    }
+  },
+  "executionHistory": {
+    "1.1 Add `[walls]` and its Preset tables to `config.toml`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800532946
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800565374
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800917371
+      }
+    ],
+    "1.2 Write `splatpipe/walls/settings.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533061
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800565525
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800917499
+      }
+    ],
+    "1.3 Write `splatpipe/walls/budget.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533110
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800565673
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800918642
+      }
+    ],
+    "1.4 Make the Train_Step's mask reader public in `splatpipe/train/files.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533163
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800566129
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800919220
+      }
+    ],
+    "1.5 Write `splatpipe/walls/inputs.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533224
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801085017
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801454808
+      }
+    ],
+    "1.6 Add `[walls]` and `set_walls` to `tests/conftest.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533300
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800566414
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800919821
+      }
+    ],
+    "1.7 Write the walls import checks in `tests/test_walls_workers.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533369
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800935917
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801077868
+      }
+    ],
+    "1.8 Write unit tests for the settings in `tests/test_walls_settings.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533409
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801086008
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801455805
+      }
+    ],
+    "1.9 Write unit tests for the time budget in `tests/test_walls_budget.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533454
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801086781
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801456407
+      }
+    ],
+    "1.10 Write the property test for Property 5 in `tests/test_walls_budget.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533513
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801464151
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801754643
+      }
+    ],
+    "1.11 Write unit tests for the inputs in `tests/test_walls_inputs.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533560
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801464878
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801755161
+      }
+    ],
+    "1.12 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533605
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801765833
+      },
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795801981502
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795803338095
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795803847508
+      }
+    ],
+    "2.1 Write the bas-relief change in `splatpipe/walls/geometry.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533669
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795803864243
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804102840
+      }
+    ],
+    "2.2 Write the projection and the warp in `splatpipe/walls/geometry.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533737
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804110533
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804482740
+      }
+    ],
+    "2.3 Write unit tests for the geometry in `tests/test_walls_geometry.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533801
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804492342
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804841712
+      }
+    ],
+    "2.4 Write the property test for Property 1 in `tests/test_walls_geometry.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533860
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804850535
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804966740
+      }
+    ],
+    "2.5 Write the property test for Property 2 in `tests/test_walls_geometry.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533902
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795804967584
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805155212
+      }
+    ],
+    "2.6 Write the property test for Property 3 in `tests/test_walls_geometry.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800533943
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805170204
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805306941
+      }
+    ],
+    "2.7 Write the property test for Property 4 in `tests/test_walls_geometry.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534007
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805314432
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805575799
+      }
+    ],
+    "2.8 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534063
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805584282
+      },
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795805877874
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806120815
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806184491
+      }
+    ],
+    "3.1 Write `splatpipe/walls/images.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534103
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806193053
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806753114
+      }
+    ],
+    "3.2 Write `splatpipe/walls/scoring.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534145
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806753280
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795807253940
+      }
+    ],
+    "3.3 Write unit tests for the score images in `tests/test_walls_images.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534195
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806761082
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795807254279
+      }
+    ],
+    "3.4 Write unit tests for the scoring in `tests/test_walls_scoring.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534233
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795807262199
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795807847484
+      }
+    ],
+    "3.5 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534305
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795807853155
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808030012
+      }
+    ],
+    "4.1 Write `splatpipe/walls/sources.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534350
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808039611
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808483736
+      }
+    ],
+    "4.2 Write unit tests for the scene scale and the sources in `tests/test_walls_sources.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534390
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808484315
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808979533
+      }
+    ],
+    "4.3 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534431
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808988166
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795809865527
+      }
+    ],
+    "5.1 Write `splatpipe/walls/fit.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534481
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795809874459
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810425735
+      }
+    ],
+    "5.2 Write `splatpipe/walls/passes.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534522
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810434741
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810895056
+      }
+    ],
+    "5.3 Add the textured plane to `tests/camera_files.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534559
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795809875227
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810425922
+      }
+    ],
+    "5.4 Write unit tests for the fits in `tests/test_walls_passes.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534596
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810434857
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810895289
+      }
+    ],
+    "5.5 Write unit tests for the passes and the self-check in `tests/test_walls_passes.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534646
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795810902054
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811274437
+      }
+    ],
+    "5.6 Write the textured-plane test in `tests/test_walls_passes.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534701
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811283069
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811430060
+      }
+    ],
+    "5.7 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534753
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811437402
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811643932
+      }
+    ],
+    "6.1 Write `splatpipe/walls/facets.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534796
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811654484
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795812702113
+      }
+    ],
+    "6.2 Write `FrameSolve` and `solve_arrays()` in `splatpipe/walls/solve.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534830
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795812710873
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813150064
+      }
+    ],
+    "6.3 Add the box room to `tests/camera_files.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534872
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811655344
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795812702411
+      }
+    ],
+    "6.4 Write unit tests for the facets in `tests/test_walls_facets.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534919
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795812711142
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813150335
+      }
+    ],
+    "6.5 Write unit tests for one frame's solve in `tests/test_walls_solve.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800534960
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813159015
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813387004
+      }
+    ],
+    "6.6 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535012
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813404951
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813647779
+      }
+    ],
+    "7.1 Write `splatpipe/walls/crossframe.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535052
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813656993
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814010469
+      }
+    ],
+    "7.2 Write unit tests for the cross-frame stages in `tests/test_walls_crossframe.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535109
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814023654
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814664748
+      }
+    ],
+    "7.3 Write the property test for Property 6 in `tests/test_walls_crossframe.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535168
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814674787
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815195602
+      }
+    ],
+    "7.4 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535202
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815206995
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815565541
+      }
+    ],
+    "8.1 Write `splatpipe/walls/planes.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535236
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814011209
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814664847
+      }
+    ],
+    "8.2 Write unit tests for the planes and the fallbacks in `tests/test_walls_planes.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535275
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795814675492
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815195951
+      }
+    ],
+    "8.3 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535322
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815566071
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815638773
+      }
+    ],
+    "9.1 Write `splatpipe/walls/pool.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535372
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815647283
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795816277752
+      }
+    ],
+    "9.2 Write the preparation pass, the scratch loaders and the worker tasks": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535423
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795816288151
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817020625
+      }
+    ],
+    "9.3 Write `splatpipe/walls/outputs.py` and `splatpipe/walls/report.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535463
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815648782
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795816277824
+      }
+    ],
+    "9.4 Write the step in `splatpipe/walls/__init__.py` and `splatpipe/walls/__main__.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535501
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817029935
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817524896
+      }
+    ],
+    "9.5 Add the pool fixture and the walls Job writer to the test helpers": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535534
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815649498
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795816278169
+      }
+    ],
+    "9.6 Write unit tests for the outputs in `tests/test_walls_outputs.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535585
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795816288846
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817020743
+      }
+    ],
+    "9.7 Write the property test for Property 7 in `tests/test_walls_outputs.py`, with Hypothesis": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535627
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817030902
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817525216
+      }
+    ],
+    "9.8 Write the pool tests and the two-worker test in `tests/test_walls_workers.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535658
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817533926
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818161301
+      }
+    ],
+    "9.9 Write unit tests for the step in `tests/test_walls_step.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535696
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795817534326
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818161982
+      }
+    ],
+    "9.10 Run the tests and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535734
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818170897
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818492557
+      }
+    ],
+    "10.1 Choose the prior folder in `_read_priors` in `splatpipe/train/__init__.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535777
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818504662
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819268744
+      }
+    ],
+    "10.2 Write unit tests for the prior folder in `tests/test_train_step.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535828
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819288372
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819677651
+      }
+    ],
+    "10.3 Put the Walls_Step in the Step_List in `splatpipe/run.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535879
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818505429
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819268849
+      }
+    ],
+    "10.4 Update the tests that depend on the Step_List": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535927
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819289363
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819678657
+      }
+    ],
+    "10.5 Change the expected times and the tests that pin them": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800535965
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818506472
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819268967
+      }
+    ],
+    "10.6 Write `## Step: walls` and change the other parts of `docs/pipeline.md`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800536011
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818507482
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819269976
+      }
+    ],
+    "10.7 Change the `opencv-python-headless` row in `docs/third-party-licences.md`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800536055
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818507955
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819270356
+      }
+    ],
+    "10.8 Write the doc tests in `tests/test_docs.py` and `tests/test_cloud_docs.py`": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800536100
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819289971
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819679197
+      }
+    ],
+    "10.9 Run the whole suite one last time and commit": [
+      {
+        "executionId": "8d286475-0269-4fe8-bff4-ef888a1aee5b",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795800536154
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795819687079
+      },
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795820284806
+      }
+    ],
+    "1. The `[walls]` settings, the inputs and the time budget": [
+      {
+        "executionId": "b694f5e3-6efa-4787-a51c-5be06fe1adb5",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795803847625
+      }
+    ],
+    "2. The bas-relief change, its normals and the warp": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795806184559
+      }
+    ],
+    "3. The score images and the score table": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795808030102
+      }
+    ],
+    "4. The scene scale, the start depth and the source frames": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795809865615
+      }
+    ],
+    "5. The fits, the three passes and the self-check": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795811643978
+      }
+    ],
+    "6. Facets and one frame's whole solve": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795813647826
+      }
+    ],
+    "7. Cross-frame work I: neighbours, projected values, the fuse, the correction, the despeckle and the per-frame choice": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815565634
+      }
+    ],
+    "8. Cross-frame work II: world planes, the projection fallback, the plane registration and the flatten": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795815638820
+      }
+    ],
+    "9. The walls step: its worker pool, outputs, report and CLI": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795818492651
+      }
+    ],
+    "10. Training reads the walls priors, the step list, the docs and the expected times": [
+      {
+        "executionId": "f9e9815d-1300-4780-bfe5-ef43ac36f3ed",
+        "chatSessionId": "sess_f36cf8a8-9a5b-4f00-b322-cdce4e67d6e9",
+        "timestamp": 1795820284861
+      }
+    ]
+  }
+}
