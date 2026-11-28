@@ -756,6 +756,10 @@ Resources:
         - Key: project
           Value: voxelis-kiroween
 
+  # Never change the TargetFunctionArn line: it's exactly what the live stack has, and any other
+  # value makes CloudFormation replace the URL, which a function with one URL can't do. A code update
+  # shows this URL as Modify with a replacement of Conditional, because a change set can't read a
+  # modified function's GetAtt, and app/deploy.py accepts that one case.
   WebsiteFunctionUrl:
     Type: AWS::Lambda::Url
     Properties:

@@ -187,21 +187,6 @@
     });
   }
 
-  function copyButton(input) {
-    const button = document.getElementById('copy-share');
-    if (!button || !navigator.clipboard) return;
-    button.hidden = false;
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(input.value);
-        button.textContent = 'Copied';
-      } catch (error) {
-        input.select();
-        button.textContent = 'Press Ctrl+C';
-      }
-    });
-  }
-
   menu();
   dropZone();
   const form = document.getElementById('start-form');
@@ -212,9 +197,21 @@
     });
   }
   const shareLink = document.getElementById('share-link');
-  if (shareLink) {
+  const copyShareLink = document.getElementById('copy-share-link');
+  if (shareLink && copyShareLink) {
+    const status = document.getElementById('share-copy-status');
     shareLink.addEventListener('focus', () => shareLink.select());
-    copyButton(shareLink);
+    copyShareLink.addEventListener('click', async () => {
+      status.textContent = '';
+      try {
+        await navigator.clipboard.writeText(shareLink.value);
+        status.textContent = 'Link copied.';
+      } catch {
+        shareLink.focus();
+        shareLink.select();
+        status.textContent = 'Link selected. Copy it from the field.';
+      }
+    });
   }
   refresh();
 }());

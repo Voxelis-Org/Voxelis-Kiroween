@@ -87,6 +87,23 @@ def test_a_job_without_a_splat_says_so_and_has_an_empty_viewer_slot() -> None:
             '<h2 id="viewer-label">3D viewer</h2></section>') in html
 
 
+def test_the_copy_button_appears_only_with_a_new_share_link() -> None:
+    new_link = "https://example.test/shared/new"
+    for share in (None, pages.ShareState(on=False), pages.ShareState(on=True),
+                  pages.ShareState(on=True, new_link=new_link)):
+        html = pages.result_page(view(), csrf="c", poll_seconds=20, viewer=None, download=True,
+                                 share=share)
+        if share is None or share.new_link is None:
+            assert 'id="copy-share-link"' not in html
+        else:
+            assert ('<label for="share-link">Room tour link</label><div class="share-link-row">'
+                    f'<input id="share-link" readonly value="{new_link}">'
+                    '<button id="copy-share-link" type="button">Copy link</button></div>') in html
+            assert '<p id="share-copy-status" role="status"></p>' in html
+            assert '<script src="/static/app.js" defer></script>' in html
+            assert "<script>" not in html and "onclick=" not in html
+
+
 def test_the_static_files_are_small_and_the_favicon_is_an_icon() -> None:
     icon = (REPO_ROOT / "app" / "static" / "favicon.ico").read_bytes()
     assert icon[:4] == b"\x00\x00\x01\x00" and len(icon) < 1024
@@ -167,7 +184,10 @@ def test_the_result_page_puts_the_bar_above_the_viewer_and_folds_the_details() -
     assert '<details class="share-menu">' in html          # closed until there's a new link
     fresh = pages.result_page(view(), csrf="c", poll_seconds=20, viewer=None, download=True,
                               share=pages.ShareState(on=True, new_link="https://x/shared/t"))
-    assert '<details class="share-menu" open>' in fresh and 'id="copy-share"' in fresh
+    assert '<details class="share-menu" open>' in fresh and 'id="copy-share-link"' in fresh
+    opened = fresh.index('<details class="share-menu" open>')
+    assert opened < fresh.index('id="copy-share-link"') < fresh.index('id="share-copy-status"') \
+        < fresh.index("</details>", opened)
 
 
 def test_a_running_result_page_polls_and_its_pill_can_change() -> None:
@@ -188,7 +208,22 @@ def test_the_shared_page_is_only_the_viewer_and_a_small_label() -> None:
     for absent in ("site-header", "result-bar", "Details", 'id="status"', "/download", "csrf",
                    "app.js", "data-job-id"):
         assert absent not in html, absent
-    assert '<h1 class="visually-hidden">Shared splat 20261201-120000-abcdef</h1>' in html
+    assert "<title>Room tour · Voxelis</title>" in html and html.count("<h1") == 1
+    assert ('<div class="shared-label"><h1>Room tour</h1><p class="made-with">'
+            in html[:html.index('id="viewer-slot"')])
+
+
+def test_the_look_up_warning_sits_under_the_owners_bar_and_not_on_a_shared_page() -> None:
+    warning = "The video never looked up. Film a second loop tilted up."
+    owner = pages.result_page(view(capture_warning=warning), csrf="c", poll_seconds=20,
+                              viewer=pages.Viewer("https://s/x.sog", None), download=True,
+                              share=pages.ShareState(on=False))
+    line = owner.index(f'<p class="warning notice">{warning}</p>')
+    assert owner.index('class="result-bar"') < line < owner.index('id="viewer-slot"')
+    shared = pages.result_page(view(capture_warning=warning), csrf=None, poll_seconds=20,
+                               viewer=pages.Viewer("https://s/x.sog", None, "/shared/t/viewer"),
+                               download=False, share=None, shared=True)
+    assert warning not in shared and "warning" not in shared
 
 
 def test_the_start_page_has_a_drop_zone_and_a_progress_bar_with_a_percentage() -> None:

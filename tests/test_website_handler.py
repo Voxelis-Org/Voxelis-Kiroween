@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import gzip
+import json
 import logging
 import re
 import tempfile
@@ -21,6 +22,7 @@ import cloud.start
 from app import pages
 from app.handler import ROUTES, find_route, handle
 from app.sessions import SESSION_COOKIE, SIGNIN_COOKIE
+from splatpipe.errors import LOOK_UP_WARNING
 from tests.website_helpers import (JOB_ID, STACK, event, json_body, make_account_item, mp4,
                                    seed_job, sign_in_as, website)
 
@@ -46,7 +48,7 @@ def assert_safe_headers(response: dict) -> None:
     headers = response["headers"]
     assert headers["Content-Security-Policy"].startswith("default-src 'none'; script-src 'self'")
     assert headers["X-Content-Type-Options"] == "nosniff"
-    assert headers["Referrer-Policy"] == "no-referrer"
+    assert headers["Referrer-Policy"] == "same-origin"
 
 
 def test_signing_in_through_the_handler(deps) -> None:
@@ -99,6 +101,25 @@ def test_csrf_is_checked_on_every_post(deps) -> None:
     assert deps.aws.items == before and deps.aws.multipart == {}
     out = call(deps, "POST", "/signout", cookies=cookies, body=f"csrf={csrf}")
     assert out["statusCode"] == 303 and out["headers"]["Location"] == "/signin"
+
+
+def test_a_form_post_with_a_null_origin_is_refused(deps) -> None:
+    # The origin check refuses Origin: null on purpose, because a sandboxed or file:// page sends it
+    # too. Browsers also send Origin: null on every form post from a page with
+    # Referrer-Policy: no-referrer, so the Website must never send that policy, or it refuses its own
+    # sign-in, sign-out and share link forms. It sends same-origin instead.
+    make_account_item(deps, "judges", "right-password")
+    token = call(deps, "GET", "/signin")["cookies"][0].split(";")[0].split("=", 1)[1]
+    signin = call(deps, "POST", "/signin", cookies={SIGNIN_COOKIE: token},
+                  body=f"csrf={token}&name=judges&password=right-password",
+                  headers={"origin": "null", "sec-fetch-site": "same-origin"})
+    assert signin["statusCode"] == 403 and not any(c.startswith(SESSION_COOKIE)
+                                                   for c in signin.get("cookies", []))
+    cookies, csrf = sign_in_as(deps, "judges")
+    out = call(deps, "POST", "/signout", cookies=cookies, body=f"csrf={csrf}",
+               headers={"origin": "null"})
+    assert out["statusCode"] == 403
+    assert call(deps, "GET", "/jobs", cookies=cookies)["statusCode"] == 200
 
 
 def test_not_found_is_the_same_for_a_missing_job_another_accounts_and_a_bad_id(deps) -> None:
@@ -167,6 +188,22 @@ def test_a_running_jobs_page_polls_and_has_no_viewer(deps) -> None:
     status = call(deps, "GET", f"/api/jobs/{JOB_ID}/status", cookies=cookies)
     assert json_body(status) == {"status": "running", "text": "Running (step 2 of 5)", "final": False}
     assert call(deps, "GET", f"/jobs/{JOB_ID}/download", cookies=cookies)["statusCode"] == 404
+
+
+def test_the_result_shows_the_capture_warning_from_a_successful_cameras_report(deps) -> None:
+    cookies, _ = sign_in_as(deps, "judges")
+    seed_job(deps)
+    key = f"jobs/{JOB_ID}/out/reports/cameras.json"
+    report = json.loads(deps.aws.objects[key])
+    report["warnings"] = ["Internal camera diagnostic.", LOOK_UP_WARNING]
+    deps.aws.objects[key] = json.dumps(report).encode()
+
+    page = call(deps, "GET", f"/jobs/{JOB_ID}", cookies=cookies)
+    assert page["statusCode"] == 200
+    html = text(page)
+    assert '<span id="status" class="pill status-done">Done</span>' in html
+    assert f'<p class="warning notice">{LOOK_UP_WARNING}</p>' in html
+    assert "Internal camera diagnostic." not in html
 
 
 def test_the_viewer_files_are_served_as_modules_to_a_signed_in_account(deps) -> None:

@@ -161,7 +161,14 @@ def would_lose_table(changes: Sequence[tuple[str, str, str]], deployed: bool) ->
     """Why a change set would lose the table or change the address, once the website is deployed."""
     if not deployed:
         return None
+    # A code update shows the URL as a Conditional replacement, because the change set can't read
+    # the modified function's GetAtt. The function's ARN is the URL's only input that can change,
+    # and an update that doesn't replace the function keeps it, so that one pair is safe.
+    function_kept = ("Modify", "WebsiteFunction", "False") in changes
     for action, logical, replacement in changes:
+        if function_kept and (action, logical, replacement) == ("Modify", "WebsiteFunctionUrl",
+                                                               "Conditional"):
+            continue
         if logical in _LOSING and (action in _LOSING[logical] or replacement in ("True", "Conditional")):
             return (f"This change set would {action.lower()} {logical} (replacement: {replacement}), "
                     "which would lose the website's table or change its address.")

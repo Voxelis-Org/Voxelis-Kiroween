@@ -236,7 +236,9 @@ def to_lambda(response: Response, ctx: Ctx, kind: str) -> dict[str, Any]:
     signed_in = ctx.session is not None or (kind == "shared" and ctx.viewer_page)
     headers["Content-Security-Policy"] = csp(ctx.deps, viewer=ctx.viewer_page, signed_in=signed_in)
     headers["X-Content-Type-Options"] = "nosniff"
-    headers["Referrer-Policy"] = "no-referrer"
+    # same-origin, never no-referrer: under no-referrer a browser posts forms with Origin: null,
+    # which check_csrf refuses. Requests to the Job_Bucket are cross-origin and get no referrer.
+    headers["Referrer-Policy"] = "same-origin"
     headers.setdefault("Cache-Control", "no-store")
     body = response.body
     encoded = not response.content_type.startswith(_TEXT_PREFIXES)

@@ -510,6 +510,7 @@ OWN_ROWS: tuple[tuple[st.SearchStrategy[Any], tuple[str, ...]], ...] = (
     (ZERO_TO_1, ("min_placed_share", "axis_point_min_front_share")),
     (ABOVE_0_AT_MOST_1, ("up_agreement", "axis_point_min_eigen_share")),
     (ABOVE_0_BELOW_90, ("heading_min_degrees",)),
+    (DEGREES_0_TO_180, ("min_highest_ray_degrees",)),
     (ABOVE_0, ("feature_extractor_timeout_seconds", "sequential_matcher_timeout_seconds",
                "view_graph_calibrator_timeout_seconds", "global_mapper_timeout_seconds",
                "mapper_timeout_seconds", "image_undistorter_timeout_seconds",

@@ -49,7 +49,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from splatpipe.cameras.level import (LevelMove, LevelSettings, Levelling, Scene, axis_point, level,
-                                     move_model, quaternion_from_rotation, rotation_onto, scene_of)
+                                     highest_ray_degrees, move_model, quaternion_from_rotation,
+                                     rotation_onto, scene_of)
 from splatpipe.cameras.model import (NO_ERROR, NO_POINT3D, POINT2D, TRACK_ELEMENT, Camera, Image,
                                      Model, Points)
 from splatpipe.frames.files import pick_name
@@ -599,6 +600,18 @@ def rotations() -> st.SearchStrategy[tuple[float, ...]]:
     return (st.tuples(*[st.floats(-1.0, 1.0)] * 4)
             .filter(lambda parts: math.hypot(*parts) >= 0.1)
             .map(lambda parts: tuple(unit(parts).tolist())))
+
+
+@pytest.mark.parametrize(("poses", "pitch"), [
+    (np.stack([turn_about_x(30), turn_about_x(-30)]), 30),
+    (np.stack([np.eye(3), UPSIDE_DOWN @ turn_about_x(-20)]), 20),
+], ids=["mean picture up", "first picture up"])
+@given(frame=rotations())
+def test_highest_ray_in_an_unlevelled_scene_uses_the_viewers_up(
+        poses: np.ndarray, pitch: int, frame: tuple[float, ...]) -> None:
+    tilted = poses @ rotation_of(frame).T
+    half_fov = math.degrees(math.atan(CAMERA.height / (2 * CAMERA.params[1])))
+    assert highest_ray_degrees(tilted, CAMERA, levelled=False) == pytest.approx(pitch + half_fov)
 
 
 @dataclass(frozen=True)

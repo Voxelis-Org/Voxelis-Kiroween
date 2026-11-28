@@ -770,7 +770,7 @@ Every value is plain JSON, and floats keep full precision.
 
 ### Config section
 
-`[cameras]` holds 190 settings, and each preset table holds one more, `near_overlap`. The step's own settings come first:
+`[cameras]` holds 191 settings, and each preset table holds one more, `near_overlap`. The step's own settings come first:
 
 | Key | Table | Value | What it is |
 |---|---|---|---|
@@ -783,6 +783,7 @@ Every value is plain JSON, and floats keep full precision.
 | `axis_point_min_eigen_share` | `[cameras]` | `0.1` | The axis point counts only when the smallest eigenvalue of Σ(I − d dᵀ) is at least this share of the largest. |
 | `axis_point_min_front_share` | `[cameras]` | `0.5` | The axis point counts only when it's in front of at least this share of the placed frames. |
 | `heading_min_degrees` | `[cameras]` | `10.0` | A camera that looks within this many degrees of straight up or down has no heading. |
+| `min_highest_ray_degrees` | `[cameras]` | `40.0` | Warn when the highest view ray is below this angle above level, in degrees from 0 to 180. Each camera's top ray is its pitch plus half the undistorted vertical field of view. |
 | `feature_extractor_timeout_seconds` | `[cameras]` | `900` | The longest time `colmap feature_extractor` may run, in seconds. |
 | `sequential_matcher_timeout_seconds` | `[cameras]` | `1800` | The longest time each of the two `colmap sequential_matcher` runs may take, in seconds. |
 | `view_graph_calibrator_timeout_seconds` | `[cameras]` | `600` | The longest time `colmap view_graph_calibrator` may run, in seconds. |
@@ -1036,7 +1037,7 @@ These values stay in code, not in `config.toml`, because the build, our rules or
 
 ### Step report fields
 
-- `settings`: the 190 settings in `[cameras]` and the preset's `near_overlap`.
+- `settings`: the 191 settings in `[cameras]` and the preset's `near_overlap`.
 - `counts.picks`: the picks in the frames record.
 - `counts.placed_frames`: the final model's placed frames, 0 when the incremental mapper wrote no model.
 - `counts.points3d`: the final model's points.
@@ -1048,7 +1049,7 @@ These values stay in code, not in `config.toml`, because the build, our rules or
 - `timings.matching`: both match runs.
 - `timings.mapping`: the calibration copy, the calibration, the mappers, choosing the final model and reading it.
 - `timings.undistortion`: the undistortion, its checks, the mask warp and the undistorted mask.
-- `timings.levelling`: working out the level move and applying it.
+- `timings.levelling`: working out the level move, applying it and checking upward coverage.
 - `timings.writing`: the training images, the training masks, the levelled model, `solve.json` and `out/cameras.json`.
 - `warnings`, each only when it applies:
   - When `camera_model` is `"RADIAL_FISHEYE"`: "The camera model is RADIAL_FISHEYE, so the focal length calibration was skipped, because COLMAP's view_graph_calibrator only fits pinhole cameras. The fisheye camera starts from fisheye_fov_degrees = <degrees> in [cameras]."
@@ -1058,6 +1059,7 @@ These values stay in code, not in `config.toml`, because the build, our rules or
   - When no placed frame has a heading: "Every placed camera looks within heading_min_degrees = <degrees>° of straight up or down, so the scene couldn't be turned to face +Z and was left in COLMAP's frame, which may be tilted."
   - When the axis point isn't well defined and the model has no points: "The scene's centre couldn't be found: the cameras' view lines don't meet in a well defined point and the model has no 3D points. So the scene was left in COLMAP's frame, which may be tilted."
   - When working out the level move raises any other error or gives a value that isn't a finite number: "Levelling the scene failed (<type>: <message>), so the scene was left in COLMAP's frame, which may be tilted."
+  - When every placed camera's top ray is below `min_highest_ray_degrees`, the report warns "The video never looked up, so the ceiling and the top of the walls will be missing. Film a second slow loop with the phone tilted up about 30 degrees." The check uses the viewer's scene up. For unlevelled poses the viewer uses the mean picture up if its length is above 0.2, and the first pick's picture up otherwise. The step still succeeds and the signed-in result page shows the warning.
 - `error`, when it failed. The step raises `ExpectedFailure` for each failure it foresees, so `expected` is `true` and `readable` is the step's own message, saying what went wrong and what to do. Those failures are an earlier `out/cameras.json` that can't be removed, a bad setting, a bad `SPLATPIPE_CAP_DEADLINE`, a missing or broken frames record, a missing colour pick, grey copy or mask, no `colmap` on the PATH, a COLMAP command that runs past a time limit its `*_timeout_seconds` key set, whose message names the command, the limit and the key, a cap deadline that leaves no time when a COLMAP command is about to start, and a COLMAP command that runs past a time limit the cap deadline set. So are a non-zero exit of `feature_extractor`, of a match run or of either undistorter, with the exit code, COLMAP's last line and the command's log, a non-zero exit of the incremental mapper, too few placed frames, a database that can't be read or doesn't hold exactly one camera, a model file that's missing or broken, an undistortion that doesn't give one PINHOLE camera with exactly the placed frames and their images, a warped mask that can't be read, isn't 8-bit or isn't the undistorted camera's size, and a file or folder that can't be written, like on a full disk. A bad `SPLATPIPE_CAP_DEADLINE` is an empty value, one that isn't a date and time, or one with no UTC offset. Its message is the train step's: it gives the value, says it must be a date and time with a UTC offset, like `2026-11-21T14:25:30Z`, and says to unset it on a laptop. When no time is left before the cap deadline, the command doesn't start and gets no timing, and the message names the command and the cap deadline. When a command runs past a time limit the cap deadline set, the message names the command and the cap deadline and gives the seconds that were left. Both of these say to give the job more time with a larger `cap_minutes` for its preset under `[cloud.presets]` in `config.toml`, then run the job again. When the undistorted camera isn't PINHOLE, the message says that COLMAP keeps a camera's own model when the camera's distortion came out as 0, and to run the step again. The incremental mapper's error and the placed check's say to film the place again: move slower, hold the phone steadier, overlap more between views, and film surfaces with more texture. A missing setting fails with the step runner's own readable error, also with `expected` at `true`. Any other error is a bug, with the general message. A failed calibration, a global mapper that gives up and anything in the levelling aren't failures, and only add warnings.
 
 The counts are whole numbers, so the mean reprojection error, the level move and the reasons are in `solve.json` instead. A failed report holds the counts and timings the step had worked out before it failed. Each command's timing goes in as soon as the command returns, so a failed report has the failing command's timing, but a stage's timing goes in only when its stage finishes. A run that fails the placed check, for example, has `counts.placed_frames` and its mappers' timings, but no `counts.points3d` and no `timings.mapping`.

@@ -66,6 +66,14 @@ def test_the_function_url_answers_browsers_only_through_the_url() -> None:
     assert "Bucket" not in json.dumps({k: v for k, v in function.items() if k != "Code"})
 
 
+def test_the_function_url_targets_the_function_as_the_live_stack_has_it() -> None:
+    # The live stack has this GetAtt, and any other value makes CloudFormation replace the URL,
+    # which a function with one URL can't do. A code update shows the URL as Modify with a
+    # replacement of Conditional, and app.deploy accepts that next to Modify WebsiteFunction False.
+    target = props("WebsiteFunctionUrl")["TargetFunctionArn"]
+    assert target == {"Fn::GetAtt": ["WebsiteFunction", "Arn"]}
+
+
 def test_the_table_the_logs_and_the_bucket_rules() -> None:
     table = props("WebsiteTable")
     assert table["BillingMode"] == "PAY_PER_REQUEST"

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from app.limits import job_key
 from cloud.errors import CloudError
 from cloud.table import Key, Prefix, Scalar
+from splatpipe.errors import LOOK_UP_WARNING
 
 if TYPE_CHECKING:
     from splatpipe.config import Config
@@ -52,6 +53,7 @@ class JobView:
     step_times: tuple[StepTime, ...]
     result_file: str | None
     has_cameras: bool = False
+    capture_warning: str | None = None
 
 
 def out_prefix(job_id: str) -> str:
@@ -111,8 +113,9 @@ def job_view(aws: Aws, job_id: str, job_item: Mapping[str, Scalar] | None, confi
     status, step = website_status(names, summary, steps)
     if status in ("starting", "running") and ended_check_due(started, now, wc.ended_check_minutes):
         status, summary = _ended_check(aws, job_id, status, summary)
+    step_times, capture_warning = _step_details(aws, prefix, names) if timings else ((), None)
     return _view(job_id, preset, started, status, step, steps, summary, names, config,
-                 _step_times(aws, prefix, names) if timings else ())
+                 step_times, capture_warning)
 
 
 def _ended_check(aws: Aws, job_id: str, status: str,
@@ -131,7 +134,7 @@ def _ended_check(aws: Aws, job_id: str, status: str,
 
 def _view(job_id: str, preset: str, started: datetime | None, status: str, step: int | None,
           steps: int | None, summary: Mapping[str, Any] | None, names: Sequence[str],
-          config: Config, step_times: Sequence[StepTime]) -> JobView:
+          config: Config, step_times: tuple[StepTime, ...], capture_warning: str | None) -> JobView:
     summary = summary or {}
     entries = [s for s in summary.get("steps", []) if isinstance(s, Mapping)]
     warnings = tuple((str(s.get("step")), str(s.get("readable_error") or ""))
@@ -147,12 +150,14 @@ def _view(job_id: str, preset: str, started: datetime | None, status: str, step:
                    and summary.get("readable_error") else None,
                    warnings=warnings,
                    run_seconds=float(run_seconds) if isinstance(run_seconds, (int, float)) else None,
-                   step_times=tuple(step_times), result_file=result,
-                   has_cameras=cameras_done and CAMERAS in names)
+                   step_times=step_times, result_file=result,
+                   has_cameras=cameras_done and CAMERAS in names, capture_warning=capture_warning)
 
 
-def _step_times(aws: Aws, prefix: str, names: Sequence[str]) -> list[StepTime]:
+def _step_details(aws: Aws, prefix: str, names: Sequence[str]
+                  ) -> tuple[tuple[StepTime, ...], str | None]:
     times: list[StepTime] = []
+    capture_warning = None
     for name in names:
         if not (name.startswith(_REPORTS) and name.endswith(".json")):
             continue
@@ -162,10 +167,15 @@ def _step_times(aws: Aws, prefix: str, names: Sequence[str]) -> list[StepTime]:
             continue
         if isinstance(report, Mapping):
             seconds = report.get("duration_seconds")
-            times.append(StepTime(step=name[len(_REPORTS):-len(".json")],
-                                  outcome=str(report.get("outcome", "")),
+            step = name[len(_REPORTS):-len(".json")]
+            outcome = str(report.get("outcome", ""))
+            times.append(StepTime(step=step, outcome=outcome,
                                   seconds=float(seconds) if isinstance(seconds, (int, float)) else None))
-    return times
+            warnings = report.get("warnings")
+            if (step == "cameras" and outcome == "done"
+                    and isinstance(warnings, list) and LOOK_UP_WARNING in warnings):
+                capture_warning = LOOK_UP_WARNING
+    return tuple(times), capture_warning
 
 
 def _started(item: Mapping[str, Scalar], summary: Mapping[str, Any] | None) -> datetime | None:

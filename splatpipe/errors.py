@@ -15,6 +15,11 @@ import sys
 from collections.abc import Callable
 
 
+# The cameras report and the website share this user-facing warning.
+LOOK_UP_WARNING = ("The video never looked up, so the ceiling and the top of the walls will be "
+                   "missing. Film a second slow loop with the phone tilted up about 30 degrees.")
+
+
 class PipelineError(Exception):
     """A refusal or failure whose message is a Readable_Error: what went wrong and what to do."""
 

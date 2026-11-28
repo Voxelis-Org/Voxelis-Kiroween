@@ -214,14 +214,14 @@ def start_page(presets: Sequence[tuple[str, float]], default: str, *, csrf: str,
 def result_page(view: JobView, *, csrf: str | None, poll_seconds: int, viewer: Viewer | None,
                 download: bool, share: ShareState | None, showcase_line: str | None = None,
                 title: str | None = None, shared: bool = False) -> str:
-    heading = title or (f"Shared splat {view.job_id}" if shared else f"Job {view.job_id}")
     viewer_base = viewer.base if viewer else None
     if shared:
-        body = (f'<h1 class="visually-hidden">{esc(heading)}</h1>{_viewer_slot(viewer)}'
+        body = ('<div class="shared-label"><h1>Room tour</h1>'
                 '<p class="made-with"><span class="brand-mark" aria-hidden="true"></span>'
-                'Made with Voxelis</p>')
-        return layout(heading, body, csrf=None, signed_in=False, viewer_base=viewer_base,
+                f'Made with Voxelis</p></div>{_viewer_slot(viewer)}')
+        return layout("Room tour", body, csrf=None, signed_in=False, viewer_base=viewer_base,
                       page="shared", heading=False, header=False)
+    heading = title or f"Job {view.job_id}"
     actions = []
     if share is not None:
         actions.append(_share_controls(view.job_id, share, csrf or ""))
@@ -241,6 +241,8 @@ def result_page(view: JobView, *, csrf: str | None, poll_seconds: int, viewer: V
         notes.append(f'<p class="error notice">{esc(view.readable_error)}</p>')
     for step, error in view.warnings:
         notes.append(f'<p class="warning notice">The {esc(step)} step failed: {esc(error)}</p>')
+    if view.capture_warning:
+        notes.append(f'<p class="warning notice">{esc(view.capture_warning)}</p>')
     if view.status in DONE and view.result_file is None:
         notes.append('<p class="notice">This job has no splat to download.</p>')
     facts = ('<dl class="facts">'
@@ -279,12 +281,12 @@ def _share_controls(job_id: str, share: ShareState, csrf: str) -> str:
     parts = [f'<details class="share-menu"{opened}><summary class="button secondary">Share</summary>'
              '<section id="share"><h2>Share</h2>']
     if share.new_link:
-        parts.append('<p>Anyone with this link sees this job\'s result and 3D viewer, without signing '
-                     'in. Copy it now: it\'s shown only once. Making a new link turns this one off.</p>'
-                     '<div class="copy-row">'
+        parts.append('<p>Anyone with this link can open the room tour without signing in. '
+                     'Copy it now: it\'s shown only once. Making a new link turns this one off.</p>'
+                     '<label for="share-link">Room tour link</label><div class="share-link-row">'
                      f'<input id="share-link" readonly value="{esc(share.new_link)}">'
-                     '<button type="button" id="copy-share" class="secondary" hidden>Copy</button>'
-                     '</div>')
+                     '<button id="copy-share-link" type="button">Copy link</button></div>'
+                     '<p id="share-copy-status" role="status"></p>')
     elif share.on:
         parts.append("<p>A share link is on. Anyone with it sees this job's result and 3D viewer.</p>")
     else:

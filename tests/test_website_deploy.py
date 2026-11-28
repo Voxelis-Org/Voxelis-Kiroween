@@ -183,6 +183,13 @@ def test_a_change_set_that_would_lose_the_table_is_deleted(clone: Path, capsys) 
     ([("Modify", "WebsiteFunction", "True")], True, True),
     ([("Remove", "WebsiteFunctionUrl", "False")], True, True),
     ([("Modify", "WebsiteFunctionUrl", "Conditional")], True, True),
+    ([("Modify", "WebsiteFunction", "False"), ("Modify", "WebsiteFunctionUrl", "Conditional")],
+     True, False),
+    ([("Modify", "WebsiteFunction", "Conditional"), ("Modify", "WebsiteFunctionUrl", "Conditional")],
+     True, True),
+    ([("Modify", "WebsiteFunction", "False"), ("Modify", "WebsiteFunctionUrl", "True")], True, True),
+    ([("Modify", "WebsiteFunction", "False"), ("Remove", "WebsiteFunctionUrl", "False")],
+     True, True),
     ([("Modify", "JobBucket", "True")], True, False),
 ])
 def test_would_lose_table(changes, deployed, lost) -> None:
